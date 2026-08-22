@@ -1,0 +1,75 @@
+{
+  "game": "test",
+  "buttons": [
+    {
+      "name": "Score 2 fuel",
+      "code": "score_2_fuel",
+      "type": "offense",
+      "location": "hub",
+      "layout": "circle-2",
+      "autonPoints": 2,
+      "teleopPoints": 2,
+      "bgColor": "FBDD2C"
+    },
+    {
+      "name": "Score 4 fuel",
+      "code": "score_4_fuel",
+      "type": "offense",
+      "location": "hub",
+      "layout": "circle-2",
+      "autonPoints": 4,
+      "teleopPoints": 4,
+      "bgColor": "FBDD2C"
+    },
+    {
+      "name": "Feed",
+      "code": "feed",
+      "type": "cooperative",
+      "location": "",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0,
+      "bgColor": "FF38C8"
+    },
+    {
+      "name": "Climb lv 1",
+      "code": "climb_lv_1",
+      "type": "offense",
+      "location": "tower",
+      "layout": "rect-2",
+      "autonPoints": 15,
+      "teleopPoints": 10,
+      "bgColor": "00A3E0"
+    },
+    {
+      "name": "Climb lv 2",
+      "code": "climb_lv_2",
+      "type": "offense",
+      "location": "tower",
+      "layout": "rect-2",
+      "autonPoints": 0,
+      "teleopPoints": 20,
+      "bgColor": "00A3E0"
+    },
+    {
+      "name": "Climb lv 3",
+      "code": "climb_lv_3",
+      "type": "offense",
+      "location": "tower",
+      "layout": "rect-2",
+      "autonPoints": 0,
+      "teleopPoints": 30,
+      "bgColor": "00A3E0"
+    },
+    {
+      "name": "Disabled",
+      "code": "disabled",
+      "type": "cooperative",
+      "location": "anywhere",
+      "layout": "rect-2",
+      "autonPoints": 0,
+      "teleopPoints": 0,
+      "bgColor": "E80000"
+    }
+  ]
+}

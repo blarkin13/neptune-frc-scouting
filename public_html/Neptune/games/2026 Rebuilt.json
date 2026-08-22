@@ -1,0 +1,114 @@
+{
+  "game": "2026 Rebuilt",
+  "buttons": [
+    {
+      "name": "Score 1 fuel",
+      "code": "score_1_fuel",
+      "type": "offense",
+      "location": "hub",
+      "layout": "circle-2x2",
+      "autonPoints": 1,
+      "teleopPoints": 1,
+      "bgColor": "#004977"
+    },
+    {
+      "name": "Score 2 fuel",
+      "code": "score_2_fuel",
+      "type": "offense",
+      "location": "hub",
+      "layout": "circle-2x2",
+      "autonPoints": 2,
+      "teleopPoints": 2,
+      "bgColor": "#004977"
+    },
+    {
+      "name": "Score 3 fuel",
+      "code": "score_3_fuel",
+      "type": "offense",
+      "location": "hub",
+      "layout": "circle-2x2",
+      "autonPoints": 3,
+      "teleopPoints": 3,
+      "bgColor": "#004977"
+    },
+    {
+      "name": "Score 4 fuel",
+      "code": "score_4_fuel",
+      "type": "offense",
+      "location": "hub",
+      "layout": "circle-2x2",
+      "autonPoints": 4,
+      "teleopPoints": 4,
+      "bgColor": "#004977"
+    },
+    {
+      "name": "Defense",
+      "code": "defense",
+      "type": "defense",
+      "location": "",
+      "layout": "rect-1x1",
+      "autonPoints": 0,
+      "teleopPoints": 0,
+      "bgColor": "#D03027"
+    },
+    {
+      "name": "Climb lv 1",
+      "code": "climb_lv_1",
+      "type": "offense",
+      "location": "tower",
+      "layout": "rect-1x1",
+      "autonPoints": 15,
+      "teleopPoints": 10,
+      "bgColor": "#27814e"
+    },
+    {
+      "name": "Feed",
+      "code": "feed",
+      "type": "cooperative",
+      "location": "",
+      "layout": "rect-1x1",
+      "autonPoints": 0,
+      "teleopPoints": 0,
+      "bgColor": "#e3e8f0"
+    },
+    {
+      "name": "Climb lv 2",
+      "code": "climb_lv_2",
+      "type": "offense",
+      "location": "tower",
+      "layout": "rect-1x1",
+      "autonPoints": 0,
+      "teleopPoints": 20,
+      "bgColor": "#27814e"
+    },
+    {
+      "name": "Climb lv 3",
+      "code": "climb_lv_3",
+      "type": "offense",
+      "location": "tower",
+      "layout": "rect-1x1",
+      "autonPoints": 0,
+      "teleopPoints": 30,
+      "bgColor": "#27814e"
+    },
+    {
+      "name": "Disabled",
+      "code": "disabled",
+      "type": "cooperative",
+      "location": "anywhere",
+      "layout": "rect-2x1",
+      "autonPoints": 0,
+      "teleopPoints": 0,
+      "bgColor": "#D03027"
+    }
+  ],
+  "timing": {
+    "autonSeconds": 15,
+    "transitionPauseSeconds": 10,
+    "teleopSeconds": 135,
+    "endgameSeconds": 15
+  },
+  "grid": {
+    "columns": 4
+  }
+}

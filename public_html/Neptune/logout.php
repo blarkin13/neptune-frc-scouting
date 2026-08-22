@@ -1,0 +1,1 @@
+<?php require_once dirname(__DIR__,2).'/neptune_secure/bootstrap.php'; session_destroy(); header('Location: '.base_url('index.php'));
