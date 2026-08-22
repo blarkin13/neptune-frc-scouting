@@ -1,404 +1,298 @@
 # Neptune
 
-**FRC Scouting, Strategy & Analytics Platform**
+**FRC Scouting, Pit Scouting, Match Control, Analytics & Strategy Platform**
 
-Neptune is a web-based scouting platform built for the **FIRST Robotics Competition (FRC)**. It combines live match scouting, pit scouting, match administration, robot analytics, team-controlled data sharing, and The Blue Alliance integration in a single platform.
+Neptune is a web-based scouting platform for the **FIRST Robotics Competition (FRC)**. It combines live match scouting, pit scouting, match administration, robot analytics, team-controlled data sharing, and The Blue Alliance integration in one PHP/MySQL application.
 
-Neptune is designed to be used by any FRC team or robotics organization rather than being tied to a specific team.
+> **Development status:** Neptune is under active development. Features, database structures, and installation procedures may change.
 
-> **Development Status:** Neptune is currently under active development. Features, database structures, and installation procedures may change.
+## Features
 
----
+### Live match scouting
 
-## What Neptune Does
+- Administrator-controlled match Ready / Start / End workflow
+- Official match and robot assignments imported from The Blue Alliance
+- Synchronized match timer with Autonomous, transition pause, Teleop, and Endgame phases
+- Configurable action buttons generated from game JSON
+- Swipe right for Success and left for Failure
+- Repeated swipes of the same action without reopening the action dialog
+- Real-time database writes
+- Current action count, scouting score, and last-action confirmation
+- Live administrative monitoring
+- Complete match action history with administrative soft-delete
+- Re-scout support for restarted FRC matches; superseded runs are excluded from analytics but retained for audit history
 
-Neptune is built around the complete scouting workflow at an FRC event.
+### Game Builder
 
-### Match Scouting
+Game definitions are data-driven instead of hard-coded for a single season.
 
-Scouts are assigned to robots directly from the official event match schedule.
+Administrators can configure:
 
-During a match, Neptune provides:
+- Autonomous duration
+- Auto-to-Teleop transition pause
+- Teleop duration
+- Endgame timing
+- Action names and automatically generated unique codes
+- Points
+- Categories and locations
+- Button colors
+- Rectangular button sizes: 1x1, 1x2, 2x1, 1x4, 4x1
+- Circular button sizes: 1x1, 2x2, 4x4
+- Four-column snap-to-grid layout
 
-* Synchronized match timer
-* Autonomous, transition, teleop, and endgame phases
-* Configurable game-action buttons
-* Swipe right for a successful action
-* Swipe left for a failed action
-* Immediate real-time database recording
-* Current action count
-* Current scouting score
-* Last-action confirmation
-* Repeated action entry without reopening the action
-* Live administrative monitoring
+Existing game definitions can be loaded, edited, previewed, and saved as JSON.
 
-The game interface is generated dynamically from the selected game's configuration rather than being hard-coded for one FRC season.
+### Current Event & Pit Scouting
 
-### Match Control
+Neptune does not require a published match schedule before an event can be used.
 
-Administrators can:
-
-* Prepare the next match
-* Start matches for all connected scouts
-* Monitor scout activity in real time
-* View every recorded action
-* Remove erroneous scouting actions
-* Add actions after a match
-* Review completed matches
-* Re-scout restarted matches
-
-If an official match is restarted, Neptune can void the original scouting run and begin a clean scouting run while retaining the old data for administrative audit purposes.
-
----
-
-## Pit Scouting
-
-Neptune includes event-based pit scouting that can begin **before the official match schedule is released**.
-
-Features include:
-
-* Event team roster
-* Searchable team cards
-* Draft and completed pit reports
-* Drivetrain information
-* Robot dimensions and weight
-* Intake and scoring capabilities
-* Autonomous routines
-* Endgame capabilities
-* Preferred strategic roles
-* Defense information
-* Reliability and known problems
-* Alliance-partner notes
-* Robot photographs
-* Game-specific custom questions
-
-Pit scouting data is combined with observed match performance in Neptune's robot analytics.
-
----
-
-## Game Builder
-
-FRC games are configured through Neptune rather than hard-coded into the scouting interface.
-
-Administrators can create and edit game definitions including:
-
-* Autonomous duration
-* Auto-to-Teleop transition pause
-* Teleop duration
-* Endgame timing
-* Action name
-* Action code
-* Point value
-* Action category
-* Location
-* Button color
-* Button shape
-* Button size
-
-Action codes are automatically generated from their names and made unique when necessary.
-
-The scouting interface uses a four-column grid supporting rectangular and circular action buttons of multiple sizes.
-
-Game configurations are stored as JSON and can be loaded and edited for future use.
-
----
-
-## The Blue Alliance Integration
-
-Neptune uses **The Blue Alliance API** to obtain official FRC event information.
-
-For official events Neptune can import:
-
-* Event information
-* Event team roster
-* Qualification and playoff schedules
-* Red and Blue alliances
-* Field stations
-* Match results
-* Alliance scores
-
-Once a schedule is available, Neptune uses the official match data as the source of truth for robot assignments.
-
-Scouts do not manually type robot numbers for normal FRC matches.
-
----
-
-## Current Event Workflow
-
-Neptune separates the existence of an event from the availability of its match schedule.
-
-An event can progress through stages such as:
+An event can move through:
 
 ```text
 Planned
-   ↓
-Pit Scouting Open
-   ↓
-Schedule Ready
-   ↓
-Matches Running
-   ↓
-Complete
+  -> Pit Scouting Open
+  -> Schedule Ready
+  -> Matches Running
+  -> Complete
 ```
 
-This allows a team to begin pit scouting as soon as they arrive at an event, even if FIRST has not yet published the match schedule.
+Pit scouting can begin from an event roster before qualification schedules are released. When TBA publishes the schedule, Neptune adds matches to the existing event without replacing pit data.
 
-When the schedule becomes available, Neptune can refresh the same event through The Blue Alliance without replacing existing pit data.
+Pit scouting includes:
 
----
+- Searchable event team roster
+- Draft / Complete status
+- Drivetrain and robot basics
+- Intake and scoring capabilities
+- Autonomous information
+- Endgame information
+- Preferred roles and defense information
+- Reliability / known issues
+- Alliance-partner notes
+- Robot photographs
+- Game-specific questions configured in the Pit Form Builder
 
-## Analytics
+### The Blue Alliance integration
 
-Neptune includes robot and event analytics based on actual scouting observations.
+Neptune uses **The Blue Alliance API v3** for official FRC information, including:
 
-Examples include:
+- Team events
+- Event roster
+- Qualification and playoff schedules
+- Red / Blue alliances and field stations
+- Match scores and results
 
-* Points per match
-* Average scoring cycle time
-* Offensive success percentage
-* Defensive actions per match
-* Matches scouted
-* Total recorded actions
-* Endgame performance
-* Match-by-match history
+Roster sync and schedule sync are independent, so pit scouting can be used before the match schedule is available.
 
-Robot cards can be opened to display a detailed **Robot Intelligence** view combining match statistics with pit scouting information.
+### Analytics
 
----
+Neptune combines observed match data with pit scouting information.
 
-## Pit Display
+Robot analytics include values such as:
 
-Neptune includes a large-screen Pit Match Board intended for televisions or monitors in the team pit.
+- Points per match
+- Average scoring cycle time
+- Offensive success percentage
+- Defensive actions per match
+- Matches scouted
+- Total scouting actions / points
+- Event match history
+- Pit scouting responses and robot photos
 
-The board can display:
+Robot Cards and the Pit Match Board open a shared **Robot Intelligence** modal with detailed robot information.
 
-* Previous matches
-* Upcoming matches
-* Red and Blue alliances
-* Robot scouting statistics
-* Pit scouting information
-* Detailed robot intelligence
+### Pit Match Board
 
-Robot cards are interactive so strategy members can quickly inspect a team's complete scouting profile.
+A large-screen display intended for pit TVs can show past and upcoming matches, the robots involved, and scouting statistics. Robot tiles are clickable for detailed Robot Intelligence.
 
----
+### Multi-organization / multi-team support
 
-## Multi-Team Organizations
+- Multiple organizations can use one Neptune installation
+- Users are scoped to their organization
+- Organizations may contain multiple FRC teams
+- Temporary passwords require a password change after first login
+- Scouting data retains an owning team
+- Controlled team-to-team data sharing is supported by the database/application model
 
-Neptune supports organizations containing one or more FRC teams.
+## Technology
 
-For example, a robotics program operating multiple FRC teams can manage them from a single Neptune installation while maintaining team-specific information.
+- PHP 8.x
+- MySQL 8.x / compatible MariaDB
+- JavaScript
+- HTML / CSS
+- JSON game definitions
+- Font Awesome
+- The Blue Alliance API v3
 
-Users belong to an organization and can be assigned roles and team memberships.
+Neptune intentionally avoids requiring a large PHP framework so it can run on ordinary PHP/MySQL hosting.
 
----
-
-## Team Data Sharing
-
-Scouting data remains owned by the team that collected it.
-
-Neptune's architecture allows teams to selectively share scouting information with other Neptune teams while retaining ownership of the original observations.
-
-The long-term goal is to allow cooperating FRC teams to build more complete scouting datasets without requiring every organization to independently scout every robot.
-
----
-
-# Technology
-
-Neptune currently uses:
-
-* PHP
-* MySQL / MariaDB
-* JavaScript
-* HTML/CSS
-* JSON game definitions
-* Font Awesome
-* The Blue Alliance API
-
-It is intentionally designed to run on ordinary PHP/MySQL web hosting without requiring a large application framework.
-
----
-
-# Server Structure
-
-A typical hosted installation looks like:
+## Repository layout
 
 ```text
-/home/ACCOUNT/
-
+neptune-frc-scouting/
 ├── neptune_secure/
 │   ├── bootstrap.php
-│   ├── config.php
+│   ├── config.example.php
 │   ├── connection.php
+│   ├── legacy_connection.php
 │   └── tba.php
-│
-└── public_html/
-    └── Neptune/
-        ├── admin/
-        ├── analytics/
-        ├── api/
-        ├── assets/
-        ├── dashboard/
-        ├── games/
-        ├── images/
-        ├── pit/
-        ├── scout/
-        └── index.php
+├── public_html/
+│   └── Neptune/
+│       ├── admin/
+│       ├── analytics/
+│       ├── api/
+│       ├── assets/
+│       ├── dashboard/
+│       ├── games/
+│       ├── images/
+│       ├── pit/
+│       ├── scout/
+│       └── index.php
+└── sql/
+    ├── neptune_schema.sql
+    └── neptune_v*_upgrade.sql
 ```
 
-Sensitive configuration is deliberately stored **outside the public web root**.
-
----
-
-# Installation
+`neptune_secure` is intended to live **outside the public web root** in a hosted installation.
 
 ## Requirements
 
-Recommended environment:
+Recommended:
 
-* PHP 8.x
-* MySQL 8.x or compatible MariaDB
-* Apache or compatible PHP web server
-* PDO MySQL extension
-* PHP sessions
-* cURL support
-* HTTPS
-* The Blue Alliance API key
+- PHP 8.x
+- PDO MySQL extension
+- PHP sessions
+- cURL extension
+- MySQL 8.x or compatible MariaDB
+- Apache or another PHP-capable web server
+- HTTPS for a production deployment
+- A The Blue Alliance API key
 
----
+## Fresh hosted installation
 
-## Hosted Installation
+Clone Neptune with:
 
-1. Create a MySQL database for Neptune.
-
-2. Import the current Neptune schema from the `/sql/` directory.
-
-3. Upload:
-
-```text
-public_html/Neptune/
+```bash
+git clone https://github.com/blarkin13/neptune-frc-scouting.git
 ```
 
-to your website's public web directory.
+Or download the repository ZIP from GitHub.
 
-4. Place:
+1. Clone or download this repository.
+2. Create a MySQL database for Neptune.
+3. Import `sql/neptune_schema.sql`.
+4. Place `public_html/Neptune/` below your public web root.
+5. Place `neptune_secure/` beside `public_html`, **not inside it**.
+6. Copy:
 
-```text
-neptune_secure/
+   ```text
+   neptune_secure/config.example.php
+   ```
+
+   to:
+
+   ```text
+   neptune_secure/config.php
+   ```
+
+7. Replace the `XXX` values in `config.php` with your database settings and TBA API key.
+8. Open `/Neptune/admin/install.php` to create the first organization and owner account.
+9. Remove, rename, or otherwise disable `admin/install.php` after initialization.
+
+The current `neptune_schema.sql` already contains the current schema for a fresh install. The numbered upgrade SQL files are retained for older Neptune installations being upgraded incrementally.
+
+## Example configuration
+
+The repository contains `neptune_secure/config.example.php`:
+
+```php
+<?php
+return [
+    'app' => [
+        'base_url' => '/Neptune',
+        'session_name' => 'NEPTUNESESSID',
+        'timezone' => 'UTC',
+    ],
+    'db' => [
+        'host' => 'localhost',
+        'port' => 3306,
+        'name' => 'XXX',
+        'user' => 'XXX',
+        'pass' => 'XXX',
+        'charset' => 'utf8mb4',
+    ],
+    'legacy_db' => [
+        'host' => 'localhost',
+        'port' => 3306,
+        'name' => 'XXX',
+        'user' => 'XXX',
+        'pass' => 'XXX',
+        'charset' => 'utf8mb4',
+    ],
+    'tba' => [
+        'auth_key' => 'XXX',
+        'base_url' => 'https://www.thebluealliance.com/api/v3',
+    ],
+];
 ```
 
-outside `public_html`.
+**Do not commit your real `neptune_secure/config.php`.** It is excluded by `.gitignore`.
 
-5. Copy:
+## Local installation
 
-```text
-neptune_secure/config.example.php
-```
+Neptune can run locally with environments such as XAMPP, MAMP, WAMP, Docker, or a native PHP/MySQL installation.
 
-to:
+A typical local setup is:
 
-```text
-neptune_secure/config.php
-```
+1. Start PHP/Apache and MySQL.
+2. Create a database for Neptune.
+3. Import `sql/neptune_schema.sql`.
+4. Copy `config.example.php` to `config.php` and fill in the local credentials.
+5. Configure the web server so `/Neptune` maps to `public_html/Neptune` while `neptune_secure` remains outside the served directory.
+6. Visit `/Neptune/admin/install.php` and create the initial organization/owner.
 
-6. Configure your database credentials and The Blue Alliance API key.
+## Event-day workflow
 
-7. Open:
+A typical FRC event workflow is:
 
-```text
-/Neptune/admin/install.php
-```
+1. Create/select the season's game in **Game Builder**.
+2. Create the event and make it the **Current Event**.
+3. Import or paste the event roster and begin **Pit Scouting**.
+4. When TBA publishes the schedule, use **TBA Sync** to import/refresh it.
+5. Use **Match Control** to make the next match Ready and start it.
+6. Scouts select their assigned field station and record actions.
+7. Use **Live Monitor** to watch activity and correct erroneous actions.
+8. Review **Robot Analytics**, **Robot Intelligence**, and the **Pit Match Board**.
 
-to create the first organization and owner account.
+## Security notes
 
-8. Remove or disable `admin/install.php` after initialization.
+- Passwords use PHP `password_hash()` / `password_verify()`.
+- Admin-created temporary passwords require a first-login reset.
+- Forms use CSRF protection.
+- SQL uses prepared statements.
+- Operational queries are organization-scoped.
+- API endpoints require authenticated sessions.
+- Database and TBA credentials remain outside `public_html`.
+- Deleted scouting actions are retained as auditable soft-deletes and excluded from normal analytics.
 
----
+## Legacy data import
 
-## Local Installation
+Neptune includes an administrative legacy importer for earlier Stat Owl-style scouting data. Legacy database credentials are optional and belong only in your private `config.php`.
 
-Neptune can also run locally using a PHP/MySQL development environment such as:
+Back up both databases before running a historical import.
 
-* XAMPP
-* MAMP
-* WAMP
-* Docker
-* Native PHP + MySQL
+## Contributing
 
-Create the Neptune database, import the schema, configure `neptune_secure/config.php`, and point your local web server at the directory containing the Neptune public application.
+Neptune is still evolving. Bug reports, scouting workflow ideas, UI improvements, and code contributions are welcome.
 
-The exact path depends on the local web-server configuration.
+Before deploying development updates to an event system, back up the Neptune database and test the update away from competition use.
 
----
+## Disclaimer
 
-# Security
+Neptune is an independent community project and is **not affiliated with, endorsed by, or maintained by FIRST® or The Blue Alliance**.
 
-Neptune is designed so credentials are not placed in the public web directory.
-
-**Never commit `neptune_secure/config.php` to GitHub.**
-
-The repository should use:
-
-```text
-neptune_secure/config.example.php
-```
-
-with placeholder values.
-
-Other security features include:
-
-* Password hashing with PHP `password_hash()`
-* Forced temporary-password replacement
-* Session authentication
-* CSRF protection
-* Prepared SQL statements
-* Organization-level access restrictions
-* Soft deletion/auditing of scouting actions
-* Private API credentials
-* Organization-scoped user administration
-
----
-
-# First Setup
-
-After installing Neptune:
-
-1. Create your organization.
-2. Create or add your FRC team.
-3. Add users and scouts.
-4. Configure the current FRC game.
-5. Create or import an event.
-6. Add/import the event roster.
-7. Begin pit scouting.
-8. Sync the official schedule when it becomes available.
-9. Open Match Control.
-10. Begin live scouting.
-11. Review Robot Analytics and strategy data.
-
----
-
-# Contributing
-
-Neptune is currently early in development.
-
-Bug reports, interface suggestions, FRC scouting ideas, and contributions are welcome as the project matures.
-
-Because the database and application structure may still change, production installations should back up their database before applying development updates.
-
----
-
-# Disclaimer
-
-Neptune is an independent community project.
-
-It is **not affiliated with, endorsed by, or maintained by FIRST® or The Blue Alliance**.
-
-FIRST®, FIRST Robotics Competition®, FRC®, and related marks are trademarks of their respective owners.
-
-The Blue Alliance is an independent community-developed resource.
-
----
+FIRST®, FIRST Robotics Competition®, FRC®, and related marks belong to their respective owners. The Blue Alliance is an independent community-developed resource.
 
 ## License
 
-License information will be added as the project approaches its first public release.
+A project license has not yet been selected for this temporary repository.

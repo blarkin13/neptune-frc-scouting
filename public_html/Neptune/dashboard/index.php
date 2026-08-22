@@ -2,8 +2,8 @@
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 $u=require_login();$org=(int)$u['organization_id'];
 
-// Paste the public Neptune GitHub repository URL here once it is available.
-$githubRepoUrl = '';
+// Public Neptune GitHub repository.
+$githubRepoUrl = 'https://github.com/blarkin13/neptune-frc-scouting';
 
 $s=$pdo->prepare("SELECT e.*,g.name game_name,
  (SELECT COUNT(*) FROM event_teams et WHERE et.event_id=e.id) team_count,
@@ -148,7 +148,7 @@ $pageTitle='Home';include dirname(__DIR__).'/partials_header.php';
           </ol>
         </section>
       </div>
-      <div class="notice"><i class="fa-brands fa-github"></i> The GitHub repository link on the dashboard will activate after <code>$githubRepoUrl</code> is set near the top of <code>dashboard/index.php</code>.</div>
+      <div class="notice"><i class="fa-brands fa-github"></i> Source code, installation files, and updates are available from the Neptune GitHub repository.</div>
     </div>
   </div>
 </dialog>
