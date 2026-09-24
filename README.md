@@ -36,85 +36,60 @@ and create the first organization/owner account.
 
 ## Neptune modules
 
-Neptune is the umbrella FRC Scouting & Strategy Platform. The application is organized into named modules:
+Neptune is the umbrella FRC scouting, analytics, strategy, and event-operations platform. The current application is organized into six named modules:
 
-* **TRIDENT** — Match Scouting, Pit Scouting, and Pre-Scouting
-* **SATURN** — Command Center, Match Control, and Administration
-* **AUGUR** — Analytics, Strategy, and Robot Intelligence
-* **MERCURY** — Live Updates, WebSockets, and Device Synchronization
-* **VULCAN** — Game Builder, Form Builder, and System Configuration
-* **SALT** — Database and Data Storage
+* **TRIDENT · Scouting** — Match Scouting, Spot Scouting, Pit Scouting, and Pre-Scouting.
+* **SATURN · Command Center** — Event operations, Match Control, Live Monitor, Event Setup, TBA Sync, organization administration, and data-sharing controls.
+* **AUGUR · Analytics & Strategy** — Robot intelligence, match analysis, Public EPA, Neptune EPA, predictions, Match Strategy, and Alliance Selection.
+* **MERCURY · System Maintenance** — System Check, Interface Styling, File Manager, AUGUR data maintenance, patch installation/rollback, and diagnostics.
+* **VULCAN · Builders & Configuration** — Game Builder, Pit Form Builder, and Pre-Scout Form Builder.
+* **SALT · Data Layer** — Raw scouting data, Database Lab, and the underlying organization-scoped data store.
 
-The module names describe functional boundaries inside the same Neptune platform; they do not require separate installations.
+The names describe functional areas inside one Neptune installation; they are not separate applications or services.
 
-## Navigation
+---
 
-The main menu uses functional names rather than module codenames:
+## Main navigation
 
-* **Scouting** opens **TRIDENT**, where users choose Match Scouting, Pit Scouting, or Pre-Scouting.
-* **Analytics & Strategy** opens **AUGUR**, where users choose Robot Intelligence or the Match Board.
-* **Command Center** opens **SATURN**, with Event Operations, VULCAN configuration tools, and organization administration grouped separately.
+The dashboard uses functional names with module names as secondary branding:
 
-Module names remain visible as secondary branding inside each application.
+* **Scouting · TRIDENT** — Match, Spot, Pit, and Pre-Scouting.
+* **Command Center · SATURN** — Event Operations, organization administration, VULCAN builders, and role-gated system tools.
+* **Analytics & Strategy · AUGUR** — Robot Lookup, Match Board, Robot Intelligence, EPA Ratings, Match Strategy, and Alliance Selection.
+* **System Maintenance · MERCURY** — health, styling, files, updates, AUGUR maintenance, and diagnostics.
+* **Builders & Configuration · VULCAN** — season/game configuration and scouting-form builders.
+* **Data Layer · SALT** — raw data and Strategy+ Database Lab access.
 
 ---
 
 ## Features
 
-### TRIDENT · Live match scouting
+### TRIDENT · Match Scouting
 
-* Administrator-controlled match Ready / Start / End workflow
+* Administrator/strategy-controlled Ready, Start, Pause, End, and re-scout workflow
 * Official match and robot assignments imported from The Blue Alliance
-* Synchronized match timer with Autonomous, transition pause, Teleop, and Endgame phases
-* Configurable action buttons generated from game JSON
+* Synchronized Autonomous, transition, Teleop, and Endgame timing
+* Game-defined action buttons generated from season configuration
 * Swipe right for Success and left for Failure
-* Repeated swipes of the same action without reopening the action dialog
-* Real-time database writes
-* Current action count, scouting score, and last-action confirmation
-* Live administrative monitoring
-* Complete match action history with administrative soft-delete
-* Re-scout support for restarted FRC matches; superseded runs are excluded from analytics but retained for audit history
+* Repeated action entry without reopening the action dialog
+* Real-time writes to Neptune with action history and soft-delete auditing
+* IndexedDB connection protection for queued scouting requests during temporary network interruption
+* Re-scout support that preserves run history while excluding superseded runs from normal analytics
+* Live visibility through SATURN's Live Monitor
 
-### VULCAN · Game Builder
+### TRIDENT · Spot Scouting
 
-Game definitions are data-driven instead of hard-coded for a single season.
+Spot Scouting is the quick-observation layer for information that does not fit structured match or pit forms.
 
-Administrators can configure:
+* Tag robots during matches, in the pits, or as general observations
+* Add free-form notes
+* Attach photos and supported video media
+* Associate observations with teams and match/field context
+* Follow active matches by field
+* Organization-specific/customizable Spot Scouting tags
+* Spot observations are surfaced inside Robot Intelligence and Alliance Selection
 
-* Autonomous duration
-* Auto-to-Teleop transition pause
-* Teleop duration
-* Endgame timing
-* Action names and automatically generated unique codes
-* Points
-* Categories and locations
-* Button colors
-* Rectangular button sizes: `1x1`, `1x2`, `2x1`, `1x4`, `4x1`
-* Circular button sizes: `1x1`, `2x2`, `4x4`
-* Four-column snap-to-grid layout
-
-Existing game definitions can be loaded, edited, previewed, and saved as JSON.
-
-### TRIDENT · Pre-Scouting
-
-Neptune includes an event-based pre-scouting workflow for contacting/researching teams before an event. The event roster comes from The Blue Alliance whenever possible, and each team can be tracked as *Not Started*, *Contacted*, *Response Received*, *No Response*, or *Unavailable*.
-
-The event overview uses a spreadsheet-style table so a tablet/laptop can show team number, location, season record, EPA breakdown, cached prior-event OPR values, event/alliance history, assigned scout, and completion status. TBA supplies team/location/event information and prior-event OPR/alliance data when available. Statbotics is an optional public source for season record and EPA; Neptune continues working if Statbotics is unavailable.
-
-Pre-scout answers are stored twice: as an event-specific snapshot and as reusable season knowledge for the same robot/game. When a team appears at another event in the same FRC season, Neptune can pre-fill known robot answers from earlier pre-scouting and compatible pit scouting while still allowing the new event information to be corrected. The assigned **Scout** remains event-specific and is not carried forward as robot knowledge.
-
-Questions are game-defined from **Command → Pre-Scout Form Builder**. The included 2026 REBUILT template mirrors the team's existing spreadsheet workflow: Auto, Trench, Hopper Size, Shooter, Climb, Throughput, Drive Notes, Defence / CounterDefence, and Archetype.
-
-### TRIDENT · Current Event & Pit Scouting
-
-Neptune does not require a published match schedule before an event can be used.
-
-An event can move through:
-`Planned` ➔ `Pit Scouting Open` ➔ `Schedule Ready` ➔ `Matches Running` ➔ `Complete`
-
-Pit scouting can begin from an event roster before qualification schedules are released. When TBA publishes the schedule, Neptune adds matches to the existing event without replacing pit data.
-
-Pit scouting includes:
+### TRIDENT · Pit Scouting
 
 * Searchable event team roster
 * Draft / Complete status
@@ -123,50 +98,173 @@ Pit scouting includes:
 * Autonomous information
 * Endgame information
 * Preferred roles and defense information
-* Reliability / known issues
+* Reliability and known-issue notes
 * Alliance-partner notes
-* Robot photographs from a phone camera or desktop file picker
-* Automatic photo resizing (1800 px max) with AVIF preferred, then WebP/JPEG fallback
-* Game-specific questions configured in the Pit Form Builder
+* Robot photographs from phone camera or desktop file picker
+* Automatic image optimization with AVIF preferred and WebP/JPEG fallback
+* Game-specific questions configured through VULCAN's Pit Form Builder
+
+*Pit scouting can begin as soon as an event roster exists; Neptune does not require the qualification schedule to be published first.*
+
+### TRIDENT · Pre-Scouting
+
+Neptune includes an event-based pre-scouting workflow for researching/contacting teams before competition.
+
+* Event roster integration
+* Status tracking such as Not Started, Contacted, Response Received, No Response, and Unavailable
+* Team/location and historical-event context from locally available TBA data
+* Season-level robot knowledge that can be reused at later events using the same game
+* Event-specific scout assignments and responses
+* Configurable questions through VULCAN's Pre-Scout Form Builder
+* Integration with Robot Intelligence and Match Strategy
+
+### SATURN · Command Center & Event Operations
+
+SATURN runs the event and organization workflow:
+
+* **Match Control** — Ready, start, pause, end, and re-scout matches while preserving run history
+* **Live Monitor** — connected scouts, robot assignments, actions, and current match state
+* **Event Setup** — create events, select games, load rosters, and control Current Event
+* **TBA Sync** — import/refresh official event rosters, schedules, and event links
+* **Teams & Users** — organization teams, accounts, roles, and access
+* **Data Sharing** — explicit partner-team permissions for shared scouting and analytics data
+
+### VULCAN · Builders & Configuration
+
+VULCAN makes Neptune season-independent rather than hard-coding one FRC game.
+
+**Game Builder** can configure:
+
+* Autonomous, transition, Teleop, and Endgame timing
+* Scoring/action names and codes
+* Point values
+* Categories and locations
+* Button colors and shapes
+* Four-column snap-to-grid scouting layouts
+* Field/background assets
+
+VULCAN also contains:
+
+* **Pit Form Builder** — game-specific pit capability questions
+* **Pre-Scout Form Builder** — season research fields and templates
+
+### AUGUR · Robot Intelligence
+
+AUGUR combines Neptune's organization-scoped scouting with public FRC data stored locally by Neptune. Core tools include:
+
+* **Robot Lookup** — search any robot by team number/name and combine identity, pit, pre-scout, match, EPA, and event history
+* **Robot Intelligence / Robot Cards** — scouting-derived performance, notes, photos, Spot Scouting, Public EPA, and Neptune EPA
+* **Match Board** — six-robot past/upcoming matchup view with direct Robot Intelligence access
+* Sorting and comparison by points/match, cycle time, success rate, defense, matches scouted, Public EPA, and Neptune EPA
+
+### AUGUR · Public EPA
+
+**Public EPA** is Neptune's public-data rating layer. AUGUR maintains a local archive of public match information and calculates overall plus phase-specific ratings such as:
+
+* Overall Public EPA
+* Autonomous EPA
+* Teleop EPA
+* Endgame EPA
+
+The Public EPA pages can be viewed independently of an organization's private scouting data and expose a public ratings API. Prediction pages read the locally archived EPA data rather than requiring a live external request for every prediction.
+
+### AUGUR · Neptune EPA
+
+**Neptune EPA** is different from Public EPA. It is an organization-private AUGUR estimate that blends the public baseline with the organization's own scouting-derived performance.
+
+The current model can use factors including:
+
+* Public EPA baseline
+* Full-event observed offense
+* Recent observed offense
+* High-end output
+* Current-event trend
+
+The result is used as an offensive robot-strength reference in Robot Intelligence, Match Strategy, and Alliance Selection. Matchup-specific defense and qualification-form settings are applied by the shared AUGUR prediction model when comparing alliances rather than simply changing the displayed offensive Neptune EPA.
+
+### AUGUR · Shared Prediction Model
+
+Match Strategy and Alliance Selection use the same organization/event AUGUR model settings so the two strategy tools do not disagree about how robots are evaluated.
+
+The prediction system can provide:
+
+* Predicted alliance scores
+* Win probability
+* Estimated score range
+* Model confidence
+* Public EPA baseline
+* Neptune EPA
+* Scouting-based fallback when public EPA is unavailable
+* Configurable offensive and defensive weighting
+
+Historical Match Strategy predictions use pre-match data rules so later results do not leak backward into the prediction shown for an earlier match.
+
+### AUGUR · Match Strategy
+
+Match Strategy turns scouting intelligence into a saved drive-team plan for a specific match. It includes:
+
+* AUGUR matchup prediction and confidence
+* Alliance-role suggestions with strategy override
+* Autonomous information and conflict planning
+* Opponent Watch and defense-target prioritization
+* Phase-by-phase assignments for Autonomous, Teleop, and Endgame
+* Claimed-vs-observed endgame reliability
+* Key objectives
+* Autonomous notes
+* Drive-team notes
+* Confirmation checks for autonomous paths and endgame responsibilities
+
+### AUGUR · Alliance Selection
+
+Alliance Selection is a live draft/pick-list workspace rather than a static spreadsheet. It includes:
+
+* Official TBA qualification rankings for captain context
+* Alliance Board and Team Pool
+* Multiple draft scenarios
+* Pick lists
+* Robot Intelligence detail without leaving the board
+* Public EPA and Neptune EPA
+* Shared AUGUR prediction settings
+* Alliance offensive-potential comparison
+* Alliance tags
+* Spot Scouting
+* Alliance history
+* Tracking for selections, declines, unavailable/broken robots, and captain movement
+* Offline preparation of the event's Alliance Selection data for the device
+
+### SALT · Data Layer & Database Lab
+
+SALT exposes Neptune's underlying data in controlled ways:
+
+* Raw scouting data views
+* **Database Lab** for Strategy+ users
+* Read-only manual SQL/query exploration
+* Organization/tenant scoping for non-platform-owner organizations
+* Platform-owner visibility for installation-wide diagnostics where permitted
+
+### MERCURY · System Maintenance
+
+MERCURY is the maintenance/tooling layer. Current tools include:
+
+* **System Check** — PHP, image-processing, storage, configuration, and application capabilities
+* **Interface Styling** — centralized palette/presets for Neptune's interface
+* **File Manager** — platform-owner file browsing and maintenance
+* **AUGUR Data Maintenance** — refresh team directory, backfill/recalculate Public EPA, and rebuild local OPR
+* **Maintenance Console** — server health, patch ZIP installation, rollback, and restricted diagnostics
 
 ---
 
 ## The Blue Alliance integration
 
-Neptune uses The Blue Alliance API v3 for official FRC information, including:
+Neptune uses The Blue Alliance API v3 as an external data source for information such as:
 
-* Team events
-* Event roster
+* Event rosters
 * Qualification and playoff schedules
-* Red / Blue alliances and field stations
-* Match scores and results
+* Red/Blue alliances and field stations
+* Match scores/results
+* Qualification rankings and event links where used by Neptune
 
-Roster sync and schedule sync are independent, so pit scouting can be used before the match schedule is available.
-
----
-
-## AUGUR · Analytics
-
-Neptune combines observed match data with pit scouting information.
-
-Robot analytics include values such as:
-
-* Points per match
-* Average scoring cycle time
-* Offensive success percentage
-* Defensive actions per match
-* Matches scouted
-* Total scouting actions / points
-* Event match history
-* Pit scouting responses and robot photos
-
-Robot Cards and the Pit Match Board open a shared **Robot Intelligence** modal with detailed robot information.
-
----
-
-## Pit Match Board
-
-A large-screen display intended for pit TVs can show past and upcoming matches, the robots involved, and scouting statistics. Robot tiles are clickable for detailed Robot Intelligence.
+Roster and schedule synchronization are separate, allowing pit/pre-scout workflows before a match schedule is available.
 
 ---
 
@@ -174,10 +272,11 @@ A large-screen display intended for pit TVs can show past and upcoming matches, 
 
 * Multiple organizations can use one Neptune installation
 * Users are scoped to their organization
-* Organizations may contain multiple FRC teams
-* Temporary passwords require a password change after first login
-* Scouting data retains an owning team
-* Controlled team-to-team data sharing is supported by the database/application model
+* Organizations can contain multiple FRC teams
+* Role-gated owner/admin/strategy/scouter access
+* Scouting data retains organization/team ownership
+* Controlled team-to-team data sharing
+* Organization-scoped analytics and Database Lab behavior
 
 ---
 
@@ -321,7 +420,7 @@ sudo env \
 | `NEPTUNE_ROOT` | `/var/www/neptune` | Deployment root |
 | `NEPTUNE_DB_NAME` | `neptune` | MariaDB database |
 | `NEPTUNE_DB_USER` | `neptune_app` | MariaDB application user |
-| `NEPTUNE_SERVER_NAME` | `neptune.local` | Apache ServerName |
+| `NEPTUNE_SERVER_NAME` | `neptune.local` | Apache `ServerName` |
 | `NEPTUNE_BASE_URL` | *empty* | URL prefix when Neptune is not the site root |
 | `NEPTUNE_TIMEZONE` | `UTC` | Application timezone |
 | `NEPTUNE_TBA_KEY` | *empty* | Optional The Blue Alliance API key |
