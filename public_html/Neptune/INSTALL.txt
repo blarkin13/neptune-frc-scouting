@@ -1,0 +1,55 @@
+SAFE NEPTUNE SEO UPDATE
+
+IMPORTANT:
+- This package DOES NOT contain index.php.
+- Do not change the working authentication controller.
+- Back up partials_header.php and landing.php first.
+
+From /var/www/neptune/public_html/Neptune:
+
+sudo cp partials_header.php partials_header.php.before-seo
+sudo cp landing.php landing.php.before-seo
+
+Upload/copy the package contents into the Neptune root so these paths exist:
+  partials_header.php
+  landing.php
+  robots.txt
+  sitemap.xml
+  images/neptune-og.png
+
+Then run:
+  php -l partials_header.php
+  php -l landing.php
+  sudo chown root:www-data partials_header.php landing.php robots.txt sitemap.xml images/neptune-og.png
+  sudo chmod 664 partials_header.php landing.php robots.txt sitemap.xml images/neptune-og.png
+  sudo systemctl reload apache2
+
+Test:
+  https://neptune.mckinneysteamacademy.org/
+  https://neptune.mckinneysteamacademy.org/robots.txt
+  https://neptune.mckinneysteamacademy.org/sitemap.xml
+
+This update fixes:
+- language tag
+- ASCII-safe title separator
+- meta description
+- canonical URL
+- Open Graph metadata
+- Twitter card metadata (except twitter:site, because no account was supplied)
+- Organization, WebSite, WebPage, WebApplication and BreadcrumbList JSON-LD
+- 1200x630 Open Graph image
+- logo width/height and fetchpriority
+- resource hints
+- shorter keyword-aligned H1
+- landing inline style attributes
+- robots.txt
+- sitemap.xml
+
+The following audit items are intentionally separate:
+- HTTP/2
+- HSTS
+- CSP
+- COOP
+- session Cache-Control
+- RSS feed
+- twitter:site without a real X/Twitter account

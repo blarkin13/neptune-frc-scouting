@@ -72,33 +72,144 @@ if($selectedEvent){
     $s=$pdo->prepare("SELECT match_id,match_run_number,frc_team_number,COUNT(*) actions,COALESCE(SUM(points),0) pts FROM scouting_actions WHERE organization_id=? AND event_id=? AND deleted_at IS NULL GROUP BY match_id,match_run_number,frc_team_number");$s->execute([$org,$selectedEvent]);
     foreach($s->fetchAll() as $r)$robotStats[$r['match_id'].'-'.$r['match_run_number'].'-'.$r['frc_team_number']]=$r;
 }
-$pageTitle='Match Control';include dirname(__DIR__).'/partials_header.php';
+$pageTitle='Match Control';$moduleName='SATURN';include dirname(__DIR__).'/partials_header.php';
 ?>
-<div class="toolbar" style="justify-content:space-between"><div><h1 style="margin-bottom:4px">Match Control</h1><div class="muted">Official robot assignments come from the TBA schedule. Re-scouting voids the previous run so only the new run counts.</div></div><a class="btn secondary" href="tba-sync.php"><i class="fa-solid fa-rotate"></i> TBA Sync</a></div>
+<div class="toolbar" style="justify-content:space-between"><div><div class="module-eyebrow"><span>SATURN</span><small>Match Control</small></div><h1 style="margin-bottom:4px">Match Control</h1><div class="muted">Official robot assignments come from the TBA schedule. Re-scouting voids the previous run so only the new run counts.</div></div><a class="btn secondary" href="tba-sync.php"><i class="fa-solid fa-rotate"></i> TBA Sync</a></div>
 <?php if($msg):?><div class="notice good"><?=e($msg)?></div><?php endif;?>
 <div class="card"><form method="get" class="toolbar"><div style="min-width:320px;flex:1"><label style="margin-top:0">Event</label><select name="event_id" onchange="this.form.submit()"><?php foreach($events as $e):?><option value="<?=$e['id']?>" <?=$selectedEvent===(int)$e['id']?'selected':''?>><?=e(($e['is_current']?'★ ':'').$e['name'].' · '.$e['game_name'])?></option><?php endforeach;?></select></div></form></div>
 <div class="card" style="margin-top:16px"><div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">Matches</h2><span class="muted">Blue outline = next match to ready · blue = ready · green = running</span></div>
-<?php if(!$matches):?><div class="notice">No matches are loaded. Import or refresh the event from The Blue Alliance.</div><?php else:?><div class="match-list">
+<?php if(!$matches):?><div class="notice">No matches are loaded. Import or refresh the event from The Blue Alliance.</div><?php else:?><div class="match-list" id="matchList">
 <?php foreach($matches as $m):$run=(int)$m['run_number'];$isNext=((int)$m['id']===$nextScheduledId);?>
-<div class="match-row <?=e($m['state'])?> <?=$isNext?'next-up':''?>">
+<div class="match-row <?=e($m['state'])?> <?=$isNext?'next-up':''?>" id="match-<?=$m['id']?>" data-match-id="<?=$m['id']?>" data-match-state="<?=e($m['state'])?>">
   <div class="match-heading"><div class="match-meta"><b class="match-title"><?=e(neptune_match_label($m))?></b><span class="pill"><?=e(strtoupper($m['state']))?></span><?php if($run>1):?><span class="pill"><i class="fa-solid fa-rotate-right"></i> Run <?=$run?></span><?php endif;?></div><div class="muted"><?php if($m['scheduled_time']):?><?=e($m['scheduled_time'])?> UTC<?php endif;?></div></div>
   <div class="alliance-strip">
     <?php foreach(['red'=>'Red','blue'=>'Blue'] as $prefix=>$label):?><div class="alliance <?=$prefix?>"><span><?=$label?></span><?php for($i=1;$i<=3;$i++):$k=$prefix.$i;$team=(int)($m[$k]??0);$stat=$team?($robotStats[$m['id'].'-'.$run.'-'.$team]??null):null;?><b><?=$team?'#'.e($team):'—'?><?php if($stat):?><small><?=e(round((float)$stat['pts'],1))?> pts · <?=e($stat['actions'])?> actions</small><?php endif;?></b><?php endfor;?></div><?php endforeach;?>
   </div>
   <div class="match-summary"><span><b>Scout points:</b> <?=e(round((float)$m['scout_points'],1))?></span><span><b>Actions:</b> <?=e($m['action_count'])?></span><span><b>Scout sessions:</b> <?=e($m['scout_count'])?></span><?php if($m['red_score']!==null&&$m['blue_score']!==null):?><span><b>TBA score:</b> Red <?=e($m['red_score'])?> · Blue <?=e($m['blue_score'])?></span><?php endif;?></div>
-  <div class="toolbar match-controls"><form method="post" class="toolbar" style="margin:0"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="match_id" value="<?=$m['id']?>"><input type="hidden" name="event_id" value="<?=$selectedEvent?>">
+  <div class="toolbar match-controls"><form method="post" class="toolbar match-action-form" style="margin:0"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="match_id" value="<?=$m['id']?>"><input type="hidden" name="event_id" value="<?=$selectedEvent?>">
     <?php if($m['state']==='scheduled'):?><button name="op" value="ready" <?=$m['team_count']<1?'disabled':''?>><i class="fa-solid fa-circle-check"></i> Make Ready</button>
     <?php elseif($m['state']==='ended'):?><button class="secondary rescout-button" name="op" value="ready" <?=$m['team_count']<1?'disabled':''?>><i class="fa-solid fa-rotate-right"></i> Re-scout / Ready Again</button>
     <?php elseif($m['state']==='ready'):?><button class="good" name="op" value="start"><i class="fa-solid fa-play"></i> Start Match</button>
     <?php elseif($m['state']==='running'):?><button class="secondary" name="op" value="pause"><i class="fa-solid fa-pause"></i> Pause</button><button class="danger" name="op" value="end"><i class="fa-solid fa-stop"></i> End</button>
     <?php elseif($m['state']==='paused'):?><button class="good" name="op" value="resume"><i class="fa-solid fa-play"></i> Resume</button><button class="danger" name="op" value="end"><i class="fa-solid fa-stop"></i> End</button><?php endif;?></form>
-    <a class="btn secondary" href="live.php?match_id=<?=$m['id']?>"><i class="fa-solid fa-eye"></i> Monitor</a>
+    <a class="btn secondary" href="<?=e(base_url('admin/live.php?match_id='.$m['id']))?>"><i class="fa-solid fa-eye"></i> Monitor</a>
   </div>
 </div>
 <?php endforeach;?></div><?php endif;?></div>
 <script>
-document.querySelectorAll('.rescout-button').forEach(btn=>btn.addEventListener('click',e=>{
-  if(!confirm('Re-scout this match?\n\nAll scouting actions from the current run will be voided and removed from analytics. A clean new run will start at 0 actions / 0 points.')) e.preventDefault();
-}));
+(() => {
+  'use strict';
+
+  const EVENT_ID = <?=json_encode($selectedEvent)?>;
+  const scrollKey = `neptune-match-control-scroll:${EVENT_ID}`;
+  const listSelector = '#matchList';
+
+  const messageFor = {
+    ready: 'Match is ready for scouts.',
+    start: 'Match started.',
+    pause: 'Match paused.',
+    resume: 'Match resumed.',
+    end: 'Match ended. This scouting run is preserved.'
+  };
+
+  // Full reloads (manual refresh, browser back, failed-JS fallback) return to
+  // the exact vertical position instead of throwing the operator to the top.
+  try {
+    const saved = sessionStorage.getItem(scrollKey);
+    if (saved !== null) {
+      requestAnimationFrame(() => {
+        const y = Number(saved);
+        if (Number.isFinite(y)) window.scrollTo(0, y);
+        sessionStorage.removeItem(scrollKey);
+      });
+    }
+    window.addEventListener('pagehide', () => {
+      sessionStorage.setItem(scrollKey, String(window.scrollY));
+    });
+  } catch (_) {}
+
+  function toast(message, type = 'good', title = 'Match Control') {
+    if (window.NeptuneUI && typeof NeptuneUI.toast === 'function') {
+      NeptuneUI.toast(message, type, {title});
+    }
+  }
+
+  async function confirmRescout(row) {
+    if (!row || row.dataset.matchState !== 'ended') return true;
+    if (!window.NeptuneUI || typeof NeptuneUI.confirm !== 'function') {
+      return window.confirm(
+        'Re-scout this match?\n\nAll scouting actions from the current run will be voided and removed from analytics. A clean new run will start at 0 actions / 0 points.'
+      );
+    }
+    return NeptuneUI.confirm(
+      'Re-scout this match?\n\nAll scouting actions from the current run will be voided and removed from analytics. A clean new run will start at 0 actions / 0 points.',
+      {title:'Start a clean scouting run', confirmText:'Re-scout match', danger:true}
+    );
+  }
+
+  document.addEventListener('submit', async (event) => {
+    const form = event.target.closest('.match-action-form');
+    if (!form) return;
+
+    event.preventDefault();
+
+    const submitter = event.submitter || document.activeElement;
+    const op = submitter && submitter.name === 'op' ? String(submitter.value || '') : '';
+    if (!op) return;
+
+    const row = form.closest('.match-row');
+    if (op === 'ready' && !(await confirmRescout(row))) return;
+
+    const matchId = row ? row.dataset.matchId : '';
+    const oldTop = row ? row.getBoundingClientRect().top : null;
+    const buttons = [...form.querySelectorAll('button')];
+    buttons.forEach(button => button.disabled = true);
+
+    const body = new FormData(form);
+    body.set('op', op);
+
+    try {
+      const url = `${window.location.pathname}?event_id=${encodeURIComponent(EVENT_ID)}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        body,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {'X-Requested-With': 'XMLHttpRequest'}
+      });
+
+      const html = await response.text();
+      if (!response.ok) throw new Error(`Match Control returned HTTP ${response.status}.`);
+
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const incomingList = doc.querySelector(listSelector);
+      const currentList = document.querySelector(listSelector);
+      if (!incomingList || !currentList) {
+        throw new Error('Neptune could not refresh the match list.');
+      }
+
+      currentList.replaceWith(incomingList);
+
+      // Keep the operated match at the same place in the viewport even if its
+      // buttons/status changed height.
+      if (matchId && oldTop !== null) {
+        const updatedRow = document.querySelector(`.match-row[data-match-id="${CSS.escape(String(matchId))}"]`);
+        if (updatedRow) {
+          const newTop = updatedRow.getBoundingClientRect().top;
+          window.scrollBy(0, newTop - oldTop);
+        }
+      }
+
+      if (op === 'ready' && row && row.dataset.matchState === 'ended') {
+        toast('Match reopened for a clean re-scouting run.');
+      } else {
+        toast(messageFor[op] || 'Match updated.');
+      }
+    } catch (error) {
+      buttons.forEach(button => button.disabled = false);
+      toast(error && error.message ? error.message : 'Unable to update the match.', 'bad', 'Match Control');
+    }
+  });
+})();
 </script>
 <?php include dirname(__DIR__).'/partials_footer.php';

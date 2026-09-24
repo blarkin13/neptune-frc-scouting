@@ -3,7 +3,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 $u=require_role(['owner','admin','strategy']);
 $d=json_decode(file_get_contents('php://input'),true)?:[];
 $mid=(int)($d['match_id']??0);$alliance=($d['alliance']??'Red')==='Blue'?'Blue':'Red';$station=max(1,min(3,(int)($d['station']??1)));
-$s=$pdo->prepare('SELECT m.*,g.config_json FROM matches m JOIN games g ON g.id=m.game_id WHERE m.id=? AND m.organization_id=?');
+$s=$pdo->prepare('SELECT m.*,gr.match_config_json config_json FROM matches m JOIN events e ON e.id=m.event_id JOIN game_revisions gr ON gr.id=e.game_revision_id AND gr.game_id=m.game_id WHERE m.id=? AND m.organization_id=?');
 $s->execute([$mid,$u['organization_id']]);$m=$s->fetch();
 if(!$m) json_response(['error'=>'match not found'],404);
 $s=$pdo->prepare('SELECT frc_team_number FROM match_teams WHERE match_id=? AND alliance=? AND station=?');$s->execute([$mid,$alliance,$station]);$robot=(int)$s->fetchColumn();

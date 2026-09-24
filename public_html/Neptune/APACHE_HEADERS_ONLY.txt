@@ -1,0 +1,18 @@
+OPTIONAL SERVER-LEVEL AUDIT FIXES
+
+These are not required for the landing page to work.
+
+For the HTTPS vhost, after confirming the site is HTTPS-only:
+
+Header always set Strict-Transport-Security "max-age=31536000"
+Header always set Cross-Origin-Opener-Policy "same-origin"
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+CSP is intentionally not forced in this package because Neptune is a larger shared
+application and a too-restrictive policy could break pages that use resources not
+visible from the landing page.
+
+HTTP/2 is an Apache/server configuration item.
+Cache-Control is influenced by PHP session behavior; do not weaken session security
+just to improve an SEO checker score.

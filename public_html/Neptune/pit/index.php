@@ -20,7 +20,7 @@ if($eventId){
     }
 }
 $total=count($teams);$remaining=max(0,$total-$complete);$pct=$total?round($complete*100/$total):0;
-$pageTitle='Pit Scouting';include dirname(__DIR__).'/partials_header.php';
+$pageTitle='Pit Scouting';$moduleName='TRIDENT';include dirname(__DIR__).'/partials_header.php';
 ?>
 <div class="toolbar" style="justify-content:space-between">
   <div><h1 style="margin-bottom:4px">Pit Scouting</h1><div class="muted">Scout the event roster before the match schedule exists. Team numbers come from the event roster, not manual entry.</div></div>

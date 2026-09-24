@@ -1,3 +1,19 @@
+# Neptune FRC Scouting Platform
+
+## Clean installation
+
+On a clean Ubuntu/Debian server:
+
+```bash
+git clone https://github.com/blarkin13/neptune-frc-scouting.git
+cd neptune-frc-scouting
+sudo ./install.sh
+```
+
+See **[INSTALL.md](INSTALL.md)** for requirements, configuration, database setup, and verification. The installer creates the complete MariaDB schema automatically.
+
+---
+
 # Neptune
 
 **FRC Scouting, Pit Scouting, Match Control, Analytics & Strategy Platform**

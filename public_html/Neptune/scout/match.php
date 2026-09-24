@@ -5,7 +5,7 @@ $mid=(int)($_GET['match_id']??0);
 $alliance=($_GET['alliance']??'Red')==='Blue'?'Blue':'Red';
 $station=max(1,min(3,(int)($_GET['station']??1)));
 
-$s=$pdo->prepare('SELECT m.*,e.name event_name,g.name game_name,g.config_json FROM matches m JOIN events e ON e.id=m.event_id JOIN games g ON g.id=m.game_id WHERE m.id=? AND m.organization_id=?');
+$s=$pdo->prepare('SELECT m.*,e.name event_name,g.name game_name,gr.match_config_json config_json,gr.revision_number game_revision_number FROM matches m JOIN events e ON e.id=m.event_id JOIN games g ON g.id=m.game_id JOIN game_revisions gr ON gr.id=e.game_revision_id AND gr.game_id=m.game_id WHERE m.id=? AND m.organization_id=?');
 $s->execute([$mid,$u['organization_id']]);
 $m=$s->fetch();
 if(!$m) exit('Match not found');
@@ -39,7 +39,8 @@ $s->execute([$u['organization_id'],$sid,$run]);
 if($row=$s->fetch())$summary['last_action']=$row;
 
 $cfg=json_decode($m['config_json'],true)?:['buttons'=>[]];
-$pageTitle='Scout #'.$robot;
+$pageTitle='Match Scout #'.$robot;
+$moduleName='TRIDENT';
 include dirname(__DIR__).'/partials_header.php';
 function layout_class(string $layout): string {
     $layout=['rect-1'=>'rect-1x1','rect-2'=>'rect-2x1','circle-1'=>'circle-1x1','circle-2'=>'circle-2x2'][$layout]??$layout;
@@ -47,6 +48,7 @@ function layout_class(string $layout): string {
     return in_array($layout,$ok,true)?'layout-'.$layout:'layout-rect-1x1';
 }
 ?>
+<div class="module-eyebrow"><span>TRIDENT</span><small>Live Match Scouting</small></div>
 <div class="card scout-status-card">
   <div class="toolbar" style="justify-content:space-between">
     <div><b><?=e($m['event_name'])?> · <?=e(neptune_match_label($m))?></b><div class="muted"><?=e($alliance)?> Station <?=$station?> · Scouting run <?=$run?></div></div>
@@ -93,6 +95,7 @@ function layout_class(string $layout): string {
     <div class="muted swipe-hint" id="swipeHint">Swipe repeatedly. Close when you are finished with this action.</div>
   </div>
 </div>
+<script src="/admin/connection-guard.php?asset=js&amp;v=20260920-1"></script>
 <script>
 const MID=<?=$mid?>,SID=<?=$sid?>;
 let matchState={},selected=null,startX=0,queue=[],processing=false,popupToken=0;
@@ -118,13 +121,47 @@ async function sync(){
     matchState=d;
     const rem=d.remaining_seconds;
     timer.textContent=(rem===null||rem===undefined)?'--':Math.max(0,Math.ceil(rem));
-    const stage=String(d.stage||d.state||'waiting').toUpperCase();stageEl.textContent=stage;
-    transitionEl.style.display=d.stage==='transition'?'block':'none';transitionCount.textContent=Math.max(0,Math.ceil(d.transition_remaining_seconds||0));
-    statusEl.textContent=d.state==='ready'?'Match ready — waiting for start':d.state==='paused'?'Command paused the match':d.stage==='transition'?'Field transition pause':d.state||'unknown';
-    document.querySelectorAll('.action').forEach(b=>b.disabled=(d.stage==='transition'||d.state==='paused'||d.state==='ready'||d.state==='ended'));
+
+    const stage=String(d.stage||d.state||'waiting').toUpperCase();
+    stageEl.textContent=stage;
+    transitionEl.style.display=d.stage==='transition'?'block':'none';
+    transitionCount.textContent=Math.max(0,Math.ceil(d.transition_remaining_seconds||0));
+
+    if(d.connection_lost){
+      if(d.state==='ready'){
+        statusEl.textContent='Offline — waiting for match start';
+      }else if(d.state==='paused'){
+        statusEl.textContent='Offline — match remains paused from last sync';
+      }else if(d.stage==='transition'){
+        statusEl.textContent='Offline — field transition pause';
+      }else if(d.state==='running'){
+        statusEl.textContent='Offline — local match clock';
+      }else{
+        statusEl.textContent='Offline — last known match state';
+      }
+    }else{
+      statusEl.textContent=d.state==='ready'
+        ?'Match ready — waiting for start'
+        :d.state==='paused'
+          ?'Command paused the match'
+          :d.stage==='transition'
+            ?'Field transition pause'
+            :d.state||'unknown';
+    }
+
+    document.querySelectorAll('.action').forEach(
+      b=>b.disabled=(d.stage==='transition'||d.state==='paused'||d.state==='ready'||d.state==='ended')
+    );
     renderSummary(d.scout_summary);
-    fetch('../api/heartbeat.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:SID})});
-  }catch(e){statusEl.textContent='Connection problem — retrying';}
+
+    fetch('../api/heartbeat.php',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:SID})
+    }).catch(()=>{});
+  }catch(e){
+    statusEl.textContent='Connection problem — retrying';
+  }
 }
 function openAction(button){
   selected=JSON.parse(button.dataset.json);popupToken++;document.querySelector('#selectedName').textContent=selected.name;

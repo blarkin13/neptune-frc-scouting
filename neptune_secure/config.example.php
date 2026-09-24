@@ -10,9 +10,11 @@
  */
 return [
     'app' => [
-        'base_url' => '/Neptune',
+        // Use '' when Neptune is served at the site root; use '/Neptune' when mounted below it.
+        'base_url' => '',
         'session_name' => 'NEPTUNESESSID',
         'timezone' => 'UTC',
+        'trust_proxy' => false,
     ],
 
     'db' => [

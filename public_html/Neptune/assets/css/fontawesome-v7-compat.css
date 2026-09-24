@@ -1,0 +1,36 @@
+/*
+ * Neptune Font Awesome 7 compatibility layer.
+ *
+ * Font Awesome 7 renders icons at a fixed 1.25em width by default. Neptune was
+ * designed against Font Awesome 6, where icons used their natural width unless
+ * fa-fw was explicitly requested. Keep the v6 layout behavior system-wide while
+ * still allowing explicit fa-fw/fa-width-fixed classes to opt into fixed width.
+ */
+:root {
+  --fa-width: auto;
+}
+
+/* Font Awesome 7 removed these legacy screen-reader helper classes. Neptune has
+ * existing markup that still uses sr-only, so retain the utility locally. */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+.sr-only-focusable:not(:focus):not(:focus-within) {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}

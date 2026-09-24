@@ -2,7 +2,7 @@
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 $u=require_login();
 $id=(int)($_GET['match_id']??0);$sid=(int)($_GET['session_id']??0);
-$s=$pdo->prepare('SELECT m.id,m.state,m.started_at,m.paused_at,m.total_pause_seconds,m.ended_at,m.run_number,g.config_json FROM matches m JOIN games g ON g.id=m.game_id WHERE m.id=? AND m.organization_id=?');
+$s=$pdo->prepare('SELECT m.id,m.state,m.started_at,m.paused_at,m.total_pause_seconds,m.ended_at,m.run_number,gr.match_config_json config_json FROM matches m JOIN events e ON e.id=m.event_id JOIN game_revisions gr ON gr.id=e.game_revision_id AND gr.game_id=m.game_id WHERE m.id=? AND m.organization_id=?');
 $s->execute([$id,$u['organization_id']]);
 $m=$s->fetch();
 if(!$m) json_response(['error'=>'not found'],404);
@@ -26,7 +26,8 @@ if($m['started_at']){
     if($m['state']==='ended') $stage='ended';
 }
 $out=[
-    'id'=>(int)$m['id'],'state'=>$m['state'],'run_number'=>(int)$m['run_number'],'server_time'=>gmdate('c'),
+    'id'=>(int)$m['id'],'state'=>$m['state'],'run_number'=>(int)$m['run_number'],
+    'server_time'=>gmdate('c'),'server_time_ms'=>(int)round(microtime(true)*1000),'clock_revision'=>2,
     'elapsed_seconds'=>$elapsed,'physical_elapsed_seconds'=>$physical,'remaining_seconds'=>$remaining,
     'stage'=>$stage,'transition_remaining_seconds'=>$transitionRemaining,'timing'=>$t
 ];

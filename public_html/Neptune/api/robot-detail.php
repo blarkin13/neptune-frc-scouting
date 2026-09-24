@@ -9,7 +9,7 @@ $eventId=(int)($_GET['event_id']??0);
 $team=(int)($_GET['team']??0);
 if($eventId<1||$team<1){http_response_code(400);exit('<div class="notice bad">Missing event or team.</div>');}
 
-$s=$pdo->prepare("SELECT e.id,e.name,e.game_id,g.name AS game_name,g.pit_config_json,et.nickname FROM events e JOIN games g ON g.id=e.game_id JOIN event_teams et ON et.event_id=e.id AND et.frc_team_number=? WHERE e.id=? AND e.organization_id=? LIMIT 1");
+$s=$pdo->prepare("SELECT e.id,e.name,e.game_id,e.game_revision_id,g.name AS game_name,gr.pit_config_json,gr.field_image_path,gr.revision_number game_revision_number,et.nickname FROM events e JOIN games g ON g.id=e.game_id JOIN game_revisions gr ON gr.id=e.game_revision_id AND gr.game_id=e.game_id JOIN event_teams et ON et.event_id=e.id AND et.frc_team_number=? WHERE e.id=? AND e.organization_id=? LIMIT 1");
 $s->execute([$team,$eventId,$org]);
 $event=$s->fetch();
 if(!$event){http_response_code(404);exit('<div class="notice bad">That robot is not on this organization\'s event roster.</div>');}
@@ -51,6 +51,68 @@ function detail_label(string $code,array $questionMap): string {
     if(isset($questionMap[$code]['label']))return (string)$questionMap[$code]['label'];
     return ucwords(str_replace('_',' ',$code));
 }
+
+function robot_auton_extract_path(mixed $payload): ?array {
+    if(!is_array($payload))return null;
+    $path=$payload['_auton_path']??null;
+    if(!is_array($path)||!isset($path['strokes'])||!is_array($path['strokes']))return null;
+    $safe=[];
+    foreach($path['strokes'] as $stroke){
+        if(!is_array($stroke))continue;
+        $pts=[];
+        foreach($stroke as $point){
+            if(!is_array($point)||!isset($point['x'],$point['y'])||!is_numeric($point['x'])||!is_numeric($point['y']))continue;
+            $pts[]=['x'=>max(0.0,min(1.0,(float)$point['x'])),'y'=>max(0.0,min(1.0,(float)$point['y']))];
+        }
+        if($pts)$safe[]=$pts;
+    }
+    return $safe?['version'=>1,'strokes'=>$safe]:null;
+}
+function robot_auton_field_info(array $revision,int $gameId,int $org): array {
+    if($gameId<1)return ['url'=>'','width'=>1200,'height'=>600];
+    $rel=neptune_revision_field_path($revision,$gameId,$org);
+    if($rel==='')return ['url'=>'','width'=>1200,'height'=>600];
+    $abs=neptune_public_root().'/'.$rel;
+    $width=1200;$height=600;
+    $size=@getimagesize($abs);
+    if(is_array($size)&&!empty($size[0])&&!empty($size[1])){$width=(int)$size[0];$height=(int)$size[1];}
+    return ['url'=>'/'.ltrim($rel,'/'),'width'=>$width,'height'=>$height];
+}
+function robot_auton_svg_points(array $stroke,int $width,int $height): string {
+    $points=[];
+    foreach($stroke as $point){
+        if(!is_array($point)||!isset($point['x'],$point['y']))continue;
+        $x=max(0.0,min(1.0,(float)$point['x']))*$width;
+        $y=max(0.0,min(1.0,(float)$point['y']))*$height;
+        $points[]=number_format($x,2,'.','').','.number_format($y,2,'.','');
+    }
+    return implode(' ',$points);
+}
+
+$autonPath=robot_auton_extract_path($pitData);
+$autonSource=$autonPath?'Pit Scout':'';
+if(!$autonPath){
+    $s=$pdo->prepare('SELECT data_json FROM pre_scouting WHERE organization_id=? AND event_id=? AND frc_team_number=? LIMIT 1');
+    $s->execute([$org,$eventId,$team]);
+    if($row=$s->fetch()){
+        $candidate=json_decode((string)($row['data_json']??''),true);
+        $autonPath=robot_auton_extract_path(is_array($candidate)?$candidate:[]);
+        if($autonPath)$autonSource='Pre-Scout';
+    }
+}
+if(!$autonPath){
+    $s=$pdo->prepare('SELECT data_json FROM robot_season_profiles WHERE organization_id=? AND game_id=? AND frc_team_number=? LIMIT 1');
+    $s->execute([$org,(int)$event['game_id'],$team]);
+    if($row=$s->fetch()){
+        $candidate=json_decode((string)($row['data_json']??''),true);
+        $autonPath=robot_auton_extract_path(is_array($candidate)?$candidate:[]);
+        if($autonPath)$autonSource='Season Profile';
+    }
+}
+$autonField=robot_auton_field_info($event,(int)$event['game_id'],$org);
+$autonWidth=max(1,(int)$autonField['width']);
+$autonHeight=max(1,(int)$autonField['height']);
+$autonAspect=$autonWidth.' / '.$autonHeight;
 ?>
 <div class="robot-modal-head">
   <div>
@@ -86,7 +148,7 @@ function detail_label(string $code,array $questionMap): string {
     <div class="robot-pit-meta muted"><?=e($pit['status']==='complete'?'Completed':'In progress')?><?=!empty($pit['updated_at'])?' · Updated '.e($pit['updated_at']).' UTC':''?></div>
     <?php
       $groups=[];
-      foreach($pitData as $code=>$value){$display=detail_value($value);if($display==='')continue;$q=$questionMap[$code]??[];$group=(string)($q['group']??'Other');$groups[$group][]=[$code,$display];}
+      foreach($pitData as $code=>$value){if(str_starts_with((string)$code,'_'))continue;$display=detail_value($value);if($display==='')continue;$q=$questionMap[$code]??[];$group=(string)($q['group']??'Other');$groups[$group][]=[$code,$display];}
     ?>
     <?php foreach($groups as $group=>$items):?>
       <div class="robot-pit-group">
@@ -96,6 +158,43 @@ function detail_label(string $code,array $questionMap): string {
         </div>
       </div>
     <?php endforeach;?>
+    <?php if($autonPath):?>
+      <div class="robot-pit-group robot-auton-block">
+        <div class="robot-auton-head">
+          <h4><i class="fa-solid fa-route"></i> Autonomous Path</h4>
+          <span class="pill"><i class="fa-solid fa-database"></i> <?=e($autonSource)?></span>
+        </div>
+        <div class="robot-auton-preview" style="aspect-ratio:<?=e($autonAspect)?>">
+          <?php if($autonField['url']!==''):?>
+            <img src="<?=e($autonField['url'])?>" alt="<?=e($event['game_name'].' field')?>">
+          <?php else:?>
+            <div class="robot-auton-grid" aria-hidden="true"></div>
+          <?php endif;?>
+          <svg viewBox="0 0 <?=$autonWidth?> <?=$autonHeight?>" preserveAspectRatio="none" role="img" aria-label="Autonomous route for team <?=e($team)?>">
+            <defs>
+              <marker id="robotAutonArrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,8 L10,4 z" fill="#ff3b30"></path>
+              </marker>
+            </defs>
+            <?php foreach($autonPath['strokes'] as $stroke):
+              $points=robot_auton_svg_points($stroke,$autonWidth,$autonHeight);
+              if($points==='')continue;
+              $first=$stroke[0]??null;
+            ?>
+              <polyline points="<?=e($points)?>" fill="none" stroke="rgba(255,255,255,.94)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"></polyline>
+              <polyline points="<?=e($points)?>" fill="none" stroke="#ff3b30" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#robotAutonArrow)"></polyline>
+              <?php if(is_array($first)):?>
+                <circle cx="<?=number_format((float)$first['x']*$autonWidth,2,'.','')?>" cy="<?=number_format((float)$first['y']*$autonHeight,2,'.','')?>" r="7" fill="#ff3b30" stroke="#fff" stroke-width="3"></circle>
+              <?php endif;?>
+            <?php endforeach;?>
+          </svg>
+        </div>
+        <div class="robot-auton-meta muted">
+          <span><i class="fa-solid fa-pen-ruler"></i> <?=count($autonPath['strokes'])?> stroke<?=count($autonPath['strokes'])===1?'':'s'?></span>
+          <?php if($autonField['url']===''):?><span>· Field background has not been uploaded for this game.</span><?php endif;?>
+        </div>
+      </div>
+    <?php endif;?>
     <?php if(trim((string)($pit['notes']??''))!==''):?><div class="robot-notes"><span class="muted">Scout notes</span><p><?=nl2br(e($pit['notes']))?></p></div><?php endif;?>
   <?php endif;?>
 </section>

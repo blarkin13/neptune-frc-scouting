@@ -1,0 +1,237 @@
+/* Neptune unified UI layer — module identity, breadcrumbs, hub cards, and toasts */
+:root{
+  --module-accent:var(--accent);
+  --module-accent-soft:color-mix(in srgb,var(--module-accent) 12%,var(--panel));
+}
+body[data-module="TRIDENT"]{--module-accent:var(--module-trident)}
+body[data-module="AUGUR"]{--module-accent:var(--module-augur)}
+body[data-module="SATURN"]{--module-accent:var(--module-saturn)}
+body[data-module="VULCAN"]{--module-accent:var(--module-vulcan)}
+body[data-module="MERCURY"]{--module-accent:var(--module-system)}
+body[data-module="SALT"]{--module-accent:var(--module-augur)}
+
+/* Breadcrumbs */
+.neptune-breadcrumbs{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  max-width:1260px;margin:0 auto 14px;padding:0 2px;
+  color:var(--muted);font-size:.78rem;font-weight:750;
+}
+.neptune-breadcrumbs a{color:var(--muted)}
+.neptune-breadcrumbs a:hover{color:var(--module-accent)}
+.neptune-breadcrumbs .crumb-current{color:var(--text)}
+.neptune-breadcrumbs .crumb-sep{font-size:.58rem;color:color-mix(in srgb,var(--muted) 65%,transparent)}
+
+/* Stronger subsystem identity. Replaces the floating gray-pill look. */
+.module-code{
+  display:flex!important;align-items:center!important;gap:10px!important;
+  min-height:0!important;padding:0!important;border:0!important;border-radius:0!important;
+  background:transparent!important;color:var(--module-accent)!important;
+  font-size:.76rem!important;font-weight:950!important;letter-spacing:.19em!important;
+  text-transform:uppercase;
+}
+.module-code::before{
+  content:"";display:block;width:34px;height:3px;border-radius:99px;background:var(--module-accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--module-accent) 14%,transparent)
+}
+.module-eyebrow{gap:9px!important;color:var(--muted)!important}
+.module-eyebrow>span{
+  display:inline-flex!important;align-items:center!important;gap:8px!important;
+  padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;
+  color:var(--module-accent)!important;font-size:.72rem!important;letter-spacing:.16em!important
+}
+.module-eyebrow>span::before{content:"";width:24px;height:3px;border-radius:99px;background:var(--module-accent)}
+.module-page-header{position:relative}
+.module-page-header h1{letter-spacing:-.04em}
+
+/* Unified landing / command card system */
+.neptune-hub{max-width:1260px;margin:0 auto}
+.neptune-hub-header{margin-bottom:26px}
+.neptune-hub-header .module-page-header{margin-bottom:0}
+.neptune-hub-section{margin-top:30px}
+.neptune-hub-section:first-of-type{margin-top:0}
+.neptune-hub-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:12px}
+.neptune-hub-section-head>div{min-width:0}
+.neptune-hub-section-kicker{display:block;margin-bottom:5px;color:var(--module-accent);font-size:.69rem;font-weight:950;letter-spacing:.13em;text-transform:uppercase}
+.neptune-hub-section-head h2{margin:0;font-size:1.28rem;letter-spacing:-.02em}
+.neptune-hub-section-head p{margin:4px 0 0;color:var(--muted);font-size:.86rem;line-height:1.4}
+.neptune-hub-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.neptune-hub-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.neptune-hub-grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.neptune-hub-card{
+  --card-accent:var(--module-accent);
+  position:relative;overflow:hidden;display:flex;flex-direction:column;min-width:0;min-height:190px;
+  padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);
+  box-shadow:0 10px 26px var(--shadow);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+.neptune-hub-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--card-accent)}
+.neptune-hub-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--card-accent) 55%,var(--line));box-shadow:0 16px 34px var(--shadow)}
+.neptune-hub-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.neptune-hub-icon{display:grid;place-items:center;width:48px;height:48px;flex:0 0 48px;border-radius:11px;background:color-mix(in srgb,var(--card-accent) 15%,var(--panel2));border:1px solid color-mix(in srgb,var(--card-accent) 34%,var(--line));color:var(--card-accent);font-size:1.12rem}
+.neptune-hub-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--muted);font-size:.62rem;font-weight:900;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.neptune-hub-card-kicker{display:block;margin-bottom:5px;color:var(--card-accent);font-size:.66rem;font-weight:950;letter-spacing:.11em;text-transform:uppercase}
+.neptune-hub-card h3{margin:0;font-size:1.15rem;letter-spacing:-.02em}
+.neptune-hub-card p{margin:7px 0 14px;color:var(--muted);font-size:.86rem;line-height:1.45}
+.neptune-hub-meta{display:flex;gap:7px 12px;flex-wrap:wrap;margin-top:auto;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:.7rem;font-weight:760}
+.neptune-hub-meta span{display:inline-flex;align-items:center;gap:5px}
+.neptune-hub-arrow{position:absolute;right:18px;bottom:18px;color:var(--muted);font-size:.72rem;transition:transform .16s ease,color .16s ease}
+.neptune-hub-card:hover .neptune-hub-arrow{transform:translateX(3px);color:var(--card-accent)}
+.neptune-hub-card.is-locked{cursor:not-allowed;opacity:.82;box-shadow:none}
+.neptune-hub-card.is-locked:hover{transform:none;border-color:var(--line);box-shadow:none}
+.neptune-hub-card.is-locked .neptune-hub-arrow{display:none}
+.neptune-hub-card.is-locked::after{content:"Locked";position:absolute;right:18px;bottom:16px;color:var(--muted);font-size:.65rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.neptune-hub-card.accent-vulcan{--card-accent:var(--module-vulcan)}
+.neptune-hub-card.accent-system{--card-accent:var(--module-system)}
+.neptune-hub-card.accent-org{--card-accent:var(--module-org)}
+.neptune-hub-card.accent-ops{--card-accent:var(--module-ops)}
+.neptune-hub-card.accent-augur{--card-accent:var(--module-augur)}
+.neptune-hub-card.accent-trident{--card-accent:var(--module-trident)}
+
+/* Bring older launch cards into the same visual language too. */
+.module-launch-card{border-radius:12px!important;box-shadow:0 10px 26px var(--shadow)!important;min-height:150px!important;position:relative;overflow:hidden}
+.module-launch-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--module-accent)}
+.module-launch-icon{border-radius:10px!important;background:color-mix(in srgb,var(--module-accent) 16%,var(--panel2))!important;border:1px solid color-mix(in srgb,var(--module-accent) 34%,var(--line));color:var(--module-accent)!important}
+
+/* Toasts and action confirmations */
+.neptune-toast-host{position:fixed;right:18px;bottom:18px;z-index:10000;display:flex;flex-direction:column;gap:10px;width:min(420px,calc(100vw - 28px));pointer-events:none}
+.neptune-toast{pointer-events:auto;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:start;padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--panel) 96%,transparent);box-shadow:0 16px 40px var(--shadow);backdrop-filter:blur(12px);animation:neptune-toast-in .16s ease-out}
+.neptune-toast.good{border-left:4px solid var(--good)}
+.neptune-toast.bad{border-left:4px solid var(--bad)}
+.neptune-toast.warn{border-left:4px solid var(--warn)}
+.neptune-toast.info{border-left:4px solid var(--module-accent)}
+.neptune-toast-icon{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;background:var(--panel2);color:var(--module-accent)}
+.neptune-toast.good .neptune-toast-icon{color:var(--good)}
+.neptune-toast.bad .neptune-toast-icon{color:var(--bad)}
+.neptune-toast.warn .neptune-toast-icon{color:var(--warn)}
+.neptune-toast-copy{min-width:0;color:var(--text);font-size:.84rem;line-height:1.4;white-space:pre-line}
+.neptune-toast-copy b{display:block;margin-bottom:2px;font-size:.88rem}
+.neptune-toast-close{border:0!important;background:transparent!important;color:var(--muted)!important;padding:4px!important;min-width:28px;height:28px;box-shadow:none!important}
+.neptune-toast-actions{grid-column:2/-1;display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+.neptune-toast-actions button{padding:8px 11px;font-size:.75rem}
+.neptune-toast-input{grid-column:2/-1;margin-top:4px}
+@keyframes neptune-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+@media(max-width:1050px){.neptune-hub-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}.neptune-hub-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){
+  .neptune-breadcrumbs{margin-bottom:10px;font-size:.73rem}
+  .neptune-hub-section{margin-top:24px}
+  .neptune-hub-grid,.neptune-hub-grid.three,.neptune-hub-grid.four{grid-template-columns:1fr}
+  .neptune-hub-card{min-height:168px;padding:17px}
+  .neptune-hub-section-head{align-items:flex-start;flex-direction:column;gap:4px}
+  .neptune-toast-host{right:14px;bottom:14px}
+}
+
+/* 2026-09-19 UI consistency pass */
+/* Keep subsystem names on hub/section cards, but not as page-header labels. */
+.module-code{display:none!important}
+.module-eyebrow>span{display:none!important}
+.module-eyebrow{margin-bottom:6px!important;color:var(--muted)!important;font-size:.68rem!important;font-weight:850!important;letter-spacing:.08em!important;text-transform:uppercase}
+.topbar-identity>span{display:none!important}
+
+/* Access-level badges */
+.neptune-hub-badge.access-all{color:var(--muted)}
+.neptune-hub-badge.access-strategy{color:var(--access-strategy)}
+.neptune-hub-badge.access-admin{color:var(--access-admin)}
+.neptune-hub-badge.access-owner{color:var(--access-owner)}
+.neptune-hub-badge.access-system{color:var(--muted)}
+
+/* Builder pages: robust styling independent of older page-specific CSS. */
+.builder-page{max-width:1260px;margin:0 auto}
+.builder-page .builder-page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:18px}
+.builder-page .builder-page-header>div{min-width:0}
+.builder-page .builder-page-header h1{margin:0 0 5px;font-size:clamp(1.9rem,3vw,2.65rem);letter-spacing:-.04em}
+.builder-page .builder-page-header p{margin:0;max-width:850px;color:var(--muted);line-height:1.5}
+.builder-page .builder-card{padding:18px;border-radius:12px}
+.builder-page .builder-card+.builder-card{margin-top:16px}
+.builder-page .builder-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+.builder-page .builder-card-head h2{margin:0 0 4px;font-size:1.15rem}
+.builder-page .builder-card-head p{margin:0;color:var(--muted);font-size:.82rem;line-height:1.4}
+.builder-page .builder-game-row{display:grid;grid-template-columns:minmax(240px,440px) auto;align-items:end;gap:12px}
+.builder-page .builder-actions{display:grid;gap:12px;margin-top:12px}
+.builder-page .action-row{padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.builder-page .action-row-grid{display:grid;grid-template-columns:2fr 1.15fr 1fr 1.1fr;gap:12px}
+.builder-page .action-row-grid .wide{grid-column:span 2}
+.builder-page .action-row label{display:block;margin:0 0 6px;color:var(--muted);font-size:.72rem;font-weight:850}
+.builder-page .action-row input,.builder-page .action-row select,.builder-page .action-row textarea{width:100%;min-width:0}
+.builder-page .action-row textarea{resize:vertical}
+.builder-page .drag-controls{display:flex;justify-content:flex-end;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.builder-page .drag-controls button{min-width:40px}
+.builder-page .builder-save-row{display:flex;justify-content:flex-end;margin-top:16px}
+.builder-page .builder-empty{padding:26px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px}
+
+/* Live monitor picker / empty state */
+.live-monitor-picker{display:grid;grid-template-columns:minmax(260px,1fr) auto auto;gap:10px;align-items:end}
+.live-monitor-empty{display:grid;place-items:center;min-height:240px;text-align:center}
+.live-monitor-empty .empty-icon{display:grid;place-items:center;width:58px;height:58px;margin:0 auto 12px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);color:var(--muted);font-size:1.3rem}
+
+/* Access pills on the six-system map on Home. */
+.module-card{position:relative;padding-right:105px}
+.module-card-access{position:absolute;right:12px;top:12px;display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--muted);font-size:.58rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.module-card-access i{font-size:.62rem}
+
+@media(max-width:760px){
+  .builder-page .builder-page-header{align-items:stretch;flex-direction:column}
+  .builder-page .builder-game-row{grid-template-columns:1fr}
+  .builder-page .action-row-grid{grid-template-columns:1fr 1fr}
+  .builder-page .action-row-grid .wide{grid-column:span 2}
+  .live-monitor-picker{grid-template-columns:1fr}
+  .module-card{padding-right:16px;padding-top:48px}
+  .module-card-access{left:16px;right:auto;top:12px}
+}
+@media(max-width:520px){
+  .builder-page .action-row-grid{grid-template-columns:1fr}
+  .builder-page .action-row-grid .wide{grid-column:span 1}
+}
+
+/* 2026-09-19 light-mode contrast fix
+   Hub pages use subsystem accent colors. Some high-contrast palettes intentionally
+   use very light subsystem colors for dark mode, so derive a darker readable ink
+   when the application is in light mode. */
+html[data-theme="light"] body{
+  --module-accent-readable:color-mix(in srgb,var(--module-accent) 38%,var(--text));
+}
+html:not([data-theme="light"]) body{
+  --module-accent-readable:var(--module-accent);
+}
+
+.neptune-hub-card{
+  --card-accent-readable:var(--card-accent);
+}
+html[data-theme="light"] .neptune-hub-card{
+  --card-accent-readable:color-mix(in srgb,var(--card-accent) 38%,var(--text));
+}
+
+/* Use the readable form everywhere the accent is drawn directly on a light surface. */
+.neptune-hub-section-kicker{color:var(--module-accent-readable)}
+.neptune-hub-card::before{background:var(--card-accent-readable)}
+.neptune-hub-card:hover{
+  border-color:color-mix(in srgb,var(--card-accent-readable) 55%,var(--line));
+}
+.neptune-hub-icon{
+  background:color-mix(in srgb,var(--card-accent-readable) 12%,var(--panel2));
+  border-color:color-mix(in srgb,var(--card-accent-readable) 38%,var(--line));
+  color:var(--card-accent-readable);
+}
+.neptune-hub-card-kicker{color:var(--card-accent-readable)}
+.neptune-hub-card:hover .neptune-hub-arrow{color:var(--card-accent-readable)}
+
+/* Older launch-card variants used by a few module pages. */
+.module-launch-card::before{background:var(--module-accent-readable)}
+.module-launch-icon{
+  background:color-mix(in srgb,var(--module-accent-readable) 12%,var(--panel2))!important;
+  border-color:color-mix(in srgb,var(--module-accent-readable) 38%,var(--line))!important;
+  color:var(--module-accent-readable)!important;
+}
+
+/* Access badges can also inherit very light theme colors. Keep those readable in day mode. */
+html[data-theme="light"] .neptune-hub-badge.access-strategy{
+  color:color-mix(in srgb,var(--access-strategy) 42%,var(--text));
+}
+html[data-theme="light"] .neptune-hub-badge.access-admin{
+  color:color-mix(in srgb,var(--access-admin) 42%,var(--text));
+}
+html[data-theme="light"] .neptune-hub-badge.access-owner{
+  color:color-mix(in srgb,var(--access-owner) 42%,var(--text));
+}
+
+/* Breadcrumb/module hover accents should remain visible against white backgrounds too. */
+html[data-theme="light"] .neptune-breadcrumbs a:hover{color:var(--module-accent-readable)}
+

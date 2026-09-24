@@ -22,9 +22,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   $s=$pdo->prepare('SELECT * FROM teams WHERE organization_id=? AND active=1 ORDER BY frc_team_number');$s->execute([$org]);$teams=$s->fetchAll();
 }
 $s=$pdo->prepare("SELECT u.id,u.username,u.email,u.display_name,u.role,u.active,u.must_change_password,t.frc_team_number primary_team FROM users u LEFT JOIN user_teams ut ON ut.user_id=u.id AND ut.is_primary=1 LEFT JOIN teams t ON t.id=ut.team_id WHERE u.organization_id=? ORDER BY u.display_name");$s->execute([$org]);$users=$s->fetchAll();
-$pageTitle='Teams & Users';include dirname(__DIR__).'/partials_header.php';
+$pageTitle='Teams & Users';$moduleName='SATURN';include dirname(__DIR__).'/partials_header.php';
 ?>
-<div class="toolbar" style="justify-content:space-between"><div><h1 style="margin-bottom:4px">Teams & Users</h1><div class="muted">You are managing only <b><?=e($u['organization_name'])?></b>. Users created here cannot be placed into another organization.</div></div><a class="btn secondary" href="<?=e(base_url('register.php'))?>"><i class="fa-solid fa-building-circle-arrow-right"></i> New Organization Signup</a></div>
+<div class="toolbar" style="justify-content:space-between"><div><div class="module-eyebrow"><span>SATURN</span><small>Administration</small></div><h1 style="margin-bottom:4px">Teams & Users</h1><div class="muted">You are managing only <b><?=e($u['organization_name'])?></b>. Users created here cannot be placed into another organization.</div></div><a class="btn secondary" href="<?=e(base_url('register.php'))?>"><i class="fa-solid fa-building-circle-arrow-right"></i> New Organization Signup</a></div>
 <?php if($msg):?><div class="notice good"><?=e($msg)?></div><?php endif;?><?php if($error):?><div class="notice bad"><?=e($error)?></div><?php endif;?>
 <div class="grid">
 <div class="card"><h2>Add FRC Team</h2><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="kind" value="team"><label>FRC team number</label><input type="number" name="frc_team_number" required><label>Nickname</label><input name="nickname"><label>Display name</label><input name="display_name"><div class="toolbar"><button><i class="fa-solid fa-plus"></i> Add Team</button></div></form></div>

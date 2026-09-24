@@ -1,0 +1,307 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Neptune clean installer for Ubuntu/Debian.
+# Run from a cloned Neptune repository:
+#   sudo ./install.sh
+#
+# Optional environment overrides:
+#   NEPTUNE_ROOT=/var/www/neptune
+#   NEPTUNE_DB_NAME=neptune
+#   NEPTUNE_DB_USER=neptune_app
+#   NEPTUNE_SERVER_NAME=neptune.local
+#   NEPTUNE_BASE_URL=
+#   NEPTUNE_TIMEZONE=UTC
+#   NEPTUNE_TBA_KEY=
+
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+  echo "ERROR: Run this installer with sudo/root." >&2
+  echo "  sudo ./install.sh" >&2
+  exit 1
+fi
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_SOURCE="$REPO_ROOT/public_html/Neptune"
+SECURE_SOURCE="$REPO_ROOT/neptune_secure"
+SCHEMA_SOURCE="$REPO_ROOT/sql/install_schema.sql"
+EXPECTED_TABLES="$REPO_ROOT/sql/EXPECTED_TABLES.txt"
+
+for required in "$APP_SOURCE/index.php" "$SECURE_SOURCE/bootstrap.php" "$SCHEMA_SOURCE" "$EXPECTED_TABLES"; do
+  if [[ ! -f "$required" ]]; then
+    echo "ERROR: Required repository file is missing: $required" >&2
+    exit 1
+  fi
+done
+
+if [[ -r /etc/os-release ]]; then
+  . /etc/os-release
+  case "${ID:-}" in
+    ubuntu|debian) ;;
+    *)
+      echo "ERROR: Automatic installation currently supports Ubuntu/Debian only (detected: ${ID:-unknown})." >&2
+      exit 1
+      ;;
+  esac
+else
+  echo "ERROR: Unable to identify the operating system." >&2
+  exit 1
+fi
+
+NEPTUNE_ROOT="${NEPTUNE_ROOT:-/var/www/neptune}"
+DB_NAME="${NEPTUNE_DB_NAME:-neptune}"
+DB_USER="${NEPTUNE_DB_USER:-neptune_app}"
+SERVER_NAME="${NEPTUNE_SERVER_NAME:-neptune.local}"
+BASE_URL="${NEPTUNE_BASE_URL:-}"
+APP_TIMEZONE="${NEPTUNE_TIMEZONE:-UTC}"
+TBA_KEY="${NEPTUNE_TBA_KEY:-}"
+APP_ROOT="$NEPTUNE_ROOT/public_html/Neptune"
+SECURE_ROOT="$NEPTUNE_ROOT/neptune_secure"
+
+if [[ ! "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]]; then
+  echo "ERROR: NEPTUNE_DB_NAME may contain only letters, numbers, and underscores." >&2
+  exit 1
+fi
+if [[ ! "$DB_USER" =~ ^[A-Za-z0-9_]+$ ]]; then
+  echo "ERROR: NEPTUNE_DB_USER may contain only letters, numbers, and underscores." >&2
+  exit 1
+fi
+
+if [[ -d "$NEPTUNE_ROOT" ]] && [[ -n "$(find "$NEPTUNE_ROOT" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]]; then
+  echo "ERROR: $NEPTUNE_ROOT already exists and is not empty." >&2
+  echo "This installer is intentionally for a clean installation and will not overwrite an existing Neptune server." >&2
+  exit 1
+fi
+
+DB_PASSWORD="$(openssl rand -hex 24 2>/dev/null || true)"
+if [[ -z "$DB_PASSWORD" ]]; then
+  echo "ERROR: Could not generate a database password." >&2
+  exit 1
+fi
+
+cat <<INFO
+============================================================
+Neptune clean installation
+============================================================
+Install root : $NEPTUNE_ROOT
+Web root     : $APP_ROOT
+Database     : $DB_NAME
+DB user      : $DB_USER
+Server name  : $SERVER_NAME
+Base URL     : ${BASE_URL:-/}
+Timezone     : $APP_TIMEZONE
+============================================================
+INFO
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y \
+  apache2 mariadb-server \
+  php libapache2-mod-php php-mysql php-curl php-mbstring php-xml php-gd php-zip \
+  curl unzip rsync openssl ca-certificates
+
+systemctl enable --now mariadb apache2
+
+mkdir -p "$NEPTUNE_ROOT/public_html" "$NEPTUNE_ROOT/scripts" "$NEPTUNE_ROOT/sql"
+rsync -a --delete "$APP_SOURCE/" "$APP_ROOT/"
+rsync -a --delete --exclude='config.php' --exclude='spot_media/' "$SECURE_SOURCE/" "$SECURE_ROOT/"
+rsync -a "$REPO_ROOT/scripts/" "$NEPTUNE_ROOT/scripts/"
+rsync -a "$REPO_ROOT/sql/" "$NEPTUNE_ROOT/sql/"
+
+mkdir -p \
+  "$NEPTUNE_ROOT/backups" \
+  "$NEPTUNE_ROOT/maintenance-backups" \
+  "$NEPTUNE_ROOT/maintenance-uploads" \
+  "$NEPTUNE_ROOT/file-manager-backups" \
+  "$SECURE_ROOT/spot_media" \
+  "$APP_ROOT/uploads/pit" \
+  "$APP_ROOT/uploads/team-logos" \
+  "$APP_ROOT/uploads/fields" \
+  "$APP_ROOT/games"
+
+# Create MariaDB database and a local-only application account.
+mariadb <<SQL
+CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
+ALTER USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
+CREATE USER IF NOT EXISTS '$DB_USER'@'127.0.0.1' IDENTIFIED BY '$DB_PASSWORD';
+ALTER USER '$DB_USER'@'127.0.0.1' IDENTIFIED BY '$DB_PASSWORD';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'127.0.0.1';
+FLUSH PRIVILEGES;
+SQL
+
+mariadb "$DB_NAME" < "$SCHEMA_SOURCE"
+
+mkdir -p /etc/scout
+cat > /etc/scout/db.env <<ENV
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+ENV
+chmod 600 /etc/scout/db.env
+
+php_escape() {
+  local v="$1"
+  v="${v//\\/\\\\}"
+  v="${v//\'/\\\'}"
+  printf '%s' "$v"
+}
+
+DB_PASSWORD_PHP="$(php_escape "$DB_PASSWORD")"
+BASE_URL_PHP="$(php_escape "$BASE_URL")"
+TIMEZONE_PHP="$(php_escape "$APP_TIMEZONE")"
+TBA_KEY_PHP="$(php_escape "$TBA_KEY")"
+
+cat > "$SECURE_ROOT/config.php" <<PHP
+<?php
+/**
+ * Generated by Neptune install.sh.
+ * Keep this file private. It is intentionally excluded from Git.
+ */
+return [
+    'app' => [
+        'base_url' => '$BASE_URL_PHP',
+        'session_name' => 'NEPTUNESESSID',
+        'timezone' => '$TIMEZONE_PHP',
+        'trust_proxy' => false,
+    ],
+    'db' => [
+        'host' => '127.0.0.1',
+        'port' => 3306,
+        'name' => '$DB_NAME',
+        'user' => '$DB_USER',
+        'pass' => '$DB_PASSWORD_PHP',
+        'charset' => 'utf8mb4',
+    ],
+    'legacy_db' => [
+        'host' => '127.0.0.1',
+        'port' => 3306,
+        'name' => '',
+        'user' => '',
+        'pass' => '',
+        'charset' => 'utf8mb4',
+    ],
+    'tba' => [
+        'auth_key' => '$TBA_KEY_PHP',
+        'base_url' => 'https://www.thebluealliance.com/api/v3',
+    ],
+    'statbotics' => [
+        'base_url' => 'https://api.statbotics.io/v3',
+    ],
+];
+PHP
+chmod 640 "$SECURE_ROOT/config.php"
+
+cat > /etc/apache2/sites-available/neptune.conf <<APACHE
+<VirtualHost *:80>
+    ServerName $SERVER_NAME
+    DocumentRoot $APP_ROOT
+    DirectoryIndex index.php
+
+    <Directory $APP_ROOT>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    <Directory $SECURE_ROOT>
+        Require all denied
+    </Directory>
+
+    ErrorLog \${APACHE_LOG_DIR}/neptune-error.log
+    CustomLog \${APACHE_LOG_DIR}/neptune-access.log combined
+</VirtualHost>
+APACHE
+
+a2enmod rewrite headers expires >/dev/null
+a2ensite neptune >/dev/null
+if [[ -e /etc/apache2/sites-enabled/000-default.conf ]]; then
+  a2dissite 000-default >/dev/null
+fi
+
+# Repository/application code is owned by root and readable by Apache.
+chown -R root:www-data "$NEPTUNE_ROOT"
+find "$NEPTUNE_ROOT" -type d -exec chmod 775 {} +
+find "$NEPTUNE_ROOT" -type f -exec chmod 664 {} +
+chmod 640 "$SECURE_ROOT/config.php"
+chmod 600 /etc/scout/db.env
+
+# Runtime locations that Apache/PHP must be able to write.
+for d in \
+  "$NEPTUNE_ROOT/backups" \
+  "$NEPTUNE_ROOT/maintenance-backups" \
+  "$NEPTUNE_ROOT/maintenance-uploads" \
+  "$NEPTUNE_ROOT/file-manager-backups" \
+  "$SECURE_ROOT/spot_media" \
+  "$APP_ROOT/uploads" \
+  "$APP_ROOT/games"; do
+  mkdir -p "$d"
+  chown root:www-data "$d"
+  chmod 2775 "$d"
+done
+find "$APP_ROOT/uploads" -type d -exec chmod 2775 {} +
+find "$APP_ROOT/games" -type d -exec chmod 2775 {} +
+
+# Maintenance and styling features intentionally write selected application
+# files. Keep the application group-writable to www-data to preserve those
+# existing Neptune features.
+find "$APP_ROOT" -type d -exec chgrp www-data {} +
+find "$APP_ROOT" -type f -exec chgrp www-data {} +
+find "$APP_ROOT" -type d -exec chmod 775 {} +
+find "$APP_ROOT" -type f -exec chmod 664 {} +
+
+# PHP syntax validation before Apache is restarted.
+while IFS= read -r -d '' php_file; do
+  php -l "$php_file" >/dev/null
+ done < <(find "$APP_ROOT" "$SECURE_ROOT" -type f -name '*.php' -print0)
+
+apache2ctl configtest
+systemctl restart apache2
+
+# Verify every required table exists.
+missing=0
+while IFS= read -r table; do
+  [[ -z "$table" ]] && continue
+  found="$(mariadb -N -B "$DB_NAME" -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='${table}';")"
+  if [[ "$found" != "1" ]]; then
+    echo "ERROR: Missing database table: $table" >&2
+    missing=1
+  fi
+done < "$EXPECTED_TABLES"
+if [[ "$missing" -ne 0 ]]; then
+  exit 1
+fi
+
+if ! curl -fsS --max-time 5 -H "Host: $SERVER_NAME" http://127.0.0.1/health.php | grep -qx 'ok'; then
+  echo "ERROR: Neptune health check failed. Check /var/log/apache2/neptune-error.log" >&2
+  exit 1
+fi
+
+cat <<DONE
+
+============================================================
+Neptune installation complete
+============================================================
+Application: http://$SERVER_NAME/
+Health:      http://$SERVER_NAME/health.php
+Database:    $DB_NAME
+Tables:      $(wc -l < "$EXPECTED_TABLES" | tr -d ' ')
+
+Database credentials were generated automatically and stored in:
+  /etc/scout/db.env
+  $SECURE_ROOT/config.php
+
+Next step:
+  Open http://$SERVER_NAME/register.php
+  Create the first Neptune organization/owner account.
+
+Optional TBA setup:
+  If you did not provide NEPTUNE_TBA_KEY during installation, edit:
+  $SECURE_ROOT/config.php
+
+This installer does not configure HTTPS. Add TLS/reverse-proxy settings for
+an Internet-facing deployment before production use.
+============================================================
+DONE

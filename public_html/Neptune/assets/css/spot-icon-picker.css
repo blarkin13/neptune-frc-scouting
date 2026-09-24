@@ -1,0 +1,34 @@
+.spot-icon-field{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center}
+.spot-icon-current-preview{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);font-size:1.05rem;color:var(--text)}
+.spot-icon-field input{min-width:0}
+.spot-icon-choose-btn{white-space:nowrap}
+.spot-icon-examples{margin-top:5px}
+.spot-icon-picker-dialog{width:min(1180px,calc(100vw - 24px));max-width:none;height:min(790px,calc(100dvh - 24px));max-height:none;padding:0;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text);box-shadow:0 28px 90px rgba(0,0,0,.55);overflow:hidden}
+.spot-icon-picker-dialog::backdrop{background:rgba(0,0,0,.72);backdrop-filter:blur(3px)}
+.spot-icon-picker-shell{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.spot-icon-picker-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.spot-icon-picker-head h2{margin:0;font-size:1.05rem}.spot-icon-picker-head p{margin:3px 0 0;color:var(--muted);font-size:.72rem}
+.spot-icon-picker-close{width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.spot-icon-picker-layout{min-height:0;display:grid;grid-template-columns:minmax(0,1.8fr) minmax(300px,.8fr)}
+.spot-icon-browser{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);border-right:1px solid var(--line)}
+.spot-icon-tools{padding:12px;border-bottom:1px solid var(--line);display:grid;gap:9px;background:color-mix(in srgb,var(--panel2) 70%,transparent)}
+.spot-icon-search{position:relative}.spot-icon-search i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted)}.spot-icon-search input{width:100%;padding-left:36px}
+.spot-icon-filters{display:grid;grid-template-columns:minmax(140px,1fr) auto;gap:10px;align-items:center}.spot-icon-filters select{width:100%;margin:0}.spot-icon-style-tabs{display:flex;gap:5px;flex-wrap:wrap}.spot-icon-style-tabs button{padding:7px 10px;font-size:.7rem}.spot-icon-style-tabs button.active{border-color:var(--module-trident);box-shadow:inset 0 0 0 1px var(--module-trident);color:var(--text)}
+.spot-icon-scroll{min-height:0;overflow:auto;padding:12px}
+.spot-icon-result-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;color:var(--muted);font-size:.68rem}
+.spot-icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:7px}
+.spot-icon-choice{min-width:0;min-height:82px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:9px 7px;cursor:pointer;transition:border-color .14s ease,transform .14s ease,background .14s ease}
+.spot-icon-choice:hover{border-color:var(--module-trident);transform:translateY(-1px)}.spot-icon-choice.selected{border-color:var(--module-trident);box-shadow:inset 0 0 0 1px var(--module-trident);background:color-mix(in srgb,var(--module-trident) 10%,var(--panel2))}
+.spot-icon-choice i{font-size:1.35rem}.spot-icon-choice span{display:block;max-width:100%;font-size:.62rem;font-weight:750;line-height:1.15;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spot-icon-load-sentinel{height:2px}.spot-icon-empty{padding:26px 10px;text-align:center;color:var(--muted)}
+.spot-icon-detail{min-height:0;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:15px;background:color-mix(in srgb,var(--panel2) 42%,var(--panel))}
+.spot-icon-detail-preview{height:170px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);display:flex;align-items:center;justify-content:center}.spot-icon-detail-preview i{font-size:5rem;color:var(--module-trident)}
+.spot-icon-detail-title h3{margin:0;font-size:1.25rem}.spot-icon-detail-title code{display:block;margin-top:4px;color:var(--muted);font-size:.72rem;word-break:break-word}
+.spot-icon-detail-section{display:grid;gap:7px}.spot-icon-detail-section>span{font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:850}
+.spot-icon-variant-list{display:grid;gap:6px}.spot-icon-variant{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 10px}.spot-icon-variant i{width:24px;text-align:center;font-size:1.05rem}.spot-icon-variant.active{border-color:var(--module-trident);box-shadow:inset 0 0 0 1px var(--module-trident)}
+.spot-icon-categories{display:flex;gap:5px;flex-wrap:wrap}.spot-icon-categories span{font-size:.62rem;padding:4px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:var(--panel2)}
+.spot-icon-code{display:flex;gap:6px;align-items:center}.spot-icon-code code{display:block;flex:1;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);word-break:break-all;font-size:.72rem}
+.spot-icon-detail-actions{margin-top:auto;display:flex;gap:8px;justify-content:flex-end;padding-top:6px}.spot-icon-detail-actions button{min-width:120px}
+.spot-icon-picker-loading{display:flex;align-items:center;justify-content:center;min-height:220px;color:var(--muted);gap:8px}
+@media(max-width:780px){.spot-icon-field{grid-template-columns:auto minmax(0,1fr)}.spot-icon-choose-btn{grid-column:1/-1;width:100%}.spot-icon-picker-dialog{width:calc(100vw - 12px);height:calc(100dvh - 12px);border-radius:12px}.spot-icon-picker-layout{grid-template-columns:1fr;grid-template-rows:minmax(330px,1fr) auto}.spot-icon-browser{border-right:0;border-bottom:1px solid var(--line)}.spot-icon-detail{max-height:42dvh}.spot-icon-detail-preview{height:100px}.spot-icon-detail-preview i{font-size:3.2rem}.spot-icon-filters{grid-template-columns:1fr}.spot-icon-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.spot-icon-choice{min-height:72px}.spot-icon-detail-actions{position:sticky;bottom:-18px;margin-left:-18px;margin-right:-18px;padding:10px 18px 18px;background:linear-gradient(to bottom,transparent,var(--panel) 16px)}}
+@media(max-width:480px){.spot-icon-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.spot-icon-picker-head{padding:12px}.spot-icon-tools{padding:10px}.spot-icon-scroll{padding:10px}}

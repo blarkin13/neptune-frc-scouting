@@ -60,49 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Login';
+$pageTitle = 'Neptune | FRC Scouting Platform';
+
 include __DIR__ . '/partials_header.php';
-?>
-<div class="card auth-card">
-    <div class="auth-brand">
-        <img src="<?= e(base_url('images/logo.png')) ?>" alt="Neptune" class="auth-logo">
-    </div>
-    <h1 class="auth-title">Sign in</h1>
-    <p class="muted auth-subtitle">FRC scouting, command, and intelligence.</p>
-
-    <?php if ($error): ?>
-        <div class="notice"><?= e($error) ?></div>
-    <?php endif; ?>
-
-    <?php if (!$organizations): ?>
-        <div class="notice">
-            Neptune has not been initialized yet.
-            <a href="<?= e(base_url('admin/install.php')) ?>">Run first-time setup</a>.
-        </div>
-    <?php else: ?>
-        <form method="post" autocomplete="on">
-            <label for="organization_id">Organization</label>
-            <select id="organization_id" name="organization_id" required>
-                <option value="">Select organization…</option>
-                <?php foreach ($organizations as $organization): ?>
-                    <option
-                        value="<?= (int)$organization['id'] ?>"
-                        <?= $selectedOrganizationId === (int)$organization['id'] ? 'selected' : '' ?>
-                    ><?= e($organization['name']) ?></option>
-                <?php endforeach; ?>
-            </select>
-
-            <label for="username">Username</label>
-            <input id="username" name="username" required autocomplete="username">
-
-            <label for="password">Password</label>
-            <input id="password" type="password" name="password" required autocomplete="current-password">
-
-            <div class="toolbar">
-                <button type="submit">Sign in</button>
-            </div>
-        </form>
-        <div class="public-links"><a href="<?= e(base_url('register.php')) ?>"><i class="fa-solid fa-building-circle-check"></i> Register another organization</a></div>
-    <?php endif; ?>
-</div>
-<?php include __DIR__ . '/partials_footer.php';
+include __DIR__ . '/landing.php';
+include __DIR__ . '/partials_footer.php';

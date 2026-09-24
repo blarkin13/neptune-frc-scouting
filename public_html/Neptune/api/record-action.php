@@ -4,7 +4,7 @@ $u=require_login();
 $d=json_decode(file_get_contents('php://input'),true)?:[];
 $sid=(int)($d['session_id']??0);$a=$d['action']??[];$result=$d['result']??'Neutral';
 if(!in_array($result,['Success','Failure','Neutral'],true)) json_response(['status'=>'error','message'=>'Bad result'],422);
-$s=$pdo->prepare('SELECT ss.*,m.game_id,m.run_number,m.state,g.config_json FROM scout_sessions ss JOIN matches m ON m.id=ss.match_id JOIN games g ON g.id=m.game_id WHERE ss.id=? AND ss.organization_id=? AND ss.user_id=?');
+$s=$pdo->prepare('SELECT ss.*,m.game_id,m.run_number,m.state,gr.match_config_json config_json FROM scout_sessions ss JOIN matches m ON m.id=ss.match_id JOIN events e ON e.id=ss.event_id AND e.id=m.event_id JOIN game_revisions gr ON gr.id=e.game_revision_id AND gr.game_id=m.game_id WHERE ss.id=? AND ss.organization_id=? AND ss.user_id=?');
 $s->execute([$sid,$u['organization_id'],$u['id']]);$ss=$s->fetch();
 if(!$ss) json_response(['status'=>'error','message'=>'Invalid scout session'],403);
 if((int)$ss['match_run_number']!==(int)$ss['run_number']) json_response(['status'=>'error','message'=>'This scout session belongs to an older match run. Return to Agent and reselect the station.'],409);

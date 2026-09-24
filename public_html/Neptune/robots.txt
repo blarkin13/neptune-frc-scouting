@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin/
+Disallow: /api/
+Disallow: /analytics/
+Disallow: /dashboard/
+Disallow: /pit/
+Disallow: /prescout/
+Disallow: /scout/
+Disallow: /strategy/
+Disallow: /uploads/
+Disallow: /change-password.php
+Disallow: /register.php
+
+Sitemap: https://neptune.mckinneysteamacademy.org/sitemap.xml
