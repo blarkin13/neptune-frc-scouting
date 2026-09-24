@@ -39,4 +39,10 @@ return [
         'auth_key' => 'XXX',
         'base_url' => 'https://www.thebluealliance.com/api/v3',
     ],
+
+    // Optional public analytics source used by Pre-Scouting for EPA and season record.
+    // No API key is required. Neptune continues working if Statbotics is unavailable.
+    'statbotics' => [
+        'base_url' => 'https://api.statbotics.io/v3',
+    ],
 ];

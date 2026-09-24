@@ -6,9 +6,34 @@ Neptune is a web-based scouting platform for the **FIRST Robotics Competition (F
 
 > **Development status:** Neptune is under active development. Features, database structures, and installation procedures may change.
 
+
+## Neptune modules
+
+Neptune is the umbrella FRC Scouting & Strategy Platform. The application is organized into named modules:
+
+- **TRIDENT** — Match Scouting, Pit Scouting, and Pre-Scouting
+- **SATURN** — Command Center, Match Control, and Administration
+- **AUGUR** — Analytics, Strategy, and Robot Intelligence
+- **MERCURY** — Live Updates, WebSockets, and Device Synchronization
+- **VULCAN** — Game Builder, Form Builder, and System Configuration
+- **SALT** — Database and Data Storage
+
+The module names describe functional boundaries inside the same Neptune platform; they do not require separate installations.
+
+
+### Navigation
+
+The main menu uses functional names rather than module codenames:
+
+- **Scouting** opens **TRIDENT**, where users choose Match Scouting, Pit Scouting, or Pre-Scouting.
+- **Analytics & Strategy** opens **AUGUR**, where users choose Robot Intelligence or the Match Board.
+- **Command Center** opens **SATURN**, with Event Operations, VULCAN configuration tools, and organization administration grouped separately.
+
+Module names remain visible as secondary branding inside each application.
+
 ## Features
 
-### Live match scouting
+### TRIDENT · Live match scouting
 
 - Administrator-controlled match Ready / Start / End workflow
 - Official match and robot assignments imported from The Blue Alliance
@@ -22,7 +47,7 @@ Neptune is a web-based scouting platform for the **FIRST Robotics Competition (F
 - Complete match action history with administrative soft-delete
 - Re-scout support for restarted FRC matches; superseded runs are excluded from analytics but retained for audit history
 
-### Game Builder
+### VULCAN · Game Builder
 
 Game definitions are data-driven instead of hard-coded for a single season.
 
@@ -42,7 +67,17 @@ Administrators can configure:
 
 Existing game definitions can be loaded, edited, previewed, and saved as JSON.
 
-### Current Event & Pit Scouting
+### TRIDENT · Pre-Scouting
+
+Neptune includes an event-based pre-scouting workflow for contacting/researching teams before an event. The event roster comes from The Blue Alliance whenever possible, and each team can be tracked as **Not Started**, **Contacted**, **Response Received**, **No Response**, or **Unavailable**.
+
+The event overview uses a spreadsheet-style table so a tablet/laptop can show team number, location, season record, EPA breakdown, cached prior-event OPR values, event/alliance history, assigned scout, and completion status. TBA supplies team/location/event information and prior-event OPR/alliance data when available. Statbotics is an optional public source for season record and EPA; Neptune continues working if Statbotics is unavailable.
+
+Pre-scout answers are stored twice: as an event-specific snapshot and as reusable season knowledge for the same robot/game. When a team appears at another event in the same FRC season, Neptune can pre-fill known robot answers from earlier pre-scouting and compatible pit scouting while still allowing the new event information to be corrected. The assigned **Scout** remains event-specific and is not carried forward as robot knowledge.
+
+Questions are game-defined from **Command → Pre-Scout Form Builder**. The included 2026 REBUILT template mirrors the team's existing spreadsheet workflow: Auto, Trench, Hopper Size, Shooter, Climb, Throughput, Drive Notes, Defence / CounterDefence, and Archetype.
+
+### TRIDENT · Current Event & Pit Scouting
 
 Neptune does not require a published match schedule before an event can be used.
 
@@ -69,7 +104,8 @@ Pit scouting includes:
 - Preferred roles and defense information
 - Reliability / known issues
 - Alliance-partner notes
-- Robot photographs
+- Robot photographs from a phone camera or desktop file picker
+- Automatic photo resizing (1800 px max) with AVIF preferred, then WebP/JPEG fallback
 - Game-specific questions configured in the Pit Form Builder
 
 ### The Blue Alliance integration
@@ -84,7 +120,7 @@ Neptune uses **The Blue Alliance API v3** for official FRC information, includin
 
 Roster sync and schedule sync are independent, so pit scouting can be used before the match schedule is available.
 
-### Analytics
+### AUGUR · Analytics
 
 Neptune combines observed match data with pit scouting information.
 
@@ -135,6 +171,7 @@ neptune-frc-scouting/
 │   ├── config.example.php
 │   ├── connection.php
 │   ├── legacy_connection.php
+│   ├── image.php
 │   └── tba.php
 ├── public_html/
 │   └── Neptune/
@@ -146,11 +183,12 @@ neptune-frc-scouting/
 │       ├── games/
 │       ├── images/
 │       ├── pit/
+│       ├── prescout/
 │       ├── scout/
+│       ├── scouting.php          # TRIDENT scouting selector
 │       └── index.php
 └── sql/
-    ├── neptune_schema.sql
-    └── neptune_v*_upgrade.sql
+    └── neptune_schema.sql
 ```
 
 `neptune_secure` is intended to live **outside the public web root** in a hosted installation.
@@ -167,6 +205,7 @@ Recommended:
 - Apache or another PHP-capable web server
 - HTTPS for a production deployment
 - A The Blue Alliance API key
+- Recommended for pit-photo optimization: Imagick/ImageMagick or PHP GD
 
 ## Fresh hosted installation
 
@@ -199,7 +238,7 @@ Or download the repository ZIP from GitHub.
 8. Open `/Neptune/admin/install.php` to create the first organization and owner account.
 9. Remove, rename, or otherwise disable `admin/install.php` after initialization.
 
-The current `neptune_schema.sql` already contains the current schema for a fresh install. The numbered upgrade SQL files are retained for older Neptune installations being upgraded incrementally.
+**New installations import `sql/neptune_schema.sql` only.** It is the authoritative current Neptune schema.
 
 ## Example configuration
 
@@ -233,6 +272,9 @@ return [
         'auth_key' => 'XXX',
         'base_url' => 'https://www.thebluealliance.com/api/v3',
     ],
+    'statbotics' => [
+        'base_url' => 'https://api.statbotics.io/v3',
+    ],
 ];
 ```
 
@@ -250,6 +292,19 @@ A typical local setup is:
 4. Copy `config.example.php` to `config.php` and fill in the local credentials.
 5. Configure the web server so `/Neptune` maps to `public_html/Neptune` while `neptune_secure` remains outside the served directory.
 6. Visit `/Neptune/admin/install.php` and create the initial organization/owner.
+
+
+## Pit photo camera and image optimization
+
+Pit Scouting uses a single photo control that works across devices:
+
+- **Phone/tablet:** the browser can offer the rear camera or an existing photo.
+- **Desktop/laptop:** the same control opens the normal file picker.
+- Neptune validates the uploaded image, corrects phone orientation where supported, strips unnecessary metadata, and resizes it to a maximum dimension of 1800 px.
+- Output priority is **AVIF → WebP → JPEG**, based on the capabilities of the PHP host.
+- HEIC/HEIF files can be decoded when the host's ImageMagick build supports them. If not, the scout is asked to use a JPEG/Most Compatible phone format.
+
+Owners/admins can open **Command → System Check** to see whether AVIF, WebP, Imagick, GD, HEIC decoding, and the current PHP upload limits are available. AVIF is an optimization, not a hard requirement; Neptune automatically falls back when it is unavailable.
 
 ## Event-day workflow
 

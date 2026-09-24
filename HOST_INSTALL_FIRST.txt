@@ -1,0 +1,6 @@
+THIS BUILD IS FOR THE EXISTING McKINNEY STEAM ACADEMY AWS HOST.
+
+Start with:
+  host_install/README.txt
+
+Do not install Nginx. Apache, PHP, MySQL, TLS, and /etc/scout/db.env already exist.

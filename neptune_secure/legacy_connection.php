@@ -1,5 +1,7 @@
 <?php
-$config = require __DIR__ . '/config.php';
+if (!isset($config) || !is_array($config)) {
+    $config = require __DIR__ . '/config.php';
+}
 $db = $config['legacy_db'];
 $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $db['host'], $db['port'], $db['name'], $db['charset']);
 $legacyPdo = new PDO($dsn, $db['user'], $db['pass'], [

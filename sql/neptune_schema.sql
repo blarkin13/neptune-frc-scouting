@@ -67,6 +67,7 @@ CREATE TABLE games (
   json_filename VARCHAR(255) NOT NULL,
   config_json LONGTEXT NOT NULL,
   pit_config_json LONGTEXT NULL,
+  pre_scout_config_json LONGTEXT NULL,
   created_by BIGINT UNSIGNED NULL,
   is_archived TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -101,6 +102,9 @@ CREATE TABLE event_teams (
   event_id BIGINT UNSIGNED NOT NULL,
   frc_team_number INT UNSIGNED NOT NULL,
   nickname VARCHAR(160) NULL,
+  city VARCHAR(120) NULL,
+  state_prov VARCHAR(120) NULL,
+  country VARCHAR(120) NULL,
   tba_team_key VARCHAR(40) NULL,
   PRIMARY KEY (event_id, frc_team_number),
   CONSTRAINT fk_eventteams_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
@@ -221,6 +225,57 @@ CREATE TABLE scouting_actions (
   CONSTRAINT fk_sa_session FOREIGN KEY (scout_session_id) REFERENCES scout_sessions(id) ON DELETE SET NULL,
   CONSTRAINT fk_sa_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE RESTRICT,
   CONSTRAINT fk_sa_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE robot_season_profiles (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  organization_id BIGINT UNSIGNED NOT NULL,
+  game_id BIGINT UNSIGNED NOT NULL,
+  frc_team_number INT UNSIGNED NOT NULL,
+  data_json LONGTEXT NOT NULL,
+  notes TEXT NULL,
+  tba_json LONGTEXT NULL,
+  tba_updated_at DATETIME NULL,
+  last_event_id BIGINT UNSIGNED NULL,
+  updated_by BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_robot_season (organization_id,game_id,frc_team_number),
+  KEY idx_robot_season_team (frc_team_number,game_id),
+  CONSTRAINT fk_rsp_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+  CONSTRAINT fk_rsp_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+  CONSTRAINT fk_rsp_event FOREIGN KEY (last_event_id) REFERENCES events(id) ON DELETE SET NULL,
+  CONSTRAINT fk_rsp_user FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE pre_scouting (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  organization_id BIGINT UNSIGNED NOT NULL,
+  event_id BIGINT UNSIGNED NOT NULL,
+  game_id BIGINT UNSIGNED NOT NULL,
+  frc_team_number INT UNSIGNED NOT NULL,
+  submitted_by BIGINT UNSIGNED NULL,
+  contact_status ENUM('not_started','contacted','received','no_response','unavailable') NOT NULL DEFAULT 'not_started',
+  contact_name VARCHAR(160) NULL,
+  contact_method VARCHAR(60) NULL,
+  contact_details VARCHAR(255) NULL,
+  contacted_at DATETIME NULL,
+  data_json LONGTEXT NOT NULL,
+  notes TEXT NULL,
+  status ENUM('in_progress','complete') NOT NULL DEFAULT 'in_progress',
+  inherited_from_event_id BIGINT UNSIGNED NULL,
+  completed_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_pre_scout (organization_id,event_id,frc_team_number),
+  KEY idx_pre_scout_season (organization_id,game_id,frc_team_number),
+  KEY idx_pre_scout_status (organization_id,event_id,status,contact_status),
+  CONSTRAINT fk_pre_org FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pre_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pre_game FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pre_user FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_pre_inherited_event FOREIGN KEY (inherited_from_event_id) REFERENCES events(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE pit_scouting (
