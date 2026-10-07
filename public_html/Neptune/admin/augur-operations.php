@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__,3).'/neptune_secure/platform-security.php';
 require_once dirname(__DIR__).'/_tba_scheduler.php';
 require_once dirname(__DIR__).'/analytics/_augur_epa.php';
 
@@ -9,6 +10,7 @@ $u=require_role(['owner','admin','strategy']);
 $platformOrgId=1;
 if(isset($config)&&is_array($config)) $platformOrgId=(int)($config['app']['platform_organization_id']??1);
 $isPlatformOwner=(string)($u['role']??'')==='owner'&&(int)($u['organization_id']??0)===$platformOrgId;
+if($isPlatformOwner)neptune_require_platform_owner_google($u);
 
 const AOO_JOB_DIR='/tmp/neptune-augur-maintenance';
 const AOO_JOB_FILE=AOO_JOB_DIR.'/job.json';

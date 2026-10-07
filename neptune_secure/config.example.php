@@ -13,6 +13,35 @@ return [
         'base_url' => '/Neptune',
         'session_name' => 'NEPTUNESESSID',
         'timezone' => 'UTC',
+
+        // The first organization created on a clean database normally receives
+        // ID 1 and becomes the installation's platform organization.
+        'platform_organization_id' => 1,
+
+        // Fresh installs may always create the FIRST organization at
+        // /Neptune/register.php. After that, this controls whether visitors may
+        // create additional organizations without a platform-owner invitation.
+        // Private/self-hosted team installs should normally leave this false.
+        // Neptune's hosted multi-tenant service can set this true.
+        'allow_public_registration' => false,
+
+        // High-value platform-owner tools require strong authentication.
+        //
+        // strong = Google sign-in OR password + TOTP authenticator/recovery code.
+        // google = Google sign-in only.
+        //
+        // Historical "auto" or "password" values are treated as "strong" so a
+        // Platform Owner is never silently downgraded to password-only access.
+        'platform_owner_auth' => 'strong',
+
+        // Optional stable secret used to encrypt TOTP seeds at rest. Prefer a
+        // random value here or NEPTUNE_MFA_ENCRYPTION_KEY in /etc/scout/neptune.env.
+        // Example generator:
+        //   php -r 'echo base64_encode(random_bytes(32)), PHP_EOL;'
+        //
+        // If omitted, Neptune derives a compatibility key from the private DB
+        // configuration. A dedicated stable key is recommended for new installs.
+        'mfa_encryption_key' => '',
     ],
 
     'db' => [

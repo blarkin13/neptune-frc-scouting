@@ -1,8 +1,8 @@
-Neptune - Current Installation and Update Guide
-================================================
+Neptune - Public 1.0 Self-Hosted Installation Guide
+=====================================================
 
-This file describes the current application. Neptune does NOT use
-/Neptune/admin/install.php.
+Neptune is a PHP/MySQL application. It does NOT use Python requirements.txt and
+does NOT require /Neptune/admin/install.php.
 
 FRESH INSTALLATION
 ------------------
@@ -31,7 +31,7 @@ FRESH INSTALLATION
 
      sql/neptune_schema.sql
 
-   This is the baseline schema for a fresh installation.
+   This must be the current Public 1.0 baseline schema for a clean installation.
 
 4. Private configuration
 
@@ -43,96 +43,162 @@ FRESH INSTALLATION
 
      neptune_secure/config.php
 
-   Enter the database settings, base URL/timezone as needed, and TBA API key.
+   Enter the database settings, base URL/timezone, and TBA API key.
    Never commit live credentials.
 
-5. First organization
+   Important application settings:
+
+     platform_organization_id = 1
+       The first organization on a clean database is the platform organization.
+
+     allow_public_registration = false
+       The FIRST organization may always be created.
+       false = additional organizations cannot self-register.
+       true  = this installation may accept additional organization signups.
+
+     platform_owner_auth = auto
+       auto     = require Google for platform-owner tools when Google OAuth is
+                  configured; otherwise allow the normal Neptune password session.
+       google   = always require Google for platform-owner tools.
+       password = do not impose a Google-only platform-owner requirement.
+
+5. First-run organization setup
 
    Open:
 
      /Neptune/register.php
 
-   or open Neptune's public sign-in page and choose "Register an organization".
+   On an empty database the page becomes "Set Up Neptune".
 
-   Create the first organization and owner there. The first organization is the
-   platform organization and its owners receive the platform-only administration
-   and maintenance tools.
+   Create:
+   - Organization / school / club name
+   - Optional FRC team number
+   - Platform Owner display name
+   - Platform Owner username
+   - Platform Owner email
+   - Password (minimum 10 characters)
 
-   There is no admin/install.php step and no installer file to remove afterward.
+   Neptune creates:
+   - the first organization
+   - a unique organization sign-in slug
+   - the first Owner account
+   - the FRC team and primary-team assignment when a team number was supplied
 
-6. Optional Google sign-in
+   On a normal clean database this first organization receives ID 1 and is the
+   platform organization. Its Owner receives platform-only administration tools.
 
-   Current Google/OIDC support reads these values from:
+   If allow_public_registration is false, /register.php remains available for
+   sign-in navigation but will no longer create additional organizations.
 
-     /etc/scout/neptune.env
+6. Sign in
 
-   GOOGLE_OAUTH_CLIENT_ID="..."
-   GOOGLE_OAUTH_CLIENT_SECRET="..."
-   GOOGLE_OAUTH_REDIRECT_URI="https://your-host/Neptune/auth/google-callback.php"
+   Password sign-in uses:
 
-   If these settings are absent, password sign-in remains available.
+     organization name or slug + username + password
 
-7. Validate the installation
+   No Gmail account and no Google Workspace account are required for a private
+   self-hosted Neptune installation.
 
-   Sign in as the first owner and check:
-   - Command Center -> System Check
-   - Command Center -> Platform Administration
-   - Command Center -> Maintenance Console
+7. Platform Owner strong authentication
+
+   Platform Owner accounts use stronger authentication than ordinary
+   organization accounts.
+
+   Supported Platform Owner sign-in paths:
+
+     Google sign-in
+       OR
+     Neptune password + TOTP authenticator code
+
+   The first successful Platform Owner password login starts Google
+   Authenticator enrollment. Neptune displays a QR code that the owner scans
+   in Google Authenticator. A manual setup key is available as a fallback.
+
+   After enrollment Neptune displays one-time recovery codes. Save them outside
+   the Neptune server.
+
+   A Gmail account and Google Workspace are NOT required for a self-hosted
+   installation. TOTP is the non-Google strong-authentication path.
+
+   Recommended for new self-hosted installs:
+
+     Generate a stable encryption key:
+
+       php -r 'echo base64_encode(random_bytes(32)), PHP_EOL;'
+
+     Put it in either:
+       - app.mfa_encryption_key in private config.php, or
+       - NEPTUNE_MFA_ENCRYPTION_KEY in /etc/scout/neptune.env
+
+   Google/OIDC remains optional and reads:
+
+     GOOGLE_OAUTH_CLIENT_ID="..."
+     GOOGLE_OAUTH_CLIENT_SECRET="..."
+     GOOGLE_OAUTH_REDIRECT_URI="https://your-host/Neptune/auth/google-callback.php"
+
+8. Create the rest of the team
+
+   Sign in as the first Owner, then open:
+
+     Command Center -> Organization -> Teams & Users
+
+   The Owner can create users, assign roles and teams, issue temporary passwords,
+   and create one-time invitation links.
+
+9. Validate the installation
+
+   Check:
+   - Command Center
+   - System Check
    - Teams & Users
+   - Platform Administration
+   - File Manager
+   - Maintenance Console
+   - Match Scouting action record/undo
+   - TBA/event sync if a TBA key is configured
 
-PASSWORD / GOOGLE LOGIN
------------------------
+MULTI-ORGANIZATION HOSTING
+--------------------------
 
-Password sign-in uses:
-  organization name or Neptune slug + username + password
+For a Neptune installation intended to host multiple organizations:
 
-The public login page does not expose a global organization dropdown.
+1. Set allow_public_registration=true if organizations may self-register.
+2. Leave it false if the platform owner will onboard organizations manually.
+3. Each organization receives its own Owner/Admin/Strategy/Scout accounts.
+4. Only Owners in platform_organization_id receive installation-wide platform
+   administration tools.
 
-Google sign-in does not ask the user to select an organization first. Neptune
-routes only to memberships tied to that verified identity, an approved Workspace
-domain, or a valid invitation.
+SELF-HOST SECURITY
+------------------
 
-Forgot Password uses Google verification before allowing a new local Neptune
-password. Owners/admins can also issue temporary passwords in Teams & Users.
+- Keep neptune_secure outside the public web root.
+- Never commit config.php or live OAuth/TBA/database secrets.
+- Keep HTTPS enabled in production.
+- Keep uploads non-executable.
+- Keep deployment ZIPs, .bak*, .before*, SQL dumps, logs and env files out of
+  the public web root.
+- For an Internet-facing installation, Google OAuth plus 2-Step Verification is
+  recommended for the platform owner when available.
 
 UPDATES AND DATABASE MIGRATIONS
 -------------------------------
 
-Neptune intentionally keeps updates self-contained rather than using a large
-migration framework.
-
-Schema-changing updates use the shared migration helper and record:
+Neptune uses self-contained application migrations recorded in:
 
   neptune_migrations
-  ------------------
-  migration_key
-  applied_at
-  package
 
-Maintenance Console shows:
-  - Files updated
-  - DB migrations applied
-  - Installed update history
-  - DB migration history
-
-A Maintenance Console file rollback restores files only. It does NOT automatically
-reverse database migrations. Schema migrations should therefore remain idempotent
-and forward-safe.
-
-Do not manually replay old migration SQL unless a package specifically instructs
-you to do so.
+Maintenance Console shows installed update history and database migration
+history. File rollback does not automatically reverse database migrations.
 
 PRODUCTION HANDOFF
 ------------------
 
 The platform owner should know how to:
-  - manage tenant organizations in Platform Administration
-  - recover an organization owner
-  - suspend/reactivate a tenant
-  - export tenant data
-  - manage files through the platform-owner File Manager
-  - install/rollback patch files through Maintenance Console
-  - review neptune_migrations
-  - manage users/roles/temporary passwords/invitations through Teams & Users
-
-For normal account recovery, direct MySQL edits should not be necessary.
+- manage organizations in Platform Administration
+- recover organization owners
+- suspend/reactivate tenants
+- export organization data
+- manage files through File Manager
+- install/rollback Maintenance Console packages
+- review neptune_migrations
+- manage users/roles/temporary passwords/invitations through Teams & Users

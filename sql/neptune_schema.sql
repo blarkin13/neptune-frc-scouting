@@ -979,6 +979,23 @@ CREATE TABLE `neptune_tba_schedule_settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------------
+-- neptune_user_mfa
+-- ------------------------------------------------------------------
+CREATE TABLE `neptune_user_mfa` (
+  `user_id` bigint unsigned NOT NULL,
+  `organization_id` bigint unsigned NOT NULL,
+  `totp_secret_ciphertext` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `recovery_code_hashes` longtext COLLATE utf8mb4_unicode_ci,
+  `last_totp_step` bigint DEFAULT NULL,
+  `enabled_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`),
+  KEY `idx_neptune_user_mfa_org` (`organization_id`),
+  CONSTRAINT `fk_neptune_user_mfa_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_neptune_user_mfa_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------------
 -- offline_sync_runs
 -- ------------------------------------------------------------------
 CREATE TABLE `offline_sync_runs` (

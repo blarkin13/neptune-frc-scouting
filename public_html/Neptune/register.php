@@ -12,6 +12,20 @@ try{
 
 if(current_user()){header('Location: '.base_url('dashboard/index.php'));exit;}
 
+try{
+    $organizationCount=(int)$pdo->query('SELECT COUNT(*) FROM organizations')->fetchColumn();
+}catch(Throwable $e){
+    neptune_public_internal_error('registration_org_count',$e);
+}
+
+$firstRun=$organizationCount===0;
+// Backward compatibility: existing hosted installations that do not yet have
+// this config key retain their current public-registration behavior.
+$publicRegistration=array_key_exists('allow_public_registration',$config['app']??[])
+    ? !empty($config['app']['allow_public_registration'])
+    : true;
+$registrationAllowed=$firstRun||$publicRegistration;
+
 $error='';
 $done=false;
 $createdSlug='';
@@ -23,10 +37,20 @@ $team=(int)($_POST['frc_team_number']??0);
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
     verify_csrf();
+
+    if(!$registrationAllowed){
+        http_response_code(403);
+        $error='Organization self-registration is closed on this Neptune installation. Ask the platform owner to create or invite your organization.';
+    }
+
     $password=(string)($_POST['password']??'');
     $clientScope='ip:'.neptune_public_client_ip();
 
     try{
+        if(!$registrationAllowed){
+            // Deliberately skip all registration/rate-limit mutation when the
+            // installation has disabled additional organization signup.
+        }else{
         $hour=neptune_public_rate_status($pdo,'registration_ip_hour',$clientScope,5,3600);
         $day=neptune_public_rate_status($pdo,'registration_ip_day',$clientScope,12,86400);
 
@@ -111,28 +135,41 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                 }
             }
         }
+        }
     }catch(Throwable $e){
         if($pdo->inTransaction())$pdo->rollBack();
         neptune_public_internal_error('registration',$e);
     }
 }
 
-$pageTitle='Organization Signup';
+$pageTitle=$firstRun?'Set Up Neptune':'Organization Signup';
 include __DIR__.'/partials_header.php';
 ?>
 <div class="card auth-card">
   <div class="auth-brand"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune" class="auth-logo"></div>
-  <h1 class="auth-title">Create a Neptune Organization</h1>
-  <p class="muted auth-subtitle">For a new school, club, or robotics organization joining the platform.</p>
+  <h1 class="auth-title"><?=$firstRun?'Set Up Neptune':'Create a Neptune Organization'?></h1>
+  <p class="muted auth-subtitle"><?=$firstRun
+    ? 'Create the platform organization and first owner account for this Neptune installation.'
+    : 'For a new school, club, or robotics organization joining the platform.'?></p>
 
   <?php if($done):?>
     <div class="notice good">
-      <b>Organization created.</b>
+      <b><?=$firstRun?'Platform organization created.':'Organization created.'?></b>
       <div style="margin-top:6px">Your Neptune organization is <code style="user-select:all"><?=e($createdSlug)?></code>. Use that slug or your full organization name when signing in with a password.</div>
+      <?php if($firstRun&&!$publicRegistration):?>
+        <div style="margin-top:8px">Additional public organization registration is disabled. You can change <code>allow_public_registration</code> later if this installation will host other organizations.</div>
+      <?php endif;?>
       <div style="margin-top:10px"><a href="<?=e(base_url('index.php'))?>">Sign in to Neptune</a></div>
     </div>
   <?php else:?>
     <?php if($error):?><div class="notice bad"><?=e($error)?></div><?php endif;?>
+
+    <?php if(!$registrationAllowed):?>
+      <div class="notice">
+        <b>Organization registration is closed.</b>
+        <div style="margin-top:6px">This Neptune installation is already configured and does not allow public organization signup. Contact the platform owner for access.</div>
+      </div>
+    <?php else:?>
     <form method="post" autocomplete="on">
       <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
 
@@ -155,8 +192,9 @@ include __DIR__.'/partials_header.php';
       <label>Password</label>
       <input type="password" name="password" minlength="10" required autocomplete="new-password">
 
-      <div class="toolbar"><button><i class="fa-solid fa-rocket"></i> Create Organization</button></div>
+      <div class="toolbar"><button><i class="fa-solid fa-rocket"></i> <?=$firstRun?'Create Neptune Installation':'Create Organization'?></button></div>
     </form>
+    <?php endif;?>
   <?php endif;?>
 
   <div class="public-links"><a href="<?=e(base_url('index.php'))?>">Back to sign in</a></div>

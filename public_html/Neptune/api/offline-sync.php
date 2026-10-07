@@ -28,34 +28,69 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
     sync_json(['ok' => false, 'error' => 'Database is unavailable.'], 500);
 }
 
-$expectedKey = getenv('NEPTUNE_OFFLINE_SYNC_KEY') ?: '';
-if ($expectedKey === '' && is_file('/etc/scout/offline-sync.env')) {
-    $lines = @file('/etc/scout/offline-sync.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
-    foreach ($lines as $line) {
-        if (str_starts_with(trim($line), '#') || !str_contains($line, '=')) continue;
-        [$k, $v] = array_map('trim', explode('=', $line, 2));
-        if ($k === 'NEPTUNE_OFFLINE_SYNC_KEY') {
-            $expectedKey = trim($v, " \t\n\r\0\x0B\"'");
-            break;
-        }
-    }
-}
-
-$providedKey = $_SERVER['HTTP_X_NEPTUNE_SYNC_KEY'] ?? '';
-if ($expectedKey === '' || $providedKey === '' || !hash_equals($expectedKey, $providedKey)) {
-    sync_json(['ok' => false, 'error' => 'Unauthorized.'], 401);
-}
-
 $raw = file_get_contents('php://input');
 $data = json_decode($raw ?: '', true);
 if (!is_array($data)) {
     sync_json(['ok' => false, 'error' => 'Invalid JSON body.'], 400);
 }
 
-$organizationId = (int)($data['organization_id'] ?? 0);
-if ($organizationId < 1) {
+$requestedOrganizationId = (int)($data['organization_id'] ?? 0);
+if ($requestedOrganizationId < 1) {
     sync_json(['ok' => false, 'error' => 'organization_id is required.'], 422);
 }
+
+/**
+ * Offline sync credentials are tenant-bound.
+ *
+ * Preferred for multi-tenant installs:
+ *   NEPTUNE_OFFLINE_SYNC_KEY_ORG_1=<secret>
+ *   NEPTUNE_OFFLINE_SYNC_KEY_ORG_2=<different secret>
+ *
+ * Backward-compatible single-field-server form:
+ *   NEPTUNE_OFFLINE_SYNC_KEY=<secret>
+ *   NEPTUNE_OFFLINE_SYNC_ORGANIZATION_ID=1
+ *
+ * The legacy global key is NEVER accepted without an organization binding.
+ */
+$syncEnv = [];
+foreach (getenv() ?: [] as $k => $v) {
+    if (is_string($k) && is_scalar($v)) $syncEnv[$k] = (string)$v;
+}
+if (is_file('/etc/scout/offline-sync.env')) {
+    $lines = @file('/etc/scout/offline-sync.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) continue;
+        if (str_starts_with($line, 'export ')) $line = trim(substr($line, 7));
+        [$k, $v] = array_map('trim', explode('=', $line, 2));
+        if ($k === '') continue;
+        $syncEnv[$k] = trim($v, " \t\n\r\0\x0B\"'");
+    }
+}
+
+$orgKeyName = 'NEPTUNE_OFFLINE_SYNC_KEY_ORG_' . $requestedOrganizationId;
+$expectedKey = trim((string)($syncEnv[$orgKeyName] ?? ''));
+
+if ($expectedKey === '') {
+    $legacyKey = trim((string)($syncEnv['NEPTUNE_OFFLINE_SYNC_KEY'] ?? ''));
+    $legacyOrgId = (int)($syncEnv['NEPTUNE_OFFLINE_SYNC_ORGANIZATION_ID'] ?? 0);
+    if ($legacyKey !== '' && $legacyOrgId === $requestedOrganizationId) {
+        $expectedKey = $legacyKey;
+    }
+}
+
+if ($expectedKey === '') {
+    error_log('[Neptune offline sync] No tenant-bound sync key is configured for organization ' . $requestedOrganizationId . '.');
+    sync_json(['ok' => false, 'error' => 'Offline sync is not configured for this organization.'], 503);
+}
+
+$providedKey = trim((string)($_SERVER['HTTP_X_NEPTUNE_SYNC_KEY'] ?? ''));
+if ($providedKey === '' || !hash_equals($expectedKey, $providedKey)) {
+    sync_json(['ok' => false, 'error' => 'Unauthorized.'], 401);
+}
+
+// The authenticated credential determines which organization may be written.
+$organizationId = $requestedOrganizationId;
 
 $matches = is_array($data['matches'] ?? null) ? $data['matches'] : [];
 $sessions = is_array($data['sessions'] ?? null) ? $data['sessions'] : [];

@@ -2,6 +2,7 @@
 require_once dirname(__DIR__, 2) . '/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__, 2) . '/neptune_secure/google-auth.php';
 require_once dirname(__DIR__, 2) . '/neptune_secure/public-auth-security.php';
+require_once dirname(__DIR__, 2) . '/neptune_secure/platform-mfa.php';
 
 try{
     neptune_auth_ensure_schema($pdo);
@@ -101,6 +102,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }elseif(strtolower((string)($row['google_signin_mode']??'optional'))==='required'){
                     $error='This organization requires Google sign-in.';
                 }else{
+                    if(neptune_platform_owner_is($row)){
+                        neptune_mfa_ensure_schema($pdo);
+                        neptune_platform_mfa_begin($row);
+                        neptune_auth_audit(
+                            $pdo,
+                            (int)$row['organization_id'],
+                            (int)$row['id'],
+                            'login_password_mfa_pending',
+                            'user',
+                            (string)$row['id']
+                        );
+                        header('Location: '.base_url('auth/platform-mfa.php'));
+                        exit;
+                    }
+
                     neptune_start_user_session($pdo,$row,'password');
                     neptune_auth_audit($pdo,(int)$row['organization_id'],(int)$row['id'],'login_password','user',(string)$row['id']);
                     header('Location: '.base_url(!empty($row['must_change_password'])?'change-password.php':'dashboard/index.php'));

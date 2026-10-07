@@ -1,10 +1,12 @@
 <?php
 require_once dirname(__DIR__, 3) . '/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__, 3) . '/neptune_secure/platform-security.php';
 $u = require_role(['owner']);
 $platformOrgId = max(1, (int)($config['app']['platform_organization_id'] ?? 1));
 if ((int)($u['organization_id'] ?? 0) !== $platformOrgId) {
     access_denied('File Manager is reserved for the Neptune platform owner.');
 }
+neptune_require_platform_owner_google($u);
 
 $pageTitle = 'File Manager';
 $moduleName = 'MERCURY';
@@ -219,17 +221,37 @@ function fm_delete_tree(string $absolute, string $rel): void {
     if (!unlink($absolute)) throw new RuntimeException('Could not delete file ' . basename($rel) . '.');
 }
 
-function fm_zip_add(ZipArchive $zip, string $absolute, string $zipRel): void {
-    if (is_link($absolute)) return;
+function fm_zip_add(ZipArchive $zip, string $absolute, string $zipRel, array &$skipped): void {
+    if (is_link($absolute)) {
+        $skipped[] = $zipRel . ' — symbolic link skipped';
+        return;
+    }
+
     if (is_dir($absolute)) {
-        $zip->addEmptyDir(rtrim($zipRel, '/'));
+        if (!is_readable($absolute)) {
+            $skipped[] = rtrim($zipRel, '/') . '/ — folder is not readable by the web process';
+            return;
+        }
+
+        $zipDir = rtrim($zipRel, '/');
+        if ($zipDir !== '' && !$zip->addEmptyDir($zipDir)) {
+            throw new RuntimeException('Could not add folder to ZIP: ' . $zipDir);
+        }
         foreach (scandir($absolute) ?: [] as $name) {
             if ($name === '.' || $name === '..') continue;
-            fm_zip_add($zip, $absolute . '/' . $name, rtrim($zipRel, '/') . '/' . $name);
+            fm_zip_add($zip, $absolute . '/' . $name, $zipDir . '/' . $name, $skipped);
         }
         return;
     }
-    $zip->addFile($absolute, $zipRel);
+
+    if (!is_file($absolute) || !is_readable($absolute)) {
+        $skipped[] = $zipRel . ' — file is not readable by the web process';
+        return;
+    }
+
+    if (!$zip->addFile($absolute, $zipRel)) {
+        $skipped[] = $zipRel . ' — ZipArchive could not add this file';
+    }
 }
 
 function fm_stream_selection_zip(array $rels): never {
@@ -237,32 +259,106 @@ function fm_stream_selection_zip(array $rels): never {
         throw new RuntimeException('ZIP support is not installed on this server.');
     }
 
+    // Large multi-file downloads can take longer than a normal page request.
+    @set_time_limit(0);
+    @ini_set('zlib.output_compression', '0');
+    ignore_user_abort(true);
+
     $tmp = tempnam(sys_get_temp_dir(), 'neptune-fm-');
     if ($tmp === false) throw new RuntimeException('Could not create a temporary archive.');
     $zipPath = $tmp . '.zip';
     @unlink($tmp);
 
-    $zip = new ZipArchive();
-    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-        throw new RuntimeException('Could not create the ZIP archive.');
+    try {
+        $zip = new ZipArchive();
+        $openResult = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        if ($openResult !== true) {
+            throw new RuntimeException('Could not create the ZIP archive. ZIP error ' . (string)$openResult . '.');
+        }
+
+        $skipped = [];
+        foreach ($rels as $rel) {
+            $absolute = fm_existing($rel);
+            fm_zip_add($zip, $absolute, basename($rel), $skipped);
+        }
+
+        if ($skipped) {
+            $manifest = "Neptune File Manager ZIP\n";
+            $manifest .= "The following items were skipped because the web process could not safely read them.\n";
+            $manifest .= "No file permissions were changed to create this download.\n\n";
+            foreach ($skipped as $item) {
+                $manifest .= "- " . $item . "\n";
+            }
+            if (!$zip->addFromString('_NEPTUNE_SKIPPED_FILES.txt', $manifest)) {
+                throw new RuntimeException('Could not write the skipped-files manifest into the ZIP.');
+            }
+        }
+
+        if (!$zip->close()) {
+            throw new RuntimeException('Could not finish the ZIP archive.');
+        }
+
+        clearstatcache(true, $zipPath);
+        $zipSize = @filesize($zipPath);
+        if ($zipSize === false || $zipSize < 22) {
+            throw new RuntimeException('The ZIP archive was empty or incomplete.');
+        }
+
+        // Re-open with CHECKCONS before sending a single byte to the browser.
+        $check = new ZipArchive();
+        $checkResult = $check->open($zipPath, ZipArchive::CHECKCONS);
+        if ($checkResult !== true) {
+            throw new RuntimeException('ZIP verification failed. ZIP error ' . (string)$checkResult . '.');
+        }
+        $check->close();
+
+        $filename = count($rels) === 1
+            ? preg_replace('/[^A-Za-z0-9._-]+/', '-', basename($rels[0])) . '.zip'
+            : 'neptune-selection-' . date('Ymd-His') . '.zip';
+
+        // Any notices, whitespace, or buffered page output before the PK ZIP
+        // signature corrupts the archive. Clear all output buffers first.
+        while (ob_get_level() > 0) {
+            @ob_end_clean();
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . addcslashes($filename, '"\\') . '"');
+        header('Content-Length: ' . $zipSize);
+        header('Content-Transfer-Encoding: binary');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('X-Content-Type-Options: nosniff');
+
+        $fh = fopen($zipPath, 'rb');
+        if ($fh === false) {
+            throw new RuntimeException('Could not open the completed ZIP for download.');
+        }
+
+        // Chunked streaming is more reliable for large selections than readfile()
+        // under PHP/Apache request timeouts and output buffering.
+        while (!feof($fh)) {
+            $chunk = fread($fh, 1024 * 1024);
+            if ($chunk === false) {
+                fclose($fh);
+                throw new RuntimeException('The ZIP download was interrupted while reading the archive.');
+            }
+            echo $chunk;
+            if (function_exists('fastcgi_finish_request')) {
+                // Do not call fastcgi_finish_request here; it would terminate
+                // streaming. This branch intentionally does nothing.
+            }
+            flush();
+        }
+        fclose($fh);
+    } finally {
+        @unlink($zipPath);
+        @unlink($tmp);
     }
 
-    foreach ($rels as $rel) {
-        $absolute = fm_existing($rel);
-        fm_zip_add($zip, $absolute, basename($rel));
-    }
-    $zip->close();
-
-    $filename = count($rels) === 1
-        ? preg_replace('/[^A-Za-z0-9._-]+/', '-', basename($rels[0])) . '.zip'
-        : 'neptune-selection-' . date('Ymd-His') . '.zip';
-
-    header('Content-Type: application/zip');
-    header('Content-Disposition: attachment; filename="' . addcslashes($filename, '"\\') . '"');
-    header('Content-Length: ' . filesize($zipPath));
-    header('X-Content-Type-Options: nosniff');
-    readfile($zipPath);
-    @unlink($zipPath);
     exit;
 }
 

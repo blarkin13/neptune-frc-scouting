@@ -1,4 +1,21 @@
 Options -Indexes
-<FilesMatch "\.(sql|ini|log|bak)$">
+
+# Never serve deployment artifacts, database/config/log files, or editor backups.
+# This intentionally matches suffix variants such as:
+#   file.php.bak-theme
+#   file.php.bak-20261007
+#   file.php.before-seo
+#   package.zip
+<FilesMatch "(?i)(?:\.(?:sql|ini|log|zip|env)(?:\..*)?|\.bak(?:[-._].*)?|\.before(?:[-._].*)?|~|\.swp)$">
+  Require all denied
+</FilesMatch>
+
+# Retired historical bootstrap utility. CLI-only stub remains for a clear message.
+<Files "add_neptune_admins.php">
+  Require all denied
+</Files>
+
+# Hidden files are not public application assets.
+<FilesMatch "^\.">
   Require all denied
 </FilesMatch>

@@ -4,7 +4,7 @@
 
 Neptune is a web-based scouting platform for the **FIRST Robotics Competition (FRC)**. It combines live match scouting, pit scouting, match administration, robot analytics, team-controlled data sharing, and The Blue Alliance integration in one PHP/MySQL application.
 
-> **Development status:** Neptune is under active development. Features, database structures, and installation procedures may change.
+> **Release status:** Neptune Public 1.0 release candidate. The production-backed source, canonical schema, self-host first-run flow, tenant security, and Platform Owner strong authentication are being finalized for the 1.0 tag.
 
 
 ## Neptune modules
@@ -304,10 +304,11 @@ A typical local setup is:
 5. Configure the web server so `/Neptune` maps to `public_html/Neptune` while `neptune_secure` remains outside the served directory.
 6. Visit `/Neptune/register.php` and create the initial organization/owner. There is no `admin/install.php` browser installer.
 
+On an empty database, `/register.php` becomes the first-run setup page and creates the platform organization plus its first Owner. Private/self-hosted installs normally keep `allow_public_registration=false` so later organizations cannot self-register unless the operator explicitly enables it.
 
-## Optional Google sign-in
+## Authentication and Platform Owner MFA
 
-Google/OIDC is optional. The current implementation reads these secrets from `/etc/scout/neptune.env`:
+Google/OIDC is optional for normal Neptune use and for self-hosted installations. When configured, Neptune reads these secrets from `/etc/scout/neptune.env`:
 
 ```text
 GOOGLE_OAUTH_CLIENT_ID="..."
@@ -318,6 +319,17 @@ GOOGLE_OAUTH_REDIRECT_URI="https://your-host/Neptune/auth/google-callback.php"
 The Google OAuth client should use the exact callback URI for the deployment. Google authenticates identity; Neptune remains the source of truth for organization membership, role, team assignment, and active/suspended status.
 
 Workspace domain configuration is organization-specific and is only required for safe automatic Scout provisioning. Existing users can use Google through an exact verified-email match even when their organization does not configure a Workspace domain.
+
+Platform Owner accounts use stronger authentication for high-value tools such as File Manager, Maintenance Console, Platform Administration, and platform-level operations:
+
+- **Google sign-in**, or
+- **Neptune password + Google Authenticator TOTP**
+- One-time recovery codes are generated when TOTP is enrolled
+- TOTP secrets are encrypted at rest
+- A replayed TOTP step is rejected
+- Platform Owner MFA is recorded through the `security.platform-owner-mfa.v1` migration
+
+A self-hosted school does not need Gmail or Google Workspace. The first Platform Owner password login guides the owner through Google Authenticator enrollment using a QR code with a manual setup-key fallback.
 
 ## Organization interface themes
 
@@ -400,16 +412,16 @@ A typical FRC event workflow is:
 - Passwords use PHP `password_hash()` / `password_verify()`.
 - Admin-created temporary passwords require a first-login reset.
 - Public password login is rate-limited by source and attempted account/organization target.
-- Public organization registration is separately rate-limited.
+- Public organization registration is separately rate-limited. On a clean self-host install, the first organization may always be created; additional public registration is controlled by `allow_public_registration`.
 - Invalid password-login responses do not reveal whether the organization, username, account status, or password was wrong.
 - Public registration/login failures do not expose raw PHP, SQL, filesystem, or exception details; unexpected failures receive a generic error with a server-log reference.
 - Forms use CSRF protection.
 - Successful authentication regenerates the session.
 - SQL uses prepared statements.
 - Operational queries are organization-scoped.
-- File Manager and Platform Administration are restricted to owners in the designated platform organization.
+- File Manager, Maintenance Console, Platform Administration, and platform-level operations are restricted to the designated Platform Owner and require strong authentication.
 - API endpoints require authenticated sessions where appropriate.
-- Database, Google OAuth, and TBA credentials remain outside `public_html`.
+- Database, Google OAuth, TBA, offline-sync, and MFA-encryption credentials remain outside `public_html`.
 - Deleted scouting actions are retained as auditable soft-deletes and excluded from normal analytics.
 
 ## Contributing

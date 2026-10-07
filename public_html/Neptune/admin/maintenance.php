@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 3) . '/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__, 3) . '/neptune_secure/google-auth.php';
 require_once dirname(__DIR__, 3) . '/neptune_secure/public-auth-security.php';
+require_once dirname(__DIR__, 3) . '/neptune_secure/platform-security.php';
 $u = require_role(['owner']);
 
 $platformOrgId = 1;
@@ -14,6 +15,7 @@ if ((int)($u['organization_id'] ?? 0) !== $platformOrgId) {
     http_response_code(403);
     exit('Platform owner access required.');
 }
+neptune_require_platform_owner_google($u);
 
 // Maintenance Console deliberately initializes the small global migration
 // registry and the core self-migrations so update status is visible in one place.
