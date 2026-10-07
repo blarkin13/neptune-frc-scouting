@@ -2,6 +2,17 @@
 if(!isset($pageTitle)) $pageTitle='Neptune';
 
 $u=current_user();
+$tbaLiveAvailable=false;$tbaLiveEnabled=false;$tbaLiveInterval=2;
+if($u&&in_array((string)($u['role']??''),['owner','admin','strategy'],true)){
+    require_once __DIR__.'/_tba_scheduler.php';
+    if(neptune_tba_scheduler_tables_ready($pdo)){
+        $tbaLiveAvailable=true;
+        $tbaLiveState=neptune_tba_live_state($pdo,(int)$u['organization_id']);
+        $tbaLiveEnabled=!empty($tbaLiveState['enabled']);
+        $tbaLiveSettings=neptune_tba_schedule_settings($pdo);
+        $tbaLiveInterval=max(1,(int)($tbaLiveSettings['live_interval_minutes']??2));
+    }
+}
 $hideChrome=$hideChrome??false;
 $bodyClass=trim((string)($bodyClass??''));
 $moduleName=strtoupper(trim((string)($moduleName??'')));
@@ -40,6 +51,9 @@ $seoOgImage=$siteUrl.'images/neptune-og.png';
 $documentTitle=$isPublicHome
     ? $seoTitle
     : (($pageTitle==='Neptune') ? 'Neptune' : $pageTitle.' - Neptune');
+
+require_once __DIR__.'/partials_hero.php';
+if ($u && !$hideChrome) neptune_hero_buffer_start();
 
 $homeStructuredData=[
     '@context'=>'https://schema.org',
@@ -183,34 +197,6 @@ $homeStructuredData=[
 <?php foreach($pageStyles as $pageStyle): $pageStyle=(string)$pageStyle; $pageStyleVersion=@filemtime(__DIR__.'/'.ltrim($pageStyle,'/'))?:1; ?>
 <link rel="stylesheet" href="<?=e(base_url($pageStyle))?>?v=<?=$pageStyleVersion?>">
 <?php endforeach;?>
-<style>
-/* User Guide link: compact header icon on desktop, normal nav row on mobile. */
-.neptune-help-link .neptune-help-label{display:none}
-@media (min-width:761px){
-    .nav-clean .neptune-help-link{
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        width:38px;
-        height:38px;
-        padding:0;
-        flex:0 0 38px;
-        border:1px solid var(--line);
-        border-radius:8px;
-        background:var(--panel2);
-        color:var(--text);
-        text-decoration:none;
-        box-sizing:border-box;
-    }
-    .nav-clean .neptune-help-link i{
-        margin:0;
-        width:auto;
-    }
-}
-@media (max-width:760px){
-    .nav-clean .neptune-help-link .neptune-help-label{display:inline}
-}
-</style>
 <script defer src="/assets/js/neptune-ui.js?v=<?=$neptuneJsVersion?>"></script>
 </head>
 
@@ -252,20 +238,55 @@ $homeStructuredData=[
                 <a class="<?=$activeSection==='command'?'active':''?>" href="<?=e(base_url('admin/index.php'))?>"><i class="fa-solid fa-tower-broadcast"></i><span>Command Center</span></a>
             <?php endif; ?>
 
-            <a class="neptune-help-link" href="<?=e(base_url('help/'))?>" title="Neptune User Guide" aria-label="Neptune User Guide">
-                <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
-                <span class="neptune-help-label">User Guide</span>
-            </a>
-
-            <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle day/night mode"><i class="fa-solid fa-moon"></i><span class="theme-label">Night mode</span></button>
-            <a class="logout-link" href="<?=e(base_url('logout.php'))?>" title="Logout"><i class="fa-solid fa-right-from-bracket"></i><span class="nav-logout">Logout</span></a>
+            <?php if($tbaLiveAvailable): ?>
+                <button
+                    class="tba-live-toggle neptune-nav-utility <?=$tbaLiveEnabled?'is-on':''?>"
+                    type="button"
+                    id="tbaLiveToggle"
+                    data-endpoint="<?=e(base_url('api/tba-live-toggle.php'))?>"
+                    data-csrf="<?=e(csrf_token())?>"
+                    data-enabled="<?=$tbaLiveEnabled?'1':'0'?>"
+                    title="Refresh the current event from TBA every <?=e($tbaLiveInterval)?> minutes"
+                    aria-pressed="<?=$tbaLiveEnabled?'true':'false'?>"
+                ><i class="fa-solid fa-satellite-dish"></i><span>At Event Live</span><small><?=$tbaLiveEnabled?'ON':'OFF'?></small></button>
+            <?php endif; ?>
+            <button class="theme-toggle neptune-nav-utility" type="button" id="themeToggle" aria-label="Toggle day/night mode"><i class="fa-solid fa-moon"></i><span class="theme-label">Night mode</span></button>
+            <a class="logout-link neptune-nav-utility" href="<?=e(base_url('logout.php'))?>" title="Logout" aria-label="Log out"><i class="fa-solid fa-right-from-bracket"></i><span class="nav-logout">Logout</span></a>
         </nav>
     <?php else: ?>
         <nav class="nav nav-public">
-            <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle day/night mode"><i class="fa-solid fa-moon"></i></button>
+            <button class="theme-toggle neptune-nav-utility" type="button" id="themeToggle" aria-label="Toggle day/night mode"><i class="fa-solid fa-moon"></i></button>
         </nav>
     <?php endif; ?>
 </header>
+<?php endif;?>
+<?php if($tbaLiveAvailable&&!$hideChrome):?>
+<script>
+(()=>{
+  const btn=document.getElementById('tbaLiveToggle');
+  if(!btn)return;
+  btn.addEventListener('click',async()=>{
+    if(btn.disabled)return;
+    const next=btn.dataset.enabled!=='1';
+    btn.disabled=true;
+    try{
+      const body=new URLSearchParams({csrf:btn.dataset.csrf||'',enabled:next?'1':'0'});
+      const res=await fetch(btn.dataset.endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.ok)throw new Error(data.message||'Could not change Event Live mode.');
+      btn.dataset.enabled=data.enabled?'1':'0';
+      btn.classList.toggle('is-on',!!data.enabled);
+      btn.setAttribute('aria-pressed',data.enabled?'true':'false');
+      const badge=btn.querySelector('small');if(badge)badge.textContent=data.enabled?'ON':'OFF';
+      const msg=data.enabled
+        ?('At Event Live is on'+(data.event?.name?' for '+data.event.name:'')+'. TBA refreshes every '+data.interval_minutes+' minutes.')
+        :'At Event Live is off.';
+      window.NeptuneUI?.toast(msg,'good',{title:'TBA At Event Live'});
+    }catch(err){window.NeptuneUI?.toast(err?.message||'Could not change Event Live mode.','bad',{title:'TBA At Event Live'});}
+    finally{btn.disabled=false;}
+  });
+})();
+</script>
 <?php endif;?>
 
 <main class="wrap <?=$hideChrome?'wrap-wide':''?>">

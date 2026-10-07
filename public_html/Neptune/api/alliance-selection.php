@@ -165,6 +165,7 @@ function alliance_prepare_state(PDO $pdo,int $org,int $eventId,bool $canEdit=fal
         'slots'=>$scenario['slots'],'statuses'=>alliance_public_statuses($scenario),'teams'=>$teams,
         'alliance_tags'=>$scenario['alliance_tags']??[],
         'pick_lists'=>$scenario['pick_lists']??alliance_empty_pick_lists(),
+        'pick_list_taken'=>$scenario['pick_list_taken']??[],
         'can_undo'=>!empty($scenario['undo']),'can_redo'=>!empty($scenario['redo']),
     ];
 }
@@ -230,7 +231,7 @@ try{
         alliance_push_undo($scenario);
         if($team>0){
             $status=$scenario['statuses'][$team]['state']??'available';
-            if(in_array($status,['declined','broken','do_not_pick'],true))throw new RuntimeException('That team is currently marked '.str_replace('_',' ',$status).'.');
+            if(in_array($status,['already_picked','declined','broken','do_not_pick'],true))throw new RuntimeException('That team is currently marked '.str_replace('_',' ',$status).'.');
             $captainAlliance=alliance_find_captain_alliance($scenario,$team);
             if($captainAlliance>0){
                 $captainPicksAllowed=(bool)($w['settings']['captain_picks_allowed']??true);
@@ -251,7 +252,7 @@ try{
     } elseif($op==='set_status'){
         $team=(int)($_POST['team']??0);$state=(string)($_POST['state']??'available');
         if($team<1||!alliance_team_on_roster($pdo,$eventId,$team))throw new RuntimeException('Invalid team.');
-        if(!in_array($state,['available','declined','broken','do_not_pick'],true))throw new RuntimeException('Invalid status.');
+        if(!in_array($state,['available','already_picked','declined','broken','do_not_pick'],true))throw new RuntimeException('Invalid status.');
         if(alliance_team_used_as_pick($scenario,$team))throw new RuntimeException('Remove this team from its pick slot before changing its status.');
         alliance_push_undo($scenario);$scenario['statuses'][$team]??=['state'=>'available','favorite'=>false];$scenario['statuses'][$team]['state']=$state;$w['scenarios'][$id]=$scenario;
     } elseif($op==='toggle_favorite'){
@@ -275,6 +276,14 @@ try{
             foreach(range(0,5) as $slotIndex){if($team>0&&(int)($scenario['pick_lists'][$listTier][$slotIndex]??0)===$team)$scenario['pick_lists'][$listTier][$slotIndex]=null;}
         }
         $scenario['pick_lists'][$tier][$index]=$team>0?$team:null;$w['scenarios'][$id]=$scenario;
+    } elseif($op==='set_pick_list_taken'){
+        $team=(int)($_POST['team']??0);$taken=((string)($_POST['taken']??'0'))==='1';
+        if($team<1||!alliance_team_on_roster($pdo,$eventId,$team))throw new RuntimeException('Invalid team.');
+        alliance_push_undo($scenario);
+        $scenario['pick_list_taken']=array_values(array_unique(array_map('intval',is_array($scenario['pick_list_taken']??null)?$scenario['pick_list_taken']:[])));
+        $scenario['pick_list_taken']=array_values(array_filter($scenario['pick_list_taken'],static fn($value)=>(int)$value!==$team));
+        if($taken)$scenario['pick_list_taken'][]=$team;
+        $w['scenarios'][$id]=$scenario;
     } elseif($op==='undo'){
         if(empty($scenario['undo']))throw new RuntimeException('Nothing to undo.');
         $scenario['redo'][]=alliance_snapshot($scenario);$snap=array_pop($scenario['undo']);alliance_restore_snapshot($scenario,$snap);$w['scenarios'][$id]=$scenario;

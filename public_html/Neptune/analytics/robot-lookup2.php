@@ -1,6 +1,7 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
+require_once __DIR__.'/_team_logo_cache.php';
 
 $statboticsFile=dirname(__DIR__,3).'/neptune_secure/statbotics.php';
 if(is_file($statboticsFile)){
@@ -66,13 +67,6 @@ function rl_https_url(mixed $value): string {
     $parts=parse_url($url);
     if(!is_array($parts) || strtolower((string)($parts['scheme']??''))!=='https') return '';
     return $url;
-}
-function rl_avatar_src(mixed $value): string {
-    $b64=preg_replace('/\s+/','',trim((string)$value));
-    if($b64==='' || strlen($b64)>3000000) return '';
-    if(!preg_match('/^[A-Za-z0-9+\/=]+$/',$b64)) return '';
-    if(base64_decode($b64,true)===false) return '';
-    return 'data:image/png;base64,'.$b64;
 }
 function rl_media_image(array $media): array {
     $type=(string)($media['type']??'');
@@ -344,10 +338,19 @@ if($team>0){
         $tbaError=$ex->getMessage();
     }
 
-    // TBA media is season-specific. Check the current season plus the two
-    // previous seasons so an available team avatar or recent robot image can
-    // still be shown when the current season has not published media yet.
+    // Team logos use Neptune's persistent organization/team cache. TBA is
+    // contacted only when this team has no cached/custom logo yet.
     $currentYear=(int)date('Y');
+    try{
+        $logoInfo=neptune_team_logo_info($org,$currentYear,$team);
+        if(empty($logoInfo['exists'])) $logoInfo=neptune_team_logo_fetch_tba($org,$currentYear,$team,false);
+        if(!empty($logoInfo['exists'])){
+            $tbaAvatar=base_url((string)$logoInfo['path']).'?v='.rawurlencode((string)$logoInfo['version']);
+        }
+    }catch(Throwable $ignored){}
+
+    // TBA media remains available for the optional robot/media gallery. Avatar
+    // rows are skipped because Neptune's local cache is authoritative for logos.
     $years=[$currentYear,$currentYear-1,$currentYear-2];
     foreach($seasonProfiles as $profile){
         $y=(int)($profile['season_year']??0);
@@ -366,14 +369,7 @@ if($team>0){
             foreach($mediaRows as $media){
                 if(!is_array($media)) continue;
 
-                if($tbaAvatar==='' && ($media['type']??'')==='avatar'){
-                    $candidate=rl_avatar_src($media['details']['base64Image']??'');
-                    if($candidate!==''){
-                        $tbaAvatar=$candidate;
-                        $tbaMediaYears[]=$year;
-                    }
-                    continue;
-                }
+                if(($media['type']??'')==='avatar') continue;
 
                 $img=rl_media_image($media);
                 if($img['src']==='') continue;
@@ -600,7 +596,7 @@ include dirname(__DIR__).'/partials_header.php';
     <form method="get" class="robot-lookup-search">
       <div>
         <label style="margin-top:0">Team number or name</label>
-        <input type="search" name="q" value="<?=e($q!==''?$q:($team>0?(string)$team:''))?>" placeholder="6369 or Mercenaries" autofocus>
+        <input type="search" name="q" value="<?=e($q!==''?$q:($team>0?(string)$team:''))?>" placeholder="Robot number or team name" autofocus>
       </div>
       <button type="submit"><i class="fa-solid fa-magnifying-glass"></i> Look Up Robot</button>
     </form>
@@ -640,7 +636,7 @@ include dirname(__DIR__).'/partials_header.php';
       <div class="card">
         <div class="robot-lookup-identity">
           <?php if($tbaAvatar!==''):?>
-            <img class="robot-lookup-avatar" src="<?=e($tbaAvatar)?>" alt="<?=e('Team '.$team.' TBA avatar')?>">
+            <img class="robot-lookup-avatar" src="<?=e($tbaAvatar)?>" alt="<?=e('Team '.$team.' logo')?>">
           <?php endif;?>
           <div>
             <div class="module-eyebrow"><span>FRC #<?=e($team)?></span><small>Robot Profile</small></div>
@@ -656,7 +652,7 @@ include dirname(__DIR__).'/partials_header.php';
               <?php if(!empty($tbaTeam['website'])):?><a class="btn secondary" href="<?=e($tbaTeam['website'])?>" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> Team Website</a><?php endif;?>
               <a class="btn secondary" href="<?=e('https://www.thebluealliance.com/team/'.$team)?>" target="_blank" rel="noopener"><i class="fa-solid fa-bolt"></i> View on TBA</a>
             </div>
-            <div class="robot-lookup-tba-note">Team identity and TBA media are powered by The Blue Alliance.</div>
+            <div class="robot-lookup-tba-note">Team identity and media are powered by The Blue Alliance. Team logos are served from Neptune's persistent local cache.</div>
           </div>
         </div>
         <?php if($tbaError && !$tbaTeam):?><div class="notice" style="margin-top:12px">TBA is unavailable right now. Neptune scouting data is still shown below.</div><?php endif;?>

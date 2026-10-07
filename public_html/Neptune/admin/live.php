@@ -319,12 +319,11 @@ async function runMatchControl(op){
   if(controlBusy)return;
 
   if(op==='ready'&&currentMatchState==='ended'){
-    const ok=window.NeptuneUI&&typeof NeptuneUI.confirm==='function'
-      ? await NeptuneUI.confirm(
-          'Re-scout this match?\n\nAll scouting actions from the current run will be voided and removed from analytics. A clean new run will start at 0 actions / 0 points.',
-          {title:'Start a clean scouting run',confirmText:'Re-scout match',danger:true}
-        )
-      : window.confirm('Re-scout this match? The current scouting run will be voided.');
+    if(!window.NeptuneUI?.confirm){console.error('Neptune shared UI is unavailable.');return;}
+    const ok=await NeptuneUI.confirm(
+      'Re-scout this match?\n\nAll scouting actions from the current run will be voided and removed from analytics. A clean new run will start at 0 actions / 0 points.',
+      {title:'Start a clean scouting run',confirmText:'Re-scout match',danger:true}
+    );
     if(!ok)return;
   }
 

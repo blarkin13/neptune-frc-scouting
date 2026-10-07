@@ -117,10 +117,10 @@ if($eventKey!=='') $canonicalPath.='&event='.rawurlencode($eventKey);
 $canonical=ar_abs_url($canonicalPath);
 
 if($viewEvent){
-    $seoTitle=$viewEvent['name'].' '.$year.' FRC Public EPA Ratings | Neptune AUGUR';
+    $seoTitle=$viewEvent['name'].' '.$year.' FRC EPA Ratings | Neptune AUGUR';
     $seoDescription='FRC EPA ratings for '.$viewEvent['name'].' ('.$year.'): overall, autonomous, teleop and endgame EPA calculated by Neptune AUGUR from archived public The Blue Alliance match data.';
 }else{
-    $seoTitle=$year.' FRC Public EPA Ratings — Auto, Teleop & Endgame | Neptune AUGUR';
+    $seoTitle=$year.' FRC EPA Ratings — Auto, Teleop & Endgame | Neptune AUGUR';
     $seoDescription='Browse '.$year.' FIRST Robotics Competition EPA ratings from Neptune AUGUR, including overall, autonomous, teleop and endgame EPA calculated from archived public The Blue Alliance match results.';
 }
 $ogImage=ar_abs_url('images/neptune-og.png');
@@ -131,8 +131,8 @@ foreach($rows as $r){
     if($u>$lastUpdated) $lastUpdated=$u;
 }
 $datasetName=$viewEvent
-    ? $viewEvent['name'].' '.$year.' FRC Public EPA Ratings'
-    : $year.' FRC Public EPA Ratings';
+    ? $viewEvent['name'].' '.$year.' FRC EPA Ratings'
+    : $year.' FRC EPA Ratings';
 
 $structuredData=[
     '@context'=>'https://schema.org',
@@ -200,7 +200,7 @@ $structuredData=[
                 [
                     '@type'=>'ListItem',
                     'position'=>2,
-                    'name'=>'Public EPA Ratings',
+                    'name'=>'EPA Ratings',
                     'item'=>$canonical,
                 ],
             ],
@@ -209,7 +209,7 @@ $structuredData=[
 ];
 
 if($viewer){
-    $pageTitle='Public EPA Ratings';
+    $pageTitle='EPA Ratings';
     $moduleName='AUGUR';
     include dirname(__DIR__).'/partials_header.php';
 }else{
@@ -223,7 +223,7 @@ if($viewer){
 <meta name="description" content="<?=e($seoDescription)?>">
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
 <link rel="canonical" href="<?=e($canonical)?>">
-<link rel="alternate" type="application/json" title="Neptune Public EPA Ratings API" href="<?=e(ar_abs_url('api/augur-ratings.php?year='.rawurlencode((string)$year)))?>">
+<link rel="alternate" type="application/json" title="Neptune EPA Ratings API" href="<?=e(ar_abs_url('api/augur-ratings.php?year='.rawurlencode((string)$year)))?>">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Neptune">
@@ -235,7 +235,7 @@ if($viewer){
 <meta property="og:image:secure_url" content="<?=e($ogImage)?>">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Neptune AUGUR FRC Public EPA Ratings">
+<meta property="og:image:alt" content="Neptune AUGUR FRC EPA Ratings">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="<?=e($seoTitle)?>">
@@ -332,6 +332,16 @@ if($viewer){
   .ar-table td::before{content:attr(data-label);font-size:.65rem;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
   .ar-table td:nth-child(n){width:100%}
 }
+
+.sort-mark{font-size:.72em;opacity:.7;margin-left:3px}
+th[data-sortable]{cursor:pointer;user-select:none}
+th[data-sortable]:hover .sort-label,th[data-sortable]:focus .sort-label{color:var(--text)}
+th[data-sortable]:focus{outline:2px solid var(--accent);outline-offset:-2px}
+.ratings-mobile-sort{display:none;gap:8px;align-items:end;margin:0 0 10px}
+.ratings-mobile-sort label{flex:1;margin:0}
+.ratings-mobile-sort select{width:100%}
+@media(max-width:820px){.ratings-mobile-sort{display:flex}}
+
 </style>
 
 <div class="ar-page">
@@ -347,33 +357,33 @@ if($viewer){
 
 <header class="ar-head">
   <div>
-    <div class="ar-brand">Neptune · Public Ratings</div>
-    <h1>Public EPA Ratings</h1>
+    <h1>EPA Ratings</h1>
     <p>Overall, autonomous, teleop, and endgame EPA calculated from public TBA match results and stored in Neptune's shared historical archive. Private scouting data is never exposed here.</p>
   </div>
   <div class="ar-actions">
+    <a class="btn secondary" href="<?=e(base_url('analytics/depa-beta.php?year='.$year.($eventKey!==''?'&event='.rawurlencode($eventKey):'')))?>"><i class="fa-solid fa-shield-halved"></i> Neptune D-EPA</a>
     <a class="btn secondary" href="#developer-api"><i class="fa-solid fa-code"></i> Developer API</a>
     <?php if($canManage):?>
-      <a class="btn secondary" href="<?=e(base_url('admin/augur-epa-archive.php'))?>"><i class="fa-solid fa-box-archive"></i> Archive Manager</a>
+      <a class="btn secondary" href="<?=e(base_url('admin/augur-operations.php?tab=archive'))?>"><i class="fa-solid fa-screwdriver-wrench"></i> AUGUR Operations</a>
     <?php endif;?>
   </div>
 </header>
 
 <?php if(!$ready):?>
-<div class="notice bad"><b>Public EPA Archive is not installed.</b> Import <code>sql/2026-09-21_augur-epa-archive-v3.sql</code>.</div>
+<div class="notice bad"><b>EPA Archive is not installed.</b> Import <code>sql/2026-09-21_augur-epa-archive-v3.sql</code>.</div>
 <?php else:?>
 
 <section class="card" style="padding:14px">
   <form method="get" class="ar-filter">
     <div>
       <label>Season</label>
-      <select name="year">
+      <select name="year" onchange="this.form.submit()">
         <?php foreach($years as $y):?><option value="<?=$y?>" <?=$year===$y?'selected':''?>><?=$y?></option><?php endforeach;?>
       </select>
     </div>
     <div>
       <label>View</label>
-      <select name="event">
+      <select name="event" onchange="this.form.submit()">
         <option value="">Season ratings</option>
         <?php foreach($events as $ev):?>
           <option value="<?=e($ev['tba_event_key'])?>" <?=$eventKey===(string)$ev['tba_event_key']?'selected':''?>>
@@ -382,7 +392,6 @@ if($viewer){
         <?php endforeach;?>
       </select>
     </div>
-    <button type="submit"><i class="fa-solid fa-filter"></i> Load</button>
   </form>
 
   <?php if($viewEvent):?>
@@ -404,24 +413,25 @@ if($viewer){
   <?php endif;?>
 </section>
 
-<section class="card" style="margin-top:14px;overflow:hidden">
+<section class="card ratings-sort-scope" style="margin-top:14px;overflow:hidden">
+  <div class="ratings-mobile-sort"><label>Sort by<select data-sort-select></select></label><button type="button" class="btn secondary" data-sort-dir title="Reverse sort"><i class="fa-solid fa-arrow-down-up-across-line"></i></button></div>
   <div class="ar-table-wrap">
-    <table class="ar-table">
+    <table class="ar-table" data-sortable-table>
       <caption class="sr-only"><?=e($datasetName)?></caption>
       <thead>
         <tr>
-          <th>Rank</th>
-          <th>Team</th>
+          <th data-sort-kind="number">Rank</th>
+          <th data-sort-kind="number">Team</th>
           <th>Team Name</th>
           <th>City</th>
           <th>Country</th>
-          <th>Public EPA</th>
-          <th>Auto</th>
-          <th>Teleop</th>
-          <th>Endgame</th>
-          <th>Trend</th>
-          <th>Confidence</th>
-          <th>Matches</th>
+          <th data-sort-kind="number">EPA</th>
+          <th data-sort-kind="number">Auto</th>
+          <th data-sort-kind="number">Teleop</th>
+          <th data-sort-kind="number">Endgame</th>
+          <th data-sort-kind="number">Trend</th>
+          <th data-sort-kind="number">Confidence</th>
+          <th data-sort-kind="number">Matches</th>
           <th>Record</th>
         </tr>
       </thead>
@@ -432,23 +442,24 @@ if($viewer){
         $trend=(float)($r['trend']??0);
       ?>
         <tr>
-          <td class="ar-rank" data-label="Rank">#<?=$i+1?></td>
-          <td class="ar-team" data-label="Team"><b>#<?=e($teamNo)?></b></td>
+          <td class="ar-rank" data-label="Rank" data-sort="<?=$i+1?>">#<?=$i+1?></td>
+          <td class="ar-team" data-label="Team" data-sort="<?=$teamNo?>"><b>#<?=e($teamNo)?></b></td>
           <td class="ar-team-name" data-label="Team Name"><?=e(($meta['nickname']??'')!==''?($meta['nickname']??''):(($meta['name']??'')!==''?($meta['name']??''):'—'))?></td>
           <td class="ar-location" data-label="City"><?=e($meta['city']??'—')?></td>
           <td class="ar-location" data-label="Country"><?=e($meta['country']??'—')?></td>
-          <td data-label="Public EPA"><b><?=ar_num($r['rating'])?></b></td>
-          <td data-label="Auto"><?=ar_num($r['auto_rating'])?></td>
-          <td data-label="Teleop"><?=ar_num($r['teleop_rating'])?></td>
-          <td data-label="Endgame"><?=ar_num($r['endgame_rating'])?></td>
-          <td data-label="Trend" class="ar-trend <?=$trend>0.05?'up':($trend<-0.05?'down':'')?>"><?=$trend>0.05?'↑ ':($trend<-0.05?'↓ ':'→ ')?><?=ar_num(abs($trend),2)?></td>
-          <td data-label="Confidence"><?=ar_num($r['confidence'],0)?>%</td>
-          <td data-label="Matches"><?=e($r['matches_played'])?></td>
-          <td data-label="Record"><?=e((int)$r['wins'].'-'.(int)$r['losses'].'-'.(int)$r['ties'])?></td>
+          <td data-label="EPA" data-sort="<?=e((string)($r['rating']??''))?>"><b><?=ar_num($r['rating'])?></b></td>
+          <td data-label="Auto" data-sort="<?=e((string)($r['auto_rating']??''))?>"><?=ar_num($r['auto_rating'])?></td>
+          <td data-label="Teleop" data-sort="<?=e((string)($r['teleop_rating']??''))?>"><?=ar_num($r['teleop_rating'])?></td>
+          <td data-label="Endgame" data-sort="<?=e((string)($r['endgame_rating']??''))?>"><?=ar_num($r['endgame_rating'])?></td>
+          <td data-label="Trend" data-sort="<?=$trend?>" class="ar-trend <?=$trend>0.05?'up':($trend<-0.05?'down':'')?>"><?=$trend>0.05?'↑ ':($trend<-0.05?'↓ ':'→ ')?><?=ar_num(abs($trend),2)?></td>
+          <td data-label="Confidence" data-sort="<?=e((string)($r['confidence']??''))?>"><?=ar_num($r['confidence'],0)?>%</td>
+          <td data-label="Matches" data-sort="<?=e((string)($r['matches_played']??0))?>"><?=e($r['matches_played'])?></td>
+          <?php $recTotal=(int)$r['wins']+(int)$r['losses']+(int)$r['ties'];$recPct=$recTotal>0?(((int)$r['wins']+0.5*(int)$r['ties'])/$recTotal):0;?>
+          <td data-label="Record" data-sort="<?=$recPct?>"><?=e((int)$r['wins'].'-'.(int)$r['losses'].'-'.(int)$r['ties'])?></td>
         </tr>
       <?php endforeach;?>
       <?php if(!$rows):?>
-        <tr><td colspan="13"><div class="notice">No Public EPA ratings are archived for this view yet.</div></td></tr>
+        <tr><td colspan="13"><div class="notice">No EPA ratings are archived for this view yet.</div></td></tr>
       <?php endif;?>
       </tbody>
     </table>
@@ -457,7 +468,7 @@ if($viewer){
 
 <section class="card ar-api" id="developer-api">
   <h2 style="margin-top:0"><i class="fa-solid fa-code"></i> Developer API</h2>
-  <p class="ar-note">The API exists so other FRC teams, dashboards, scouting apps, spreadsheets, and websites can use Neptune's public EPA data without scraping this page. It returns read-only JSON from Neptune's local archive, never exposes private scouting data, and public requests never trigger a TBA download.</p>
+  <p class="ar-note">The API exists so other FRC teams, dashboards, scouting apps, spreadsheets, and websites can use Neptune's EPA data without scraping this page. It returns read-only JSON from Neptune's local archive, never exposes private scouting data, and public requests never trigger a TBA download.</p>
 
   <div class="ar-api-actions">
     <a class="btn secondary" href="<?=e($api.'?year='.$year)?>" target="_blank" rel="noopener"><i class="fa-solid fa-brackets-curly"></i> View <?=$year?> JSON</a>
@@ -467,7 +478,7 @@ if($viewer){
   <code><?=e($api.'?events=1&year='.$year)?></code>
   <code><?=e($api.'?year='.$year)?></code>
   <?php if($eventKey):?><code><?=e($api.'?event='.rawurlencode($eventKey))?></code><?php endif;?>
-  <code><?=e($api.'?year='.$year.'&team=6369')?></code>
+  <code><?=e($api.'?year='.$year.'&team=TEAM_NUMBER')?></code>
 </section>
 
 <p class="ar-note" style="margin-top:14px">
@@ -478,6 +489,82 @@ if($viewer){
 
 <footer class="ar-footer">EPA by Neptune · AUGUR strategy analytics</footer>
 </div>
+
+
+<script>
+(function(){
+  function valueFor(td){
+    if(!td) return {empty:true,num:null,text:''};
+    const explicit=td.getAttribute('data-sort');
+    const raw=(explicit!==null?explicit:td.textContent).trim();
+    if(raw===''||raw==='—') return {empty:true,num:null,text:''};
+    const cleaned=raw.replace(/[,#%+]/g,'').replace(/\s+(orgs?|events?|matches?)$/i,'').trim();
+    if(/^[-+]?\d+(?:\.\d+)?$/.test(cleaned)) return {empty:false,num:Number(cleaned),text:raw.toLowerCase()};
+    return {empty:false,num:null,text:raw.toLowerCase()};
+  }
+  function sortTable(table,col,dir){
+    const tbody=table.tBodies[0]; if(!tbody) return;
+    const rows=Array.from(tbody.rows).filter(r=>r.cells.length>1);
+    rows.sort((a,b)=>{
+      const av=valueFor(a.cells[col]), bv=valueFor(b.cells[col]);
+      if(av.empty!==bv.empty) return av.empty?1:-1;
+      let cmp=0;
+      if(av.num!==null && bv.num!==null) cmp=av.num-bv.num;
+      else cmp=av.text.localeCompare(bv.text,undefined,{numeric:true,sensitivity:'base'});
+      return dir==='asc'?cmp:-cmp;
+    });
+    rows.forEach(r=>tbody.appendChild(r));
+    table.querySelectorAll('th[data-sortable]').forEach((th,i)=>{
+      th.setAttribute('aria-sort',i===col?(dir==='asc'?'ascending':'descending'):'none');
+      const mark=th.querySelector('.sort-mark');
+      if(mark) mark.textContent=i===col?(dir==='asc'?'▲':'▼'):'↕';
+    });
+    const select=table.closest('.ratings-sort-scope')?.querySelector('[data-sort-select]');
+    if(select) select.value=String(col);
+  }
+  document.querySelectorAll('table[data-sortable-table]').forEach(table=>{
+    const headers=Array.from(table.querySelectorAll('thead th'));
+    headers.forEach((th,col)=>{
+      th.setAttribute('data-sortable','1');
+      th.setAttribute('tabindex','0');
+      th.setAttribute('role','button');
+      th.setAttribute('aria-sort','none');
+      th.title='Sort by '+th.textContent.trim();
+      th.innerHTML='<span class="sort-label">'+th.innerHTML+'</span> <span class="sort-mark" aria-hidden="true">↕</span>';
+      const go=()=>{
+        const current=table.getAttribute('data-sort-col');
+        const currentDir=table.getAttribute('data-sort-dir')||'desc';
+        const numeric=headers[col].getAttribute('data-sort-kind')==='number';
+        const dir=(current===String(col))?(currentDir==='asc'?'desc':'asc'):(numeric?'desc':'asc');
+        table.setAttribute('data-sort-col',String(col));
+        table.setAttribute('data-sort-dir',dir);
+        sortTable(table,col,dir);
+      };
+      th.addEventListener('click',go);
+      th.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
+    });
+    const scope=table.closest('.ratings-sort-scope');
+    if(scope){
+      const select=scope.querySelector('[data-sort-select]');
+      const dirBtn=scope.querySelector('[data-sort-dir]');
+      if(select){
+        headers.forEach((th,i)=>{
+          const o=document.createElement('option'); o.value=String(i); o.textContent=th.querySelector('.sort-label')?.textContent.trim()||th.textContent.trim(); select.appendChild(o);
+        });
+        select.addEventListener('change',()=>{
+          const col=Number(select.value); const numeric=headers[col]?.getAttribute('data-sort-kind')==='number';
+          const dir=numeric?'desc':'asc'; table.setAttribute('data-sort-col',String(col)); table.setAttribute('data-sort-dir',dir); sortTable(table,col,dir);
+        });
+      }
+      if(dirBtn) dirBtn.addEventListener('click',()=>{
+        const col=Number(table.getAttribute('data-sort-col')||select?.value||0);
+        const dir=(table.getAttribute('data-sort-dir')||'desc')==='asc'?'desc':'asc';
+        table.setAttribute('data-sort-col',String(col)); table.setAttribute('data-sort-dir',dir); sortTable(table,col,dir);
+      });
+    }
+  });
+})();
+</script>
 
 <?php
 if($viewer){

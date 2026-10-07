@@ -33,6 +33,113 @@ function base_url(string $path=''): string {
     return rtrim($config['app']['base_url'] ?? '/Neptune','/') . '/' . ltrim($path,'/');
 }
 function e($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+
+function neptune_migrations_ensure_table(PDO $pdo): void {
+    static $done=false;
+    if($done)return;
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS neptune_migrations (
+        migration_key VARCHAR(190) NOT NULL PRIMARY KEY,
+        applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        package VARCHAR(255) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $stmt=$pdo->prepare(
+        "INSERT IGNORE INTO neptune_migrations(migration_key,applied_at,package)
+         VALUES(?,UTC_TIMESTAMP(),?)"
+    );
+    $stmt->execute([
+        'core.migration-tracking.v1',
+        'Neptune_Migration_Tracking_v1_Maintenance_Console.zip',
+    ]);
+
+    $done=true;
+}
+function neptune_migration_is_applied(PDO $pdo,string $migrationKey): bool {
+    neptune_migrations_ensure_table($pdo);
+    $stmt=$pdo->prepare('SELECT 1 FROM neptune_migrations WHERE migration_key=? LIMIT 1');
+    $stmt->execute([$migrationKey]);
+    return (bool)$stmt->fetchColumn();
+}
+function neptune_migration_record(PDO $pdo,string $migrationKey,string $package): bool {
+    neptune_migrations_ensure_table($pdo);
+    $stmt=$pdo->prepare(
+        "INSERT IGNORE INTO neptune_migrations(migration_key,applied_at,package)
+         VALUES(?,UTC_TIMESTAMP(),?)"
+    );
+    $stmt->execute([$migrationKey,substr($package,0,255)]);
+    return $stmt->rowCount()>0;
+}
+function neptune_migration_apply(PDO $pdo,string $migrationKey,string $package,callable $apply): bool {
+    neptune_migrations_ensure_table($pdo);
+    if(neptune_migration_is_applied($pdo,$migrationKey))return false;
+
+    // Neptune migrations are intentionally small and idempotent. MySQL DDL can
+    // auto-commit, so a failed migration is not recorded; its existing guards
+    // make it safe to retry on the next request.
+    $apply();
+    neptune_migration_record($pdo,$migrationKey,$package);
+    return true;
+}
+function neptune_migration_recent(PDO $pdo,int $limit=25): array {
+    neptune_migrations_ensure_table($pdo);
+    $limit=max(1,min(200,$limit));
+    return $pdo->query(
+        'SELECT migration_key,applied_at,package
+         FROM neptune_migrations
+         ORDER BY applied_at DESC,migration_key DESC
+         LIMIT '.$limit
+    )->fetchAll();
+}
+function neptune_platform_column_exists(PDO $pdo,string $table,string $column): bool {
+    $s=$pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?');
+    $s->execute([$table,$column]);
+    return (int)$s->fetchColumn()>0;
+}
+function neptune_platform_index_exists(PDO $pdo,string $table,string $index): bool {
+    $s=$pdo->prepare('SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=?');
+    $s->execute([$table,$index]);
+    return (int)$s->fetchColumn()>0;
+}
+function neptune_platform_ensure_schema(PDO $pdo): void {
+    static $done=false;
+    if($done)return;
+
+    neptune_migration_apply(
+        $pdo,
+        'platform.organization-status.v1',
+        'Neptune_Platform_Administration_v1_Maintenance_Console.zip',
+        function() use ($pdo): void {
+            if(!neptune_platform_column_exists($pdo,'organizations','platform_status')){
+                $pdo->exec("ALTER TABLE organizations ADD COLUMN platform_status VARCHAR(16) NOT NULL DEFAULT 'active' AFTER slug");
+            }
+            if(!neptune_platform_column_exists($pdo,'organizations','suspended_at')){
+                $pdo->exec("ALTER TABLE organizations ADD COLUMN suspended_at DATETIME NULL AFTER platform_status");
+            }
+            if(!neptune_platform_column_exists($pdo,'organizations','suspended_by')){
+                $pdo->exec("ALTER TABLE organizations ADD COLUMN suspended_by BIGINT UNSIGNED NULL AFTER suspended_at");
+            }
+            if(!neptune_platform_column_exists($pdo,'organizations','suspension_reason')){
+                $pdo->exec("ALTER TABLE organizations ADD COLUMN suspension_reason VARCHAR(255) NULL AFTER suspended_by");
+            }
+            if(!neptune_platform_index_exists($pdo,'organizations','idx_organizations_platform_status')){
+                $pdo->exec("ALTER TABLE organizations ADD KEY idx_organizations_platform_status (platform_status)");
+            }
+        }
+    );
+
+    $done=true;
+}
+function neptune_organization_platform_status(PDO $pdo,int $organizationId): string {
+    neptune_platform_ensure_schema($pdo);
+    if($organizationId<=0)return 'missing';
+    $s=$pdo->prepare('SELECT platform_status FROM organizations WHERE id=? LIMIT 1');
+    $s->execute([$organizationId]);
+    $status=$s->fetchColumn();
+    if($status===false)return 'missing';
+    $status=strtolower(trim((string)$status));
+    return in_array($status,['active','suspended'],true)?$status:'active';
+}
 function json_response(array $data, int $status=200): never {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
@@ -45,8 +152,18 @@ function uuidv4(): string {
 }
 function current_user(): ?array { return $_SESSION['user'] ?? null; }
 function require_login(): array {
+    global $pdo;
     $u=current_user();
     if(!$u){ header('Location: '.base_url('index.php')); exit; }
+
+    $orgId=(int)($u['organization_id']??0);
+    if($orgId>0 && neptune_organization_platform_status($pdo,$orgId)!=='active'){
+        unset($_SESSION['user']);
+        $_SESSION['auth_error']='This Neptune organization is currently suspended. Contact the platform administrator.';
+        header('Location: '.base_url('index.php'));
+        exit;
+    }
+
     if(!empty($u['must_change_password'])){
         $script=basename((string)($_SERVER['SCRIPT_NAME']??''));
         if(!in_array($script,['change-password.php','logout.php'],true)){

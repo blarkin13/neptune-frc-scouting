@@ -176,3 +176,86 @@
     form.submit();
   }, true);
 })();
+
+
+/* 2026-09-28 EPA terminology -------------------------------------------
+   "Public EPA" is an implementation/source distinction, not the UI name.
+   Normalize visible UI copy to EPA while leaving database/API identifiers
+   such as public_epa untouched. Also handles dynamically-rendered modals. */
+(() => {
+  const replacements = [
+    [/\bPublic EPA Archive\b/g, 'EPA Archive'],
+    [/\bPublic EPA Ratings\b/g, 'EPA Ratings'],
+    [/\bPublic EPA\b/g, 'EPA'],
+    [/\bpublic EPA archive\b/g, 'EPA archive'],
+    [/\bpublic EPA ratings\b/g, 'EPA ratings'],
+    [/\bpublic EPA\b/g, 'EPA']
+  ];
+
+  const normalizeText = value => {
+    let out = String(value ?? '');
+    for (const [pattern, replacement] of replacements) out = out.replace(pattern, replacement);
+    return out;
+  };
+
+  const skipTextParent = parent => !parent || ['SCRIPT','STYLE','CODE','PRE','TEXTAREA'].includes(parent.nodeName);
+
+  const normalizeElement = root => {
+    if (!root) return;
+    if (root.nodeType === Node.TEXT_NODE) {
+      if (skipTextParent(root.parentElement)) return;
+      const next = normalizeText(root.nodeValue);
+      if (next !== root.nodeValue) root.nodeValue = next;
+      return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
+
+    if (root.nodeType === Node.ELEMENT_NODE) {
+      for (const attr of ['title','aria-label','placeholder','data-label']) {
+        if (!root.hasAttribute?.(attr)) continue;
+        const current = root.getAttribute(attr);
+        const next = normalizeText(current);
+        if (next !== current) root.setAttribute(attr, next);
+      }
+    }
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (skipTextParent(node.parentElement)) continue;
+      const next = normalizeText(node.nodeValue);
+      if (next !== node.nodeValue) node.nodeValue = next;
+    }
+
+    root.querySelectorAll?.('[title],[aria-label],[placeholder],[data-label]').forEach(el => {
+      for (const attr of ['title','aria-label','placeholder','data-label']) {
+        if (!el.hasAttribute(attr)) continue;
+        const current = el.getAttribute(attr);
+        const next = normalizeText(current);
+        if (next !== current) el.setAttribute(attr, next);
+      }
+    });
+  };
+
+  const run = () => {
+    document.title = normalizeText(document.title);
+    document.querySelectorAll('meta[name="description"],meta[property^="og:"],meta[name^="twitter:"]').forEach(meta => {
+      const current = meta.getAttribute('content');
+      if (current) meta.setAttribute('content', normalizeText(current));
+    });
+    normalizeElement(document.body);
+
+    const observer = new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type === 'characterData') normalizeElement(record.target);
+        for (const node of record.addedNodes) normalizeElement(node);
+      }
+    });
+    observer.observe(document.body, {subtree:true, childList:true, characterData:true});
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true});
+  else run();
+})();
+
+/* Page heroes are composed server-side by partials_hero.php before first paint. */

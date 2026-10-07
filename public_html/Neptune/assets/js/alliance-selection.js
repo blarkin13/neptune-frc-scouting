@@ -7,18 +7,18 @@
   const app = $('#allianceSelectionApp');
   if (!app) return;
 
-  const ui = window.NeptuneUI || {
-    toast: msg => window.alert(msg),
-    confirm: async () => true,
-    prompt: async (_msg, opts = {}) => window.prompt(_msg, opts.value || '')
-  };
+  const ui = window.NeptuneUI;
+  if (!ui) {
+    console.error('Neptune shared UI failed to load; Alliance Selection actions are unavailable.');
+    return;
+  }
 
   const els = {
     draftTabs: $('#draftTabs'), board: $('#allianceBoard'), teamList: $('#teamList'), teamSearch: $('#teamSearch'),
     teamPoolSummary: $('#teamPoolSummary'), teamActionBar: $('#teamActionBar'), selectedTeamLabel: $('#selectedTeamLabel'),
     selectedTeamStatus: $('#selectedTeamStatus'), selectedTeamDecision: $('#selectedTeamDecision'), selectedTeamTags: $('#selectedTeamTagsPanel'), selectedTeamMatches: $('#selectedTeamMatchesPanel'), selectedTeamDetail: $('#selectedTeamDetailPanel'), selectedTeamModalTabs: $('#selectedTeamModalTabs'), selectedTeamClose: $('#selectedTeamCloseBtn'), selectedTeamHint: $('#selectedTeamHint'),
     makeSelection: $('#makeSelectionBtn'), favorite: $('#favoriteBtn'),
-    decline: $('#declineBtn'), dnp: $('#dnpBtn'), broken: $('#brokenBtn'), potential: $('#alliancePotentialPane'), potentialDialog: $('#alliancePotentialDialog'),
+    alreadyPicked: $('#alreadyPickedBtn'), decline: $('#declineBtn'), dnp: $('#dnpBtn'), broken: $('#brokenBtn'), potential: $('#alliancePotentialPane'), potentialDialog: $('#alliancePotentialDialog'),
     newDraft: $('#newDraftBtn'), cloneDraft: $('#cloneDraftBtn'), draftMenu: $('#draftMenuBtn'), seedCaptains: $('#seedCaptainsBtn'),
     undo: $('#undoDraftBtn'), redo: $('#redoDraftBtn'), mode: $('#modeBtn'),
     modePill: $('#draftModePill'), onlinePill: $('#allianceOnlinePill'),
@@ -27,9 +27,10 @@
     offlineClear: $('#allianceOfflineClearBtn'), offlineProgress: $('#allianceOfflineProgress'), offlineProgressLabel: $('#allianceOfflineProgressLabel'),
     offlineProgressCount: $('#allianceOfflineProgressCount'), offlineProgressBar: $('#allianceOfflineProgressBar'), offlineReady: $('#allianceOfflineReady'),
     offlineSize: $('#allianceOfflineSize'), offlineSizeNote: $('#allianceOfflineSizeNote'), offlineSizeBtn: $('#allianceOfflineSizeBtn'),
-    workspaceShell: $('#allianceWorkspaceShell'), fullscreen: $('#allianceFullscreenBtn'), fullscreenLabel: $('#allianceFullscreenLabel'),
+    workspaceShell: $('#allianceWorkspaceShell'), boardCard: $('.alliance-board-card'), fullscreen: $('#allianceFullscreenBtn'), fullscreenLabel: $('#allianceFullscreenLabel'),
     captainPickToggle: $('#captainPickToggle'), captainPickToggleLabel: $('#captainPickToggleLabel'),
-    pickDrawerBtn: $('#alliancePickDrawerBtn'), pickDrawer: $('#alliancePickDrawer'), pickDrawerClose: $('#alliancePickDrawerCloseBtn'), pickLists: $('#alliancePickLists'),
+    pickDrawerBtn: $('#alliancePickDrawerBtn'), pickDrawer: $('#alliancePickDrawer'), pickDrawerPull: $('#alliancePickDrawerPull'), pickDrawerClose: $('#alliancePickDrawerCloseBtn'), pickDrawerExpand: $('#alliancePickDrawerExpandBtn'), pickDrawerExpandLabel: $('#alliancePickDrawerExpandLabel'), pickLists: $('#alliancePickLists'),
+    pickTeamDialog: $('#alliancePickTeamDialog'), pickTeamDialogTier: $('#alliancePickTeamDialogTier'), pickTeamSearch: $('#alliancePickTeamSearch'), pickTeamList: $('#alliancePickTeamList'), pickTeamDialogClose: $('#alliancePickTeamDialogClose'),
     matchupDialog: $('#matchupDialog'), matchupBody: $('#matchupBody'), matchupTitle: $('#matchupDialogTitle'), matchupClose: $('#matchupCloseBtn'),
     matchupSettings: $('#matchupSettingsDialog'), matchupSettingsBtn: $('#matchupSettingsBtn'), matchupSettingsClose: $('#matchupSettingsCloseBtn'), matchupSettingsForm: $('#matchupSettingsForm'), matchupSettingsSave: $('#matchupSettingsSaveBtn'), matchupSettingsReset: $('#matchupSettingsResetBtn')
   };
@@ -62,6 +63,8 @@
   let selectedTeam = null;
   let selectedModalTab = 'overview';
   let activeSlot = { alliance: 1, slot: 'pick1' };
+  let pickTeamTarget = null;
+  let activePickTierMobile = '1';
   let focusedAlliance = 1;
   let filter = 'available';
   const paneState = [{ team: null, data: null, tab: 'event' }];
@@ -689,7 +692,7 @@
     const replacement = ranked.find(team => {
       const n = Number(team.team);
       const st = statusFor(n).state;
-      return !used.has(n) && !['declined', 'broken', 'do_not_pick'].includes(st);
+      return !used.has(n) && !['already_picked', 'declined', 'broken', 'do_not_pick'].includes(st);
     });
     state.slots[8] ||= { captain: null, pick1: null, pick2: null, backup: null };
     state.slots[8].captain = replacement ? Number(replacement.team) : null;
@@ -752,6 +755,11 @@
         if (team > 0) state.pick_lists[listTier] = state.pick_lists[listTier].map(value => Number(value || 0) === team ? null : value);
       }
       if (pickListTiers.includes(tier) && index >= 0 && index < 6) state.pick_lists[tier][index] = team > 0 ? team : null;
+    } else if (op === 'set_pick_list_taken') {
+      const team = Number(payload.team || 0);
+      const taken = Number(payload.taken || 0) === 1;
+      state.pick_list_taken = Array.isArray(state.pick_list_taken) ? state.pick_list_taken.map(Number).filter(value => value > 0 && value !== team) : [];
+      if (taken && team > 0) state.pick_list_taken.push(team);
     }
     if (render) renderAll();
   }
@@ -843,10 +851,10 @@
     return state?.statuses?.[team] || state?.statuses?.[String(team)] || { state: 'available', favorite: false };
   }
   function stateLabel(value) {
-    return ({ available: 'Available', captain_locked: 'Captain Locked', selected: 'Selected', declined: 'Declined', broken: 'Broken', do_not_pick: 'Do Not Pick' })[value] || 'Available';
+    return ({ available: 'Available', captain_locked: 'Captain Locked', selected: 'Selected', already_picked: 'Already Picked', declined: 'Declined', broken: 'Broken', do_not_pick: 'Do Not Pick' })[value] || 'Available';
   }
   function stateIcon(value) {
-    return ({ captain_locked: 'fa-lock', selected: 'fa-circle-check', declined: 'fa-circle-xmark', broken: 'fa-screwdriver-wrench', do_not_pick: 'fa-ban', available: 'fa-circle' })[value] || 'fa-circle';
+    return ({ captain_locked: 'fa-lock', selected: 'fa-circle-check', already_picked: 'fa-handshake', declined: 'fa-circle-xmark', broken: 'fa-screwdriver-wrench', do_not_pick: 'fa-ban', available: 'fa-circle' })[value] || 'fa-circle';
   }
 
   function renderDrafts() {
@@ -945,6 +953,7 @@
         const team = Number(slot.dataset.team || 0);
         if (!team || !editable()) { event.preventDefault(); return; }
         setTeamDragData(event, team);
+        document.body.classList.add('alliance-team-dragging');
       });
       slot.addEventListener('keydown', event => {
         if (event.target !== slot || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -1019,15 +1028,18 @@
     return Array.isArray(raw) ? raw.filter(id => allianceTagById.has(String(id))).map(String) : [];
   }
 
-  function allianceTagChips(team, compact = false) {
+  function allianceTagChips(team, compact = false, maxVisible = null) {
     const ids = allianceTagsForTeam(team);
     if (!ids.length) return '';
-    const visible = compact ? ids.slice(0, 3) : ids;
+    const limit = Number.isFinite(Number(maxVisible)) && Number(maxVisible) > 0
+      ? Number(maxVisible)
+      : (compact ? 3 : ids.length);
+    const visible = ids.slice(0, limit);
     const chips = visible.map(id => {
       const tag = allianceTagById.get(id);
       return `<span class="alliance-strategy-tag ${compact ? 'compact' : ''}" title="${esc(tag.hint)}"><i class="${esc(tag.icon)}"></i><span>${esc(tag.label)}</span></span>`;
     }).join('');
-    return chips + (compact && ids.length > visible.length ? `<span class="alliance-strategy-tag compact more" title="${esc(ids.slice(visible.length).map(id => allianceTagById.get(id)?.label || id).join(', '))}">+${ids.length - visible.length}</span>` : '');
+    return chips + (ids.length > visible.length ? `<span class="alliance-strategy-tag compact more" title="${esc(ids.slice(visible.length).map(id => allianceTagById.get(id)?.label || id).join(', '))}">+${ids.length - visible.length}</span>` : '');
   }
 
   function setTeamDragData(event, team) {
@@ -1057,69 +1069,343 @@
 
   function pickListLabel(tier) { return `${tier}${tier === '1' ? 'st' : tier === '2' ? 'nd' : tier === '3' ? 'rd' : 'th'} Picks`; }
 
+  function pickListSlotLabel(tier, index) {
+    return `${pickListLabel(tier)} · Slot ${Number(index) + 1}`;
+  }
+
+  function pickListManuallyTaken(team) {
+    const n = Number(team || 0);
+    return n > 0 && (Array.isArray(state?.pick_list_taken) ? state.pick_list_taken : []).some(value => Number(value || 0) === n);
+  }
+
+  function pickListLiveMode() {
+    return currentDraft()?.mode === 'live';
+  }
+
+  function pickListIsUnavailable(team) {
+    return pickListLiveMode() && pickListManuallyTaken(team);
+  }
+
+  function assignTeamToPickSlot(tier, index, team, options = {}) {
+    tier = String(tier || '');
+    index = Number(index);
+    team = Number(team || 0);
+    if (!editable() || !state?.draft) return Promise.resolve(null);
+    if (!pickListTiers.includes(tier) || index < 0 || index >= 6 || team < 1) return Promise.resolve(null);
+    return mutate('set_pick_list_slot', {
+      draft_id: state.draft.id,
+      tier,
+      slot_index: index,
+      team
+    }, { queueable: true, toast: options.toast !== false });
+  }
+
+  function setActivePickTierMobile(tier, { scroll = false } = {}) {
+    tier = String(tier || '1');
+    if (!pickListTiers.includes(tier)) tier = '1';
+    activePickTierMobile = tier;
+    document.querySelectorAll('[data-pick-tier-jump]').forEach(button => {
+      const active = String(button.dataset.pickTierJump || '') === tier;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    els.pickLists?.querySelectorAll('.alliance-pick-list-tier').forEach(section => {
+      section.classList.toggle('mobile-active', section.classList.contains(`tier-${tier}`));
+    });
+    if (scroll && window.matchMedia('(min-width:521px)').matches) {
+      const target = els.pickLists?.querySelector(`.alliance-pick-list-tier.tier-${CSS.escape(tier)}`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
   function renderPickDrawer() {
     if (!els.pickLists) return;
-    // Each pick tier owns its own scroll position so all six slots stay reachable
-    // without forcing the entire drawer to move. Preserve positions when state
-    // rerenders after a drop/clear so strategists do not jump back to slot 1.
     const tierScroll = {};
     els.pickLists.querySelectorAll('.alliance-pick-list-tier').forEach(section => {
       const tier = String(section.className.match(/tier-(\d)/)?.[1] || '');
       const scroller = section.querySelector('.alliance-pick-list-slots');
       if (tier && scroller) tierScroll[tier] = scroller.scrollTop;
     });
+
     const lists = state?.pick_lists || {};
     els.pickLists.innerHTML = pickListTiers.map(tier => {
       const rows = Array.isArray(lists[tier]) ? lists[tier] : [];
-      return `<section class="alliance-pick-list-tier tier-${tier}"><div class="alliance-pick-list-tier-head"><span>${esc(pickListLabel(tier))}</span><small>6 slots</small></div><div class="alliance-pick-list-slots">${Array.from({ length: 6 }, (_, index) => {
-        const team = Number(rows[index] || 0);
-        const info = team ? teamByNumber(team) : null;
-        const selectedAdd = !team && selectedTeam ? `<button type="button" class="alliance-pick-use-selected" data-pick-use-selected="1" title="Add selected team #${selectedTeam}"><i class="fa-solid fa-plus"></i> #${selectedTeam}</button>` : '';
-        return `<div class="alliance-pick-list-slot ${team ? 'filled' : ''}" data-pick-tier="${tier}" data-pick-index="${index}" data-pick-team="${team || ''}"><span class="alliance-pick-list-position">${index + 1}</span>${team ? `<button type="button" class="alliance-pick-list-team" data-open-pick-team="${team}" draggable="${editable() ? 'true' : 'false'}"><b>#${team}</b><span>${esc(info?.nickname || 'FRC Team')}</span><small>Nep. EPA ${neptuneEpa(info) == null ? '—' : num(neptuneEpa(info), 1)}</small></button><button type="button" class="alliance-pick-list-clear" data-pick-clear aria-label="Clear ${esc(pickListLabel(tier))} slot ${index + 1}" ${editable() ? '' : 'disabled'}><i class="fa-solid fa-xmark"></i></button>` : `<span class="alliance-pick-list-empty"><i class="fa-solid fa-arrow-down"></i> Drop robot here</span>${selectedAdd}`}</div>`;
-      }).join('')}</div></section>`;
+      return `<section class="alliance-pick-list-tier tier-${tier} ${activePickTierMobile === tier ? 'mobile-active' : ''}">
+        <div class="alliance-pick-list-tier-head"><span>${esc(pickListLabel(tier))}</span><small>6 slots</small></div>
+        <div class="alliance-pick-list-slots">${Array.from({ length: 6 }, (_, index) => {
+          const team = Number(rows[index] || 0);
+          const info = team ? teamByNumber(team) : null;
+          const slotLabel = pickListSlotLabel(tier, index);
+          const liveMode = pickListLiveMode();
+          const unavailable = team ? pickListIsUnavailable(team) : false;
+          const alreadyPicked = team ? statusFor(team).state === 'already_picked' : false;
+          return `<div role="button" tabindex="${editable() ? '0' : '-1'}" draggable="${team && editable() ? 'true' : 'false'}" class="alliance-pick-list-slot ${team ? 'filled' : 'empty'} ${unavailable ? 'taken' : ''} ${alreadyPicked ? 'already-picked' : ''}" data-pick-tier="${tier}" data-pick-index="${index}" data-pick-team="${team || ''}" aria-label="${team ? `Pick list slot ${index + 1}, team ${team}` : `Choose team for ${esc(slotLabel)}`}">
+            <span class="alliance-pick-list-position">${index + 1}</span>
+            ${team
+              ? `<button type="button" class="alliance-pick-list-team" data-open-pick-team="${team}" draggable="false"><b>#${team}</b><span>${esc(info?.nickname || 'FRC Team')}</span><small>Nep. EPA ${neptuneEpa(info) == null ? '—' : num(neptuneEpa(info), 1)}</small></button>
+                 <div class="alliance-pick-list-actions">
+                   ${alreadyPicked ? '<span class="alliance-pick-list-picked-badge"><i class="fa-solid fa-handshake"></i> Picked</span>' : ''}
+                   ${liveMode && !alreadyPicked ? `<button type="button" class="alliance-pick-list-taken ${unavailable ? 'active' : ''}" data-pick-taken data-team="${team}" aria-label="${unavailable ? 'Mark team ' + team + ' available again' : 'Mark team ' + team + ' unavailable'}" aria-pressed="${unavailable ? 'true' : 'false'}" ${editable() ? '' : 'disabled'} title="${unavailable ? 'Mark this team available again' : 'Mark this team unavailable during live alliance selection'}"><i class="fa-solid ${unavailable ? 'fa-rotate-left' : 'fa-circle'}"></i><span>${unavailable ? 'Available' : 'Unavailable'}</span></button>` : ''}
+                   <button type="button" class="alliance-pick-list-clear" data-pick-clear aria-label="Clear ${esc(slotLabel)}" ${editable() ? '' : 'disabled'}><i class="fa-solid fa-xmark"></i></button>
+                 </div>`
+              : `<button type="button" class="alliance-pick-list-choose" data-pick-choose aria-label="Choose team for ${esc(slotLabel)}" ${editable() ? '' : 'disabled'}><i class="fa-solid fa-plus"></i><span><b>Choose team</b><small>Tap, click, or drop a robot here</small></span></button>`}
+          </div>`;
+        }).join('')}</div>
+      </section>`;
     }).join('');
 
     els.pickLists.querySelectorAll('.alliance-pick-list-tier').forEach(section => {
       const tier = String(section.className.match(/tier-(\d)/)?.[1] || '');
       const scroller = section.querySelector('.alliance-pick-list-slots');
-      if (tier && scroller && Number.isFinite(tierScroll[tier])) scroller.scrollTop = tierScroll[tier];
-      if (!scroller) return;
-      scroller.addEventListener('dragover', event => {
+      if (tier && scroller && Number.isFinite(tierScroll[tier]) && !els.pickDrawer?.classList.contains('expanded')) scroller.scrollTop = tierScroll[tier];
+    });
+    setActivePickTierMobile(activePickTierMobile);
+  }
+
+  function pickSlotFromEventTarget(target) {
+    return target?.closest?.('.alliance-pick-list-slot') || null;
+  }
+
+  function openChooserForPickSlot(slot) {
+    if (!slot || !editable()) return;
+    openPickTeamChooser(String(slot.dataset.pickTier || ''), Number(slot.dataset.pickIndex || 0));
+  }
+
+  if (els.pickLists) {
+    els.pickLists.addEventListener('click', async event => {
+      const slot = pickSlotFromEventTarget(event.target);
+      if (!slot) return;
+
+      const takenButton = event.target.closest('[data-pick-taken]');
+      if (takenButton) {
+        event.preventDefault(); event.stopPropagation();
+        if (!editable() || takenButton.disabled) return;
+        const team = Number(takenButton.dataset.team || 0);
+        if (!team) return;
+        const unavailable = !pickListManuallyTaken(team);
+        await mutate('set_pick_list_taken', { draft_id: state.draft.id, team, taken: unavailable ? 1 : 0 }, { queueable: true, toast: false });
+        return;
+      }
+
+      if (event.target.closest('[data-pick-clear]')) {
+        event.preventDefault(); event.stopPropagation();
         if (!editable()) return;
-        const rect = scroller.getBoundingClientRect();
-        const edge = Math.min(46, rect.height * 0.3);
-        if (event.clientY < rect.top + edge) scroller.scrollTop -= 13;
-        else if (event.clientY > rect.bottom - edge) scroller.scrollTop += 13;
-      });
+        await mutate('set_pick_list_slot', { draft_id: state.draft.id, tier: slot.dataset.pickTier, slot_index: slot.dataset.pickIndex, team: 0 }, { queueable: true, toast: false });
+        return;
+      }
+
+      const teamButton = event.target.closest('[data-open-pick-team]');
+      if (teamButton) {
+        event.preventDefault(); event.stopPropagation();
+        selectTeam(Number(teamButton.dataset.openPickTeam), 0, true);
+        return;
+      }
+
+      if (!Number(slot.dataset.pickTeam || 0)) {
+        event.preventDefault();
+        openChooserForPickSlot(slot);
+      }
     });
 
-    els.pickLists.querySelectorAll('.alliance-pick-list-slot').forEach(slot => {
-      slot.addEventListener('dragover', event => { if (editable()) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; slot.classList.add('drag-over'); } });
-      slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
-      slot.addEventListener('drop', async event => {
-        slot.classList.remove('drag-over');
-        if (!editable()) return;
-        event.preventDefault();
-        const team = readDraggedTeam(event);
+    els.pickLists.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (event.target.closest('button')) return;
+      const slot = pickSlotFromEventTarget(event.target);
+      if (!slot || Number(slot.dataset.pickTeam || 0)) return;
+      event.preventDefault();
+      openChooserForPickSlot(slot);
+    });
+
+    els.pickLists.addEventListener('dragstart', event => {
+      const slot = pickSlotFromEventTarget(event.target);
+      const team = Number(slot?.dataset.pickTeam || 0);
+      if (!slot || !team || !editable()) { if (slot) event.preventDefault(); return; }
+      setTeamDragData(event, team);
+      document.body.classList.add('alliance-team-dragging');
+    });
+
+    els.pickLists.addEventListener('dragover', event => {
+      const slot = pickSlotFromEventTarget(event.target);
+      if (!slot || !editable()) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      slot.classList.add('drag-over');
+    });
+
+    els.pickLists.addEventListener('dragleave', event => {
+      const slot = pickSlotFromEventTarget(event.target);
+      if (!slot) return;
+      const related = event.relatedTarget;
+      if (!related || !slot.contains(related)) slot.classList.remove('drag-over');
+    });
+
+    els.pickLists.addEventListener('drop', async event => {
+      const slot = pickSlotFromEventTarget(event.target);
+      if (!slot || !editable()) return;
+      event.preventDefault();
+      slot.classList.remove('drag-over');
+      document.body.classList.remove('alliance-team-dragging');
+      const team = readDraggedTeam(event);
+      if (!team) {
+        ui.toast('Neptune could not identify that robot card. Try clicking the slot and choosing the team.', 'warn');
+        return;
+      }
+      await assignTeamToPickSlot(slot.dataset.pickTier, slot.dataset.pickIndex, team, { toast: false });
+    });
+  }
+
+  function renderPickTeamChooser() {
+    if (!els.pickTeamList || !pickTeamTarget) return;
+    const query = String(els.pickTeamSearch?.value || '').trim().toLowerCase();
+    const teams = [...(state?.teams || [])]
+      .filter(team => {
+        const number = Number(team?.team || 0);
+        if (!number) return false;
+        if (!query) return true;
+        return String(number).includes(query) || String(team?.nickname || '').toLowerCase().includes(query);
+      })
+      .sort((a, b) => {
+        const pointsDiff = Number(b?.points || 0) - Number(a?.points || 0);
+        if (Math.abs(pointsDiff) > 0.0001) return pointsDiff;
+        const aEpa = neptuneEpa(a);
+        const bEpa = neptuneEpa(b);
+        if (aEpa != null || bEpa != null) {
+          if (aEpa == null) return 1;
+          if (bEpa == null) return -1;
+          const epaDiff = Number(bEpa) - Number(aEpa);
+          if (Math.abs(epaDiff) > 0.0001) return epaDiff;
+        }
+        const ar = Number(a?.rank || 0);
+        const br = Number(b?.rank || 0);
+        if (ar && br && ar !== br) return ar - br;
+        if (ar && !br) return -1;
+        if (!ar && br) return 1;
+        return Number(a?.team || 0) - Number(b?.team || 0);
+      });
+
+    if (!teams.length) {
+      els.pickTeamList.innerHTML = '<div class="alliance-pick-team-empty"><i class="fa-solid fa-magnifying-glass"></i><span>No matching teams.</span></div>';
+      return;
+    }
+
+    const currentLists = state?.pick_lists || {};
+    els.pickTeamList.innerHTML = teams.map(team => {
+      const number = Number(team.team || 0);
+      const status = effectiveStatusFor(number);
+      let existing = '';
+      for (const tier of pickListTiers) {
+        const idx = (Array.isArray(currentLists[tier]) ? currentLists[tier] : []).findIndex(value => Number(value || 0) === number);
+        if (idx >= 0) {
+          existing = `${pickListLabel(tier)} #${idx + 1}`;
+          break;
+        }
+      }
+      const unavailable = pickListIsUnavailable(number);
+      const rankingLabel = state?.ranking?.label || 'Qual points';
+      const rankingPrecision = Number(state?.ranking?.precision ?? 2);
+      return `<button type="button" class="alliance-pick-team-choice ${unavailable ? 'taken' : ''}" data-pick-team-choice="${number}">
+        <span class="alliance-pick-team-choice-number">#${number}<small>${Number(team.rank || 0) ? `Rank #${Number(team.rank)}` : 'Unranked'}</small></span>
+        <span class="alliance-pick-team-choice-name"><b>${esc(team.nickname || 'FRC Team')}</b><small>${esc(stateLabel(status.state))}${unavailable ? ' · Unavailable' : ''}${existing ? ` · ${esc(existing)}` : ''}</small><span class="alliance-pick-team-choice-tags">${allianceTagChips(number, true, 3)}</span></span>
+        <span class="alliance-pick-team-choice-metrics">
+          <span><small>${esc(rankingLabel)}</small><b>${num(Number(team.points || 0), rankingPrecision)}</b></span>
+          <span><small>Nep. EPA</small><b>${neptuneEpa(team) == null ? '—' : num(neptuneEpa(team), 1)}</b></span>
+        </span>
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>`;
+    }).join('');
+
+    els.pickTeamList.querySelectorAll('[data-pick-team-choice]').forEach(button => {
+      button.addEventListener('click', async () => {
+        if (!editable() || !pickTeamTarget || !state?.draft) return;
+        const target = { ...pickTeamTarget };
+        const team = Number(button.dataset.pickTeamChoice || 0);
         if (!team) return;
-        await mutate('set_pick_list_slot', { draft_id: state.draft.id, tier: slot.dataset.pickTier, slot_index: slot.dataset.pickIndex, team }, { queueable: true, toast: false });
+        const result = await assignTeamToPickSlot(target.tier, target.index, team, { toast: false });
+        if (result) closePickTeamChooser();
       });
     });
-    els.pickLists.querySelectorAll('[data-pick-clear]').forEach(button => button.addEventListener('click', async event => {
-      event.stopPropagation();
-      if (!editable()) return;
-      const slot = button.closest('.alliance-pick-list-slot');
-      await mutate('set_pick_list_slot', { draft_id: state.draft.id, tier: slot.dataset.pickTier, slot_index: slot.dataset.pickIndex, team: 0 }, { queueable: true, toast: false });
-    }));
-    els.pickLists.querySelectorAll('[data-pick-use-selected]').forEach(button => button.addEventListener('click', async () => {
-      if (!editable() || !selectedTeam) return;
-      const slot = button.closest('.alliance-pick-list-slot');
-      await mutate('set_pick_list_slot', { draft_id: state.draft.id, tier: slot.dataset.pickTier, slot_index: slot.dataset.pickIndex, team: selectedTeam }, { queueable: true, toast: false });
-    }));
-    els.pickLists.querySelectorAll('[data-open-pick-team]').forEach(button => {
-      button.addEventListener('click', () => selectTeam(Number(button.dataset.openPickTeam), 0, true));
-      button.addEventListener('dragstart', event => setTeamDragData(event, Number(button.dataset.openPickTeam)));
+  }
+
+  function pickTeamChooserOpen() {
+    return !!els.pickTeamDialog && !els.pickTeamDialog.hidden;
+  }
+
+  function openPickTeamChooser(tier, index) {
+    if (!editable() || !pickListTiers.includes(String(tier)) || index < 0 || index >= 6 || !els.pickTeamDialog) return;
+    pickTeamTarget = { tier: String(tier), index: Number(index) };
+    if (els.pickTeamDialogTier) els.pickTeamDialogTier.textContent = pickListSlotLabel(tier, index);
+    if (els.pickTeamSearch) els.pickTeamSearch.value = '';
+    els.pickTeamDialog.hidden = false;
+    els.pickTeamDialog.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('alliance-pick-team-chooser-open');
+    try {
+      renderPickTeamChooser();
+    } catch (error) {
+      console.error('Could not render Pick List team chooser.', error);
+      if (els.pickTeamList) els.pickTeamList.innerHTML = '<div class="alliance-pick-team-empty"><i class="fa-solid fa-triangle-exclamation"></i><span>Could not load the team list. Close this window and try again.</span></div>';
+    }
+    setTimeout(() => els.pickTeamSearch?.focus(), 0);
+  }
+
+  function closePickTeamChooser() {
+    pickTeamTarget = null;
+    if (!els.pickTeamDialog) return;
+    els.pickTeamDialog.hidden = true;
+    els.pickTeamDialog.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('alliance-pick-team-chooser-open');
+  }
+
+  let pickDrawerLayoutFrame = 0;
+
+  function syncPickDrawerToAllianceBoard() {
+    if (!els.pickDrawer) return;
+
+    const desktop = window.matchMedia('(min-width: 901px)').matches;
+    const docked = desktop
+      && els.pickDrawer.classList.contains('open')
+      && !els.pickDrawer.classList.contains('expanded')
+      && !!els.boardCard;
+
+    if (!docked) {
+      els.pickDrawer.style.removeProperty('--pick-drawer-left');
+      els.pickDrawer.style.removeProperty('--pick-drawer-top');
+      els.pickDrawer.style.removeProperty('--pick-drawer-width');
+      els.pickDrawer.style.removeProperty('--pick-drawer-height');
+      return;
+    }
+
+    const rect = els.boardCard.getBoundingClientRect();
+
+    // Fixed-position coordinates use the viewport rectangle directly. Matching
+    // the full card (rather than only its visible portion) makes Pick Lists
+    // behave like a true replacement layer for Alliance Board.
+    els.pickDrawer.style.setProperty('--pick-drawer-left', `${Math.round(rect.left)}px`);
+    els.pickDrawer.style.setProperty('--pick-drawer-top', `${Math.round(rect.top)}px`);
+    els.pickDrawer.style.setProperty('--pick-drawer-width', `${Math.round(rect.width)}px`);
+    els.pickDrawer.style.setProperty('--pick-drawer-height', `${Math.round(rect.height)}px`);
+  }
+
+  function queuePickDrawerLayout() {
+    if (pickDrawerLayoutFrame) cancelAnimationFrame(pickDrawerLayoutFrame);
+    pickDrawerLayoutFrame = requestAnimationFrame(() => {
+      pickDrawerLayoutFrame = 0;
+      syncPickDrawerToAllianceBoard();
     });
+  }
+
+  function setPickDrawerExpanded(expanded) {
+    const active = !!expanded;
+    els.pickDrawer?.classList.toggle('expanded', active);
+    els.pickDrawerExpand?.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if (els.pickDrawerExpand) {
+      const icon = els.pickDrawerExpand.querySelector('i');
+      if (icon) icon.className = active ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+      els.pickDrawerExpand.title = active ? 'Return pick lists to default drawer size' : 'Show all pick-list slots full screen';
+    }
+    if (els.pickDrawerExpandLabel) els.pickDrawerExpandLabel.textContent = active ? 'Default Size' : 'Full Screen';
+    app.classList.toggle('pick-drawer-expanded', active);
+    queuePickDrawerLayout();
+    if (els.pickDrawer?.classList.contains('open')) renderPickDrawer();
   }
 
   function setPickDrawerOpen(open) {
@@ -1127,7 +1413,11 @@
     els.pickDrawer?.classList.toggle('open', active);
     els.pickDrawer?.setAttribute('aria-hidden', active ? 'false' : 'true');
     els.pickDrawerBtn?.setAttribute('aria-expanded', active ? 'true' : 'false');
+    els.pickDrawerPull?.setAttribute('aria-expanded', active ? 'true' : 'false');
+    if (els.pickDrawerPull) els.pickDrawerPull.title = active ? 'Close pick lists' : 'Open pick lists';
     app.classList.toggle('pick-drawer-open', active);
+    if (!active) setPickDrawerExpanded(false);
+    queuePickDrawerLayout();
     if (active) renderPickDrawer();
   }
 
@@ -1160,7 +1450,7 @@
         <span class="alliance-team-copy">
           <b>#${team.team} ${captain ? `<i class="fa-solid fa-anchor alliance-team-captain" title="Alliance ${captainAlliance} captain"></i>` : ''} ${st.favorite ? '<i class="fa-solid fa-star alliance-team-favorite"></i>' : ''}</b>
           <span class="alliance-team-name">${esc(team.nickname || 'FRC Team')}</span>
-          <span class="alliance-team-strategy-tags">${allianceTagChips(team.team, true)}</span>
+          <span class="alliance-team-strategy-tags">${allianceTagChips(team.team, true, 2)}</span>
         </span>
         <span class="alliance-team-tail">
           <span class="alliance-team-metrics">
@@ -1173,7 +1463,10 @@
       </div>`;
     }).join('');
     els.teamList.querySelectorAll('[data-team]').forEach(row => {
-      row.addEventListener('dragstart', event => setTeamDragData(event, Number(row.dataset.team)));
+      row.addEventListener('dragstart', event => {
+        setTeamDragData(event, Number(row.dataset.team));
+        document.body.classList.add('alliance-team-dragging');
+      });
     });
     els.teamList.querySelectorAll('[data-expand-team]').forEach(button => button.addEventListener('click', event => {
       event.preventDefault(); event.stopPropagation();
@@ -1372,6 +1665,8 @@
         <div class="alliance-decision-kpi"><span>Offense success</span><b>${num(success, 0)}%</b><small>${Number(detail.event_stats?.actions || 0)} recorded actions</small></div>
         <div class="alliance-decision-kpi"><span>Public EPA</span><b>${detail.epa_rating?.epa == null ? '—' : num(detail.epa_rating.epa, 1)}</b><small>${detail.epa_rating?.confidence == null ? 'EPA not built' : `${num(detail.epa_rating.confidence, 0)}% public-data confidence`}</small></div>
         <div class="alliance-decision-kpi"><span>Neptune EPA</span><b>${neptuneEpa(detail.epa_rating) == null ? '—' : num(neptuneEpa(detail.epa_rating), 1)}</b><small>${Number(detail.epa_rating?.scouting_matches || 0)} Neptune match${Number(detail.epa_rating?.scouting_matches || 0) === 1 ? '' : 'es'} blended</small></div>
+        <div class="alliance-decision-kpi"><span>D-EPA</span><b>${detail.depa_rating?.depa == null ? '—' : num(detail.depa_rating.depa, 1)}</b><small>All-match defensive suppression</small></div>
+        <div class="alliance-decision-kpi"><span>Nep. D-EPA</span><b>${detail.depa_rating?.neptune_depa == null ? '—' : num(detail.depa_rating.neptune_depa, 1)}</b><small>${Number(detail.depa_rating?.verified_defense_matches || 0)} verified defense match${Number(detail.depa_rating?.verified_defense_matches || 0)===1?'':'es'}</small></div>
         <div class="alliance-decision-kpi"><span>EPA trend</span><b>${detail.epa_rating?.trend == null ? '—' : decisionTrend(Number(detail.epa_rating.trend), 'pts')}</b><small>TBA-derived rating trend</small></div>
         <div class="alliance-decision-kpi"><span>Scouting sample</span><b>${rows.length}</b><small>qualification matches</small></div>
       </div>`;
@@ -1471,6 +1766,16 @@
       els.favorite.disabled = !editable();
     }
     const selected = st.state === 'selected';
+    if (els.alreadyPicked) {
+      const alreadyPicked = rawStatus.state === 'already_picked';
+      const live = currentDraft()?.mode === 'live';
+      els.alreadyPicked.hidden = !live && !alreadyPicked;
+      els.alreadyPicked.classList.toggle('active', alreadyPicked);
+      els.alreadyPicked.disabled = !editable() || selected || (!live && !alreadyPicked);
+      els.alreadyPicked.innerHTML = alreadyPicked
+        ? '<i class="fa-solid fa-rotate-left"></i> Undo Picked'
+        : '<i class="fa-solid fa-handshake"></i> Already Picked';
+    }
     for (const [button, value] of [[els.decline, 'declined'], [els.dnp, 'do_not_pick'], [els.broken, 'broken']]) {
       if (!button) continue;
       button.classList.toggle('active', st.state === value);
@@ -2255,8 +2560,32 @@
     renderTeamList();
   }));
   els.pickDrawerBtn?.addEventListener('click', () => setPickDrawerOpen(!els.pickDrawer?.classList.contains('open')));
+  els.pickDrawerPull?.addEventListener('click', () => setPickDrawerOpen(!els.pickDrawer?.classList.contains('open')));
+  els.pickDrawerPull?.addEventListener('dragover', event => { if (editable()) event.preventDefault(); });
+  els.pickDrawerPull?.addEventListener('dragenter', event => {
+    if (!editable()) return;
+    event.preventDefault();
+    if (!els.pickDrawer?.classList.contains('open')) setPickDrawerOpen(true);
+  });
   els.pickDrawerClose?.addEventListener('click', () => setPickDrawerOpen(false));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape' && els.pickDrawer?.classList.contains('open')) setPickDrawerOpen(false); });
+  els.pickDrawerExpand?.addEventListener('click', () => setPickDrawerExpanded(!els.pickDrawer?.classList.contains('expanded')));
+  document.querySelectorAll('[data-pick-tier-jump]').forEach(button => button.addEventListener('click', () => {
+    setActivePickTierMobile(String(button.dataset.pickTierJump || '1'), { scroll: true });
+  }));
+  document.addEventListener('dragend', () => {
+    document.body.classList.remove('alliance-team-dragging');
+    els.pickLists?.querySelectorAll('.alliance-pick-list-slot.drag-over').forEach(slot => slot.classList.remove('drag-over'));
+  });
+  els.pickTeamSearch?.addEventListener('input', renderPickTeamChooser);
+  els.pickTeamDialogClose?.addEventListener('click', closePickTeamChooser);
+  els.pickTeamDialog?.addEventListener('click', event => { if (event.target === els.pickTeamDialog) closePickTeamChooser(); });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (pickTeamChooserOpen()) { closePickTeamChooser(); return; }
+    if (!els.pickDrawer?.classList.contains('open')) return;
+    if (els.pickDrawer.classList.contains('expanded')) setPickDrawerExpanded(false);
+    else setPickDrawerOpen(false);
+  });
 
   els.selectedTeamModalTabs?.addEventListener('click', event => {
     const button = event.target.closest('[data-selected-modal-tab]');
@@ -2268,6 +2597,7 @@
   els.teamActionBar?.addEventListener('cancel', event => { event.preventDefault(); closeSelectedTeamModal(); });
   els.makeSelection?.addEventListener('click', () => selectedTeam && setSelection(selectedTeam));
   els.favorite?.addEventListener('click', () => selectedTeam && state?.draft && mutate('toggle_favorite', { draft_id: state.draft.id, team: selectedTeam }, { queueable: true }));
+  els.alreadyPicked?.addEventListener('click', () => setTeamState('already_picked'));
   els.decline?.addEventListener('click', () => setTeamState('declined'));
   els.dnp?.addEventListener('click', () => setTeamState('do_not_pick'));
   els.broken?.addEventListener('click', () => setTeamState('broken'));
@@ -2373,6 +2703,12 @@
   });
   document.addEventListener('fullscreenchange', updateFullscreenButton);
   document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+
+  window.addEventListener('resize', queuePickDrawerLayout, { passive: true });
+  window.addEventListener('scroll', queuePickDrawerLayout, { passive: true });
+  if (window.ResizeObserver && els.boardCard) {
+    new ResizeObserver(queuePickDrawerLayout).observe(els.boardCard);
+  }
 
   window.addEventListener('online', () => { updateOnlinePill(); replayQueue(); });
   window.addEventListener('offline', updateOnlinePill);

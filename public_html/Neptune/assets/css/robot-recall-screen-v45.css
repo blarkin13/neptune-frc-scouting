@@ -1,0 +1,112 @@
+/* Robot Recall v4.5 — audience display layout fix.
+   Keep the logo large, but reserve a dedicated answer column so it can never cover choices. */
+
+.robot-recall-screen .rr-screen-stage,
+.robot-recall-screen .rr-screen-view,
+.robot-recall-screen #rrQuestion,
+.robot-recall-screen .rr-logo-stage,
+.robot-recall-screen .rr-screen-options{
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+
+/* Landscape/projector layout: question info across the top, logo left, answers right. */
+.robot-recall-screen #rrQuestion:not([hidden]){
+  display:grid !important;
+  grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr);
+  grid-template-areas:
+    "head head"
+    "logo answers"
+    "meter meter";
+  column-gap:clamp(20px,3vw,52px);
+  row-gap:clamp(12px,2vh,24px);
+  align-items:center;
+  width:100%;
+  height:auto;
+  min-height:0;
+  overflow:visible;
+}
+
+.robot-recall-screen #rrQuestion > .rr-question-head{grid-area:head;margin:0;}
+.robot-recall-screen #rrQuestion > .rr-logo-stage{grid-area:logo;}
+.robot-recall-screen #rrQuestion > .rr-screen-options{grid-area:answers;}
+.robot-recall-screen #rrQuestion > .rr-answer-meter{grid-area:meter;}
+
+.robot-recall-screen .rr-logo-stage{
+  width:100% !important;
+  min-height:0 !important;
+  height:min(56vh,600px) !important;
+  max-height:600px !important;
+  display:grid !important;
+  place-items:center !important;
+  overflow:hidden !important;
+  position:relative !important;
+  z-index:0 !important;
+}
+
+.robot-recall-screen #rrLogo{
+  display:block !important;
+  width:min(42vw,560px) !important;
+  height:min(42vw,560px) !important;
+  max-width:100% !important;
+  max-height:100% !important;
+  object-fit:contain !important;
+  object-position:center !important;
+  position:static !important;
+  inset:auto !important;
+  transform:none !important;
+  z-index:auto !important;
+  image-rendering:pixelated !important;
+  image-rendering:crisp-edges !important;
+}
+
+.robot-recall-screen .rr-screen-options{
+  width:100% !important;
+  align-self:center;
+  position:relative !important;
+  z-index:2 !important;
+  margin:0 !important;
+}
+
+.robot-recall-screen .rr-screen-option{
+  position:relative !important;
+  z-index:2 !important;
+}
+
+/* Medium displays: slightly smaller logo so all four answers remain visible. */
+@media (max-width:1100px), (max-height:760px){
+  .robot-recall-screen #rrQuestion:not([hidden]){
+    grid-template-columns:minmax(0,1fr) minmax(300px,.95fr);
+    column-gap:20px;
+  }
+  .robot-recall-screen .rr-logo-stage{
+    height:min(48vh,460px) !important;
+    max-height:460px !important;
+  }
+  .robot-recall-screen #rrLogo{
+    width:min(38vw,440px) !important;
+    height:min(38vw,440px) !important;
+  }
+}
+
+/* Portrait/small displays: stack cleanly rather than squeeze the answers. */
+@media (max-width:760px){
+  .robot-recall-screen #rrQuestion:not([hidden]){
+    grid-template-columns:1fr;
+    grid-template-areas:
+      "head"
+      "logo"
+      "answers"
+      "meter";
+    row-gap:12px;
+  }
+  .robot-recall-screen .rr-logo-stage{
+    height:min(40vh,340px) !important;
+    max-height:340px !important;
+  }
+  .robot-recall-screen #rrLogo{
+    width:min(70vw,320px) !important;
+    height:min(70vw,320px) !important;
+  }
+}

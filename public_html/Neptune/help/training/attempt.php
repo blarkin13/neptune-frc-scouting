@@ -1,0 +1,26 @@
+<?php
+declare(strict_types=1);
+require_once dirname(__DIR__,4).'/neptune_secure/bootstrap.php';
+$u=require_login();require_once __DIR__.'/_training.php';neptune_training_ensure_schema($pdo);
+$org=(int)$u['organization_id'];$uid=(int)$u['id'];$id=(int)($_GET['id']??0);$attempt=neptune_training_get_attempt($pdo,$org,$id);if(!$attempt){http_response_code(404);exit('Training attempt not found.');}
+$isAdmin=in_array($u['role'],['owner','admin'],true);if(!$isAdmin&&(int)$attempt['user_id']!==$uid){http_response_code(403);exit('You may only review your own training attempts.');}
+$course=neptune_training_course((string)$attempt['course_code']);if(!$course){http_response_code(404);exit('Course definition not found.');}
+$results=json_decode((string)($attempt['results_json']??''),true);if(!is_array($results))$results=[];
+$pageTitle='CBT Grade';$moduleName='NEPTUNE';$bodyClass='training-review-page';include dirname(__DIR__,2).'/partials_header.php';
+$trainingActive='cbt';
+?>
+<style>
+.review-shell{max-width:1000px;margin:0 auto}.grade-card{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center}.grade-number{font-size:2.6rem;font-weight:950}.review-q{margin:13px 0}.review-q.correct{border-left:4px solid var(--good)}.review-q.wrong{border-left:4px solid var(--bad)}.answer-row{padding:8px 10px;border-radius:7px;margin:5px 0;background:var(--panel2);border:1px solid var(--line)}.answer-row.selected{font-weight:850}.answer-row.correct-answer{border-color:color-mix(in srgb,var(--good) 60%,var(--line))}.review-explain{margin-top:10px;padding:10px;border-left:3px solid var(--accent);background:var(--panel2)}@media(max-width:620px){.grade-card{grid-template-columns:1fr}}
+</style>
+<div class="ntp-hub">
+<section class="neptune-page-hero"><div class="neptune-hero-kicker"><i class="fa-solid fa-square-poll-vertical"></i> CBT · ATTEMPT REVIEW</div><h1><?=e($course['short_title'])?> Result</h1><p>Review the submitted grade, correct answers, and explanations for this training attempt.</p><div class="toolbar ntp-hero-actions"><a class="btn secondary" href="<?=e(base_url('help/training/'))?>"><i class="fa-solid fa-arrow-left"></i> Training Home</a><?php if($isAdmin):?><a class="btn secondary" href="<?=e(base_url('help/training/records.php'))?>"><i class="fa-solid fa-users"></i> Training Records</a><?php endif;?></div></section>
+<?php include dirname(__DIR__).'/_training_nav.php'; ?>
+</div>
+<div class="review-shell">
+<?php if($attempt['status']!=='completed'):?><div class="notice">This attempt has not been submitted yet. <a href="<?=e(base_url('help/training/cbt.php?course='.$attempt['course_code'].'&attempt='.$id))?>">Return to the CBT.</a></div><?php else:?>
+<section class="card grade-card"><div><div class="grade-number"><?=e(neptune_training_score_label($attempt['score_percent']))?></div><div class="<?=((int)$attempt['passed']===1?'training-pass':'training-fail')?>" style="font-weight:950;color:<?=((int)$attempt['passed']===1?'var(--good)':'var(--bad)')?>"><?=((int)$attempt['passed']===1?'PASS · CERTIFIED':'NOT PASS')?></div></div><div><div class="module-eyebrow"><span>RESULT</span><small><?=e($course['short_title'])?></small></div><h1 style="margin:4px 0"><?=e($attempt['display_name_snapshot'])?></h1><p class="muted">Attempt #<?=e($attempt['attempt_number'])?> · <?=e($attempt['correct_count'])?> / <?=e($attempt['question_count'])?> correct · Passing score <?=e(neptune_training_score_label($attempt['passing_score']))?> · <?=e(neptune_training_duration((int)$attempt['duration_seconds']))?></p><p class="muted">Completed <?=e($attempt['completed_at'])?> UTC · Course version <?=e($attempt['course_version'])?></p><div class="toolbar"><a class="btn" href="<?=e(base_url('help/training/cbt.php?course='.$attempt['course_code']))?>"><i class="fa-solid fa-rotate"></i> Take another attempt</a><a class="btn secondary" href="<?=e(base_url('help/event-training.php'))?>"><i class="fa-solid fa-book-open"></i> Study Manual</a></div></div></section>
+<h2 style="margin-top:22px">Answer review</h2>
+<?php foreach($results as $i=>$r):$selected=(string)($r['selected']??'');$correct=(string)($r['correct']??'');$isCorrect=!empty($r['is_correct']);$options=$r['options']??[];$order=$r['option_order']??array_keys($options);?>
+<section class="card review-q <?=$isCorrect?'correct':'wrong'?>"><div class="toolbar" style="justify-content:space-between;margin:0 0 7px"><b>Question <?=($i+1)?></b><span class="pill <?=$isCorrect?'status-good':'status-bad'?>"><?=$isCorrect?'Correct':'Missed'?></span></div><h3><?=e($r['question']??'')?></h3><?php foreach($order as $oid):if(!isset($options[$oid]))continue;$classes='answer-row';if($oid===$selected)$classes.=' selected';if($oid===$correct)$classes.=' correct-answer';?><div class="<?=e($classes)?>"><?php if($oid===$selected):?><i class="fa-solid fa-arrow-right"></i> <?php endif;?><?=e($options[$oid])?><?php if($oid===$correct):?> <span class="training-pass" style="color:var(--good)"> · Correct answer</span><?php endif;?></div><?php endforeach;?><div class="review-explain"><b>Why:</b> <?=e($r['explanation']??'')?></div></section>
+<?php endforeach;?>
+<?php endif;?></div><?php include dirname(__DIR__,2).'/partials_footer.php';?>

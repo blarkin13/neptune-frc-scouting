@@ -1,0 +1,122 @@
+{
+  "game": "2024 Crescendo Official",
+  "buttons": [
+    {
+      "name": "Leave Starting Zone",
+      "code": "leave_zone",
+      "type": "offense",
+      "location": "community",
+      "layout": "rect-1",
+      "autonPoints": 2,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Score Note Speaker (AMP)",
+      "code": "score_speaker_amp",
+      "type": "offense",
+      "location": "speaker",
+      "layout": "rect-1",
+      "autonPoints": 5,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Score Note Speaker (NO AMP)",
+      "code": "score_speaker_no_amp",
+      "type": "offense",
+      "location": "speaker",
+      "layout": "rect-1",
+      "autonPoints": 5,
+      "teleopPoints": 5
+    },
+    {
+      "name": "Score Note Amp",
+      "code": "score_amp",
+      "type": "offense",
+      "location": "amp",
+      "layout": "rect-1",
+      "autonPoints": 2,
+      "teleopPoints": 1
+    },
+    {
+      "name": "Pickup Note Ground",
+      "code": "pickup_ground",
+      "type": "offense",
+      "location": "wing",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Pickup Note Source",
+      "code": "pickup_source",
+      "type": "offense",
+      "location": "source",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Park",
+      "code": "park",
+      "type": "offense",
+      "location": "stage",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 1
+    },
+    {
+      "name": "Climb Onstage",
+      "code": "climb_onstage",
+      "type": "offense",
+      "location": "stage",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 3
+    },
+    {
+      "name": "Climb Spotlight",
+      "code": "climb_spotlight",
+      "type": "offense",
+      "location": "stage",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 4
+    },
+    {
+      "name": "Score Trap",
+      "code": "score_trap",
+      "type": "offense",
+      "location": "stage",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 5
+    },
+    {
+      "name": "Harmony",
+      "code": "harmony",
+      "type": "cooperative",
+      "location": "stage",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Plays Defense",
+      "code": "plays_defense",
+      "type": "defense",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Disabled/Broken",
+      "code": "disabled",
+      "type": "offense",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    }
+  ]
+}

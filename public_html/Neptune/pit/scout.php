@@ -254,7 +254,7 @@ $pageTitle='Pit #'.$team;$moduleName='TRIDENT';include dirname(__DIR__).'/partia
   function stopDrawing(){drawing=false;activeStroke=null;syncHidden();draw();}
   canvas?.addEventListener('pointerup',stopDrawing);canvas?.addEventListener('pointercancel',stopDrawing);
   undoBtn?.addEventListener('click',()=>{strokes.pop();syncHidden();draw();});
-  clearBtn?.addEventListener('click',()=>{if(strokes.length&&confirm('Clear the entire autonomous path?')){strokes=[];syncHidden();draw();}});
+  clearBtn?.addEventListener('click',async()=>{if(!strokes.length)return;const ok=await window.NeptuneUI.confirm('Clear the entire autonomous path?',{title:'Clear autonomous path',confirmText:'Clear path',danger:true});if(!ok)return;strokes=[];syncHidden();draw();});
   if(fieldUrl){bg=new Image();bg.onload=()=>{if(emptyEl)emptyEl.hidden=true;fitCanvas();};bg.onerror=()=>{if(emptyEl)emptyEl.hidden=false;fitCanvas();};bg.src=fieldUrl;}
   const ro=('ResizeObserver' in window)?new ResizeObserver(fitCanvas):null;ro?.observe(wrap);window.addEventListener('resize',fitCanvas);syncHidden();requestAnimationFrame(fitCanvas);
 
@@ -333,7 +333,7 @@ $pageTitle='Pit #'.$team;$moduleName='TRIDENT';include dirname(__DIR__).'/partia
     button.addEventListener('click',async()=>{
       const id=Number(button.dataset.deletePitPhoto||0);
       if(!id)return;
-      if(!confirm('Delete this saved robot photo?'))return;
+      const ok=await window.NeptuneUI.confirm('Delete this saved robot photo?',{title:'Delete robot photo',confirmText:'Delete',danger:true});if(!ok)return;
       button.disabled=true;
       try{
         const response=await fetch('<?=e(base_url('api/delete-pit-photo.php'))?>',{
@@ -350,7 +350,7 @@ $pageTitle='Pit #'.$team;$moduleName='TRIDENT';include dirname(__DIR__).'/partia
           document.querySelector('[data-saved-photo-title]')?.remove();
         }
       }catch(error){
-        alert(error?.message||'Could not delete the photo.');
+        window.NeptuneUI.toast(error?.message||'Could not delete the photo.','bad',{title:'Delete failed'});
         button.disabled=false;
       }
     });

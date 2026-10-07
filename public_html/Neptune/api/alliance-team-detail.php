@@ -2,9 +2,10 @@
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__).'/analytics/_alliance_helpers.php';
 require_once dirname(__DIR__).'/analytics/_augur_prediction_model.php';
+require_once dirname(__DIR__).'/analytics/_team_logo_cache.php';
 require_once dirname(__DIR__).'/pit/_helpers.php';
 require_once dirname(__DIR__).'/prescout/_helpers.php';
-$spotHelper=dirname(__DIR__).'/spot/_helpers.php';
+$spotHelper=dirname(__DIR__).'/scout/_tag_scouting.php';
 if(is_file($spotHelper)) require_once $spotHelper;
 
 $u=require_login();
@@ -30,14 +31,6 @@ function alliance_detail_value(mixed $value): string {
     if(is_array($value)) return implode(', ',array_values(array_filter(array_map('strval',$value),static fn($x)=>trim($x)!=='')));
     if(is_bool($value)) return $value?'Yes':'No';
     return trim((string)$value);
-}
-
-function alliance_tba_avatar_src(mixed $value): string {
-    $b64=preg_replace('/\\s+/','',trim((string)$value));
-    if($b64==='' || strlen($b64)>3000000) return '';
-    if(!preg_match('/^[A-Za-z0-9+\\/=]+$/',$b64)) return '';
-    if(base64_decode($b64,true)===false) return '';
-    return 'data:image/png;base64,'.$b64;
 }
 
 function alliance_tba_http_url(mixed $value): string {
@@ -230,6 +223,8 @@ foreach($s->fetchAll() as $row){
     ];
 }
 
+$depaRating=[];try{$dm=neptune_depa_event_map($pdo,$event,[$team]);$depaRating=$dm[$team]??[];}catch(Throwable $ignored){$depaRating=[];}
+
 $epaRating=[];$epaRatingError='';
 if(augur_epa_tables_ready($pdo)){
     try{
@@ -268,11 +263,11 @@ if(augur_epa_tables_ready($pdo)){
 
 /*
 |--------------------------------------------------------------------------
-| Spot Scouting
+| Tag Scouting
 |--------------------------------------------------------------------------
 | Alliance Selection shows organization-private observations only. Current
 | event observations plus event-less general team observations are included.
-| Media stays protected behind spot/media.php and requires the same login/org.
+| Media stays protected behind scout/tag-media.php and requires the same login/org.
 */
 $spot=[
     'available'=>false,
@@ -283,9 +278,9 @@ $spot=[
     'video_count'=>0,
     'latest_at'=>null,
 ];
-if(function_exists('spot_tables_ready')&&spot_tables_ready($pdo)&&function_exists('spot_observation_rows')){
+if(function_exists('tagobs_tables_ready')&&tagobs_tables_ready($pdo)&&function_exists('tagobs_observation_rows')){
     try{
-        $candidateRows=spot_observation_rows($pdo,$org,null,$team,200,false);
+        $candidateRows=tagobs_observation_rows($pdo,$org,null,$team,200,false);
         $spotRows=[];
         foreach($candidateRows as $row){
             $rowEvent=$row['event_id']===null?null:(int)$row['event_id'];
@@ -294,8 +289,8 @@ if(function_exists('spot_tables_ready')&&spot_tables_ready($pdo)&&function_exist
             if(count($spotRows)>=80)break;
         }
 
-        $mediaMap=function_exists('spot_media_for_observations')
-            ? spot_media_for_observations($pdo,$org,array_column($spotRows,'id'))
+        $mediaMap=function_exists('tagobs_media_for_observations')
+            ? tagobs_media_for_observations($pdo,$org,array_column($spotRows,'id'))
             : [];
 
         $tagCounts=[];
@@ -362,8 +357,23 @@ $tbaProfile=[
     'first_url'=>'https://frc-events.firstinspires.org/team/'.$team,
     'error'=>'',
 ];
+$seasonYear=(int)($event['season_year']??date('Y'));
+try{
+    $logoInfo=neptune_team_logo_info($org,$seasonYear,$team);
+    if(!empty($logoInfo['exists'])){
+        $tbaProfile['avatar']=base_url((string)$logoInfo['path']).'?v='.rawurlencode((string)$logoInfo['version']);
+    }
+}catch(Throwable $ignored){}
 try{
     require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
+    if($tbaProfile['avatar']===''){
+        try{
+            $logoInfo=neptune_team_logo_fetch_tba($org,$seasonYear,$team,false);
+            if(!empty($logoInfo['exists'])){
+                $tbaProfile['avatar']=base_url((string)$logoInfo['path']).'?v='.rawurlencode((string)$logoInfo['version']);
+            }
+        }catch(Throwable $ignored){}
+    }
     $teamKey='frc'.$team;
     $live=tba_get('team/'.$teamKey,21600);
     if(is_array($live) && !empty($live['team_number'])){
@@ -408,20 +418,6 @@ try{
         if($years) $tbaProfile['last_competed']=max($years);
     }
 
-    $seasonYear=(int)($event['season_year']??date('Y'));
-    $mediaYears=array_values(array_unique(array_filter([$seasonYear,$seasonYear-1,$seasonYear-2],static fn($y)=>$y>=1992)));
-    foreach($mediaYears as $mediaYear){
-        $media=tba_get('team/'.$teamKey.'/media/'.$mediaYear,21600);
-        if(!is_array($media)) continue;
-        foreach($media as $item){
-            if(!is_array($item) || (string)($item['type']??'')!=='avatar') continue;
-            $avatar=alliance_tba_avatar_src($item['details']['base64Image']??'');
-            if($avatar!==''){
-                $tbaProfile['avatar']=$avatar;
-                break 2;
-            }
-        }
-    }
 }catch(Throwable $e){
     $tbaProfile['error']=$e->getMessage();
 }
@@ -465,6 +461,7 @@ try{
             $redScore=is_numeric($redRaw)&&(int)$redRaw>=0?(int)$redRaw:null;
             $blueScore=is_numeric($blueRaw)&&(int)$blueRaw>=0?(int)$blueRaw:null;
             $winner=(string)($tm['winning_alliance']??'');
+require_once dirname(__DIR__).'/analytics/_depa_metrics.php';
             $result='';
             if($winner==='red'||$winner==='blue') $result=$winner===$teamAlliance?'W':'L';
             elseif($redScore!==null&&$blueScore!==null&&$redScore===$blueScore) $result='T';
@@ -644,6 +641,7 @@ json_response([
         'failures'=>(int)($stats['failures']??0),
     ],
     'epa_rating'=>$epaRating,
+    'depa_rating'=>$depaRating,
     'epa_rating_error'=>$epaRatingError,
     // Compatibility aliases for clients from the previous AUGUR build.
     'augur_rating'=>$epaRating,

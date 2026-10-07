@@ -1,0 +1,212 @@
+/* Robot Recall v4.6 — prominent, self-explaining Event Standings. */
+
+/* Host / admin standings */
+.robot-recall-admin .rr-event-standings-feature{
+  margin-top:16px;
+  padding:clamp(18px,2.6vw,28px)!important;
+  border:1px solid color-mix(in srgb,var(--rr-accent,var(--accent)) 48%,var(--rr-line,var(--line)))!important;
+  background:
+    linear-gradient(135deg,color-mix(in srgb,var(--rr-accent,var(--accent)) 8%,transparent),transparent 42%),
+    var(--rr-panel,var(--panel))!important;
+}
+.robot-recall-admin .rr-event-standings-feature.is-test{
+  border-color:color-mix(in srgb,#f0b429 62%,var(--rr-line,var(--line)))!important;
+}
+.robot-recall-admin .rr-event-standings-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  padding-bottom:16px;
+  margin-bottom:14px;
+  border-bottom:1px solid var(--rr-line,var(--line));
+}
+.robot-recall-admin .rr-event-standings-head h2{
+  margin:5px 0 4px;
+  font-size:clamp(1.45rem,2.6vw,2.15rem);
+  line-height:1.08;
+}
+.robot-recall-admin .rr-event-standings-head p{margin:0;max-width:760px}
+.robot-recall-admin .rr-event-standings-stats{
+  display:flex;
+  align-items:stretch;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.robot-recall-admin .rr-event-standings-stats>span{
+  min-width:104px;
+  padding:9px 11px;
+  display:grid;
+  gap:1px;
+  border:1px solid var(--rr-line,var(--line));
+  border-radius:11px;
+  background:var(--rr-panel-2,var(--panel2));
+  text-align:center;
+}
+.robot-recall-admin .rr-event-standings-stats>span>b{font-size:1.15rem;line-height:1.1}
+.robot-recall-admin .rr-event-standings-stats>span>small{color:var(--rr-muted,var(--muted));font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.robot-recall-admin .rr-event-standings-stats>em{
+  align-self:center;
+  padding:7px 10px;
+  border-radius:999px;
+  font-size:.67rem;
+  font-weight:950;
+  font-style:normal;
+  letter-spacing:.08em;
+  white-space:nowrap;
+}
+.robot-recall-admin .rr-event-standings-stats>em.production{
+  color:color-mix(in srgb,#39c786 82%,var(--rr-text,var(--text)));
+  background:color-mix(in srgb,#39c786 13%,var(--rr-panel,var(--panel)));
+  border:1px solid color-mix(in srgb,#39c786 52%,var(--rr-line,var(--line)));
+}
+.robot-recall-admin .rr-event-standings-stats>em.test{
+  color:color-mix(in srgb,#f0b429 82%,var(--rr-text,var(--text)));
+  background:color-mix(in srgb,#f0b429 15%,var(--rr-panel,var(--panel)));
+  border:1px solid color-mix(in srgb,#f0b429 58%,var(--rr-line,var(--line)));
+}
+.robot-recall-admin .rr-event-standings-board{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 12px;
+}
+.robot-recall-admin .rr-event-standing-row{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  gap:11px;
+  align-items:center;
+  min-height:58px;
+  padding:9px 12px;
+  border:1px solid var(--rr-line,var(--line));
+  border-radius:12px;
+  background:var(--rr-panel-2,var(--panel2));
+}
+.robot-recall-admin .rr-event-rank{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border-radius:10px;
+  background:color-mix(in srgb,var(--rr-accent,var(--accent)) 13%,var(--rr-panel,var(--panel)));
+  color:var(--rr-text,var(--text));
+  font-size:1rem;
+  font-weight:1000;
+}
+.robot-recall-admin .rank-1 .rr-event-rank,
+.robot-recall-admin .rank-2 .rr-event-rank,
+.robot-recall-admin .rank-3 .rr-event-rank{
+  background:color-mix(in srgb,var(--rr-accent,var(--accent)) 28%,var(--rr-panel,var(--panel)));
+  border:1px solid color-mix(in srgb,var(--rr-accent,var(--accent)) 48%,var(--rr-line,var(--line)));
+}
+.robot-recall-admin .rr-event-player{display:grid;gap:2px;overflow:hidden}
+.robot-recall-admin .rr-event-player>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.97rem}
+.robot-recall-admin .rr-event-player>small{color:var(--rr-muted,var(--muted));font-size:.7rem}
+.robot-recall-admin .rr-event-standing-row>strong{display:grid;justify-items:end;font-size:1.12rem;line-height:1}
+.robot-recall-admin .rr-event-standing-row>strong>small{margin-top:4px;color:var(--rr-muted,var(--muted));font-size:.62rem;text-transform:uppercase;letter-spacing:.05em}
+.robot-recall-admin .rr-event-standings-empty{
+  grid-column:1/-1;
+  min-height:90px;
+  display:flex;
+  gap:14px;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  border:1px dashed var(--rr-line,var(--line));
+  border-radius:12px;
+  background:var(--rr-panel-2,var(--panel2));
+  text-align:left;
+}
+.robot-recall-admin .rr-event-standings-empty>i{font-size:1.6rem;color:var(--rr-accent,var(--accent))}
+.robot-recall-admin .rr-event-standings-empty>div{display:grid;gap:3px}
+.robot-recall-admin .rr-event-standings-empty b{font-size:1rem}
+.robot-recall-admin .rr-event-standings-empty span{color:var(--rr-muted,var(--muted));font-size:.84rem;line-height:1.35}
+
+/* Audience Display: make Event Standings unmistakable and fit all ten names. */
+.robot-recall-screen .rr-event-standings-screen{
+  width:min(1500px,100%)!important;
+  margin-inline:auto!important;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-board-title{
+  text-align:center;
+  margin-bottom:clamp(10px,1.5vh,18px);
+}
+.robot-recall-screen .rr-event-standings-screen .rr-board-title h1{
+  font-size:clamp(2.7rem,5.8vw,6rem)!important;
+  margin:.08em 0 .1em!important;
+  line-height:.95!important;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-board-title p{
+  font-size:clamp(.8rem,1.3vw,1.15rem)!important;
+  font-weight:750;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-big-board{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:clamp(7px,1vh,12px) clamp(12px,1.6vw,24px)!important;
+  width:min(1250px,100%)!important;
+  margin:0 auto!important;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-board-row{
+  min-height:clamp(48px,6vh,68px)!important;
+  padding:clamp(7px,1vh,12px) clamp(10px,1.3vw,18px)!important;
+  border-radius:12px!important;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-board-row .rr-rank{
+  font-size:clamp(1rem,1.8vw,1.55rem)!important;
+  font-weight:1000!important;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-event-row>strong{
+  display:grid;
+  line-height:1.05;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:clamp(1rem,1.6vw,1.4rem)!important;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-event-row>strong>small{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:clamp(.58rem,.75vw,.72rem);
+  font-weight:750;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-event-row>span:last-child{
+  display:grid;
+  justify-items:end;
+  font-size:clamp(1.05rem,1.8vw,1.5rem)!important;
+  font-weight:1000;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-event-row>span:last-child>small{
+  margin-top:3px;
+  color:var(--muted);
+  font-size:.58rem;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-event-empty{
+  grid-column:1/-1;
+  min-height:220px;
+  display:grid;
+  place-content:center;
+  gap:8px;
+  text-align:center;
+}
+.robot-recall-screen .rr-event-standings-screen .rr-event-empty strong{font-size:clamp(1.4rem,2.6vw,2.4rem)}
+.robot-recall-screen .rr-event-standings-screen .rr-event-empty span{color:var(--muted);font-size:clamp(.85rem,1.3vw,1.1rem)}
+
+@media(max-width:900px){
+  .robot-recall-admin .rr-event-standings-head{display:grid}
+  .robot-recall-admin .rr-event-standings-stats{justify-content:flex-start}
+}
+@media(max-width:720px){
+  .robot-recall-admin .rr-event-standings-board{grid-template-columns:1fr}
+  .robot-recall-admin .rr-event-standing-row{grid-template-columns:38px minmax(0,1fr) auto;padding:8px 10px}
+  .robot-recall-admin .rr-event-rank{width:32px;height:32px}
+  .robot-recall-admin .rr-event-standings-stats{display:grid;grid-template-columns:1fr 1fr}
+  .robot-recall-admin .rr-event-standings-stats>em{grid-column:1/-1;text-align:center}
+  .robot-recall-screen .rr-event-standings-screen .rr-big-board{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+  .robot-recall-screen .rr-event-standings-screen .rr-board-row{padding:6px 8px!important;min-height:44px!important}
+}

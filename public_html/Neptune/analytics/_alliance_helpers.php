@@ -58,6 +58,7 @@ function alliance_new_scenario(string $id='s1', string $name='Scenario 1'): arra
         'statuses'=>[],
         'alliance_tags'=>[],
         'pick_lists'=>alliance_empty_pick_lists(),
+        'pick_list_taken'=>[],
         'undo'=>[],
         'redo'=>[],
     ];
@@ -105,7 +106,7 @@ function alliance_normalize_workspace(array $w): array {
             $team=(int)$team;
             if($team<1||!is_array($row)) continue;
             $state=(string)($row['state']??'available');
-            if(!in_array($state,['available','declined','broken','do_not_pick'],true)) $state='available';
+            if(!in_array($state,['available','already_picked','declined','broken','do_not_pick'],true)) $state='available';
             $statuses[$team]=['state'=>$state,'favorite'=>!empty($row['favorite'])];
         }
         $allowedTagIds=array_flip(alliance_tag_ids());
@@ -129,6 +130,11 @@ function alliance_normalize_workspace(array $w): array {
                 $pickLists[$tier][$index]=is_numeric($value)&&((int)$value)>0?(int)$value:null;
             }
         }
+        $pickListTaken=[];
+        foreach(($s['pick_list_taken']??[]) as $team){
+            $team=(int)$team;
+            if($team>0&&!in_array($team,$pickListTaken,true))$pickListTaken[]=$team;
+        }
         $normalized[$sid]=[
             'id'=>$sid,
             'name'=>trim((string)($s['name']??'Scenario'))?:'Scenario',
@@ -137,6 +143,7 @@ function alliance_normalize_workspace(array $w): array {
             'statuses'=>$statuses,
             'alliance_tags'=>$allianceTags,
             'pick_lists'=>$pickLists,
+            'pick_list_taken'=>$pickListTaken,
             'undo'=>array_slice(is_array($s['undo']??null)?$s['undo']:[],-25),
             'redo'=>array_slice(is_array($s['redo']??null)?$s['redo']:[],-25),
         ];
@@ -199,6 +206,7 @@ function alliance_snapshot(array $scenario): array {
         'statuses'=>$scenario['statuses'],
         'alliance_tags'=>$scenario['alliance_tags']??[],
         'pick_lists'=>$scenario['pick_lists']??alliance_empty_pick_lists(),
+        'pick_list_taken'=>$scenario['pick_list_taken']??[],
     ];
 }
 
@@ -213,6 +221,7 @@ function alliance_restore_snapshot(array &$scenario,array $snapshot): void {
     if(isset($snapshot['statuses'])&&is_array($snapshot['statuses'])) $scenario['statuses']=$snapshot['statuses'];
     if(isset($snapshot['alliance_tags'])&&is_array($snapshot['alliance_tags'])) $scenario['alliance_tags']=$snapshot['alliance_tags'];
     if(isset($snapshot['pick_lists'])&&is_array($snapshot['pick_lists'])) $scenario['pick_lists']=$snapshot['pick_lists'];
+    if(isset($snapshot['pick_list_taken'])&&is_array($snapshot['pick_list_taken'])) $scenario['pick_list_taken']=$snapshot['pick_list_taken'];
 }
 
 function alliance_rankings_for_event(array $event): array {
@@ -290,7 +299,7 @@ function alliance_promote_after_captain_pick(array &$scenario,int $fromAlliance,
     foreach($rankingRows as $row){
         $t=(int)($row['team']??0); if($t<1||isset($used[$t]))continue;
         $st=$scenario['statuses'][$t]['state']??'available';
-        if(in_array($st,['declined','broken','do_not_pick'],true))continue;
+        if(in_array($st,['already_picked','declined','broken','do_not_pick'],true))continue;
         $next=$t;break;
     }
     $scenario['slots'][8]['captain']=$next;

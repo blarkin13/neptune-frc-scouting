@@ -1,7 +1,9 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_event_selection.php';
 require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
 require_once __DIR__.'/_helpers.php';
+require_once dirname(__DIR__).'/analytics/_depa_metrics.php';
 $u=require_login();$org=(int)$u['organization_id'];$eventId=(int)($_GET['event_id']??$_POST['event_id']??0);$msg='';$error='';$epaDbReady=neptune_prescout_public_epa_ready($pdo);$oprDbReady=neptune_prescout_opr_table_ready($pdo);
 
 if(!$eventId){
@@ -25,8 +27,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }catch(Throwable $e){$error=$e->getMessage();}
 }
 
-$s=$pdo->prepare('SELECT e.*,g.name game_name,g.season_year FROM events e JOIN games g ON g.id=e.game_id WHERE e.organization_id=? AND e.active=1 ORDER BY e.is_current DESC,COALESCE(e.start_date,\'9999-12-31\'),e.name');$s->execute([$org]);$events=$s->fetchAll();
-$event=null;$teams=[];$complete=0;$contacted=0;$noResponse=0;$notStarted=0;$epaMap=[];$oprContext=['teams'=>[],'events'=>[],'alliance_rows'=>0];
+$events=neptune_event_selector_rows($pdo,$org,$eventId,neptune_selector_show_history());
+$event=null;$teams=[];$complete=0;$contacted=0;$noResponse=0;$notStarted=0;$epaMap=[];$depaMap=[];$oprContext=['teams'=>[],'events'=>[],'alliance_rows'=>0];
 if($eventId){
     $s=$pdo->prepare('SELECT e.*,g.name game_name,g.season_year FROM events e JOIN games g ON g.id=e.game_id WHERE e.id=? AND e.organization_id=?');$s->execute([$eventId,$org]);$event=$s->fetch()?:null;
     if($event){
@@ -51,6 +53,11 @@ if($eventId){
         // EPA is read in one local database query for the full event roster.
         // No Statbotics request is made when Pre-Scouting loads.
         $epaMap=neptune_prescout_public_epa_map(
+            $pdo,
+            (int)$event['season_year'],
+            array_map(static fn($row)=>(int)($row['frc_team_number']??0),$teams)
+        );
+        $depaMap=neptune_depa_season_map(
             $pdo,
             (int)$event['season_year'],
             array_map(static fn($row)=>(int)($row['frc_team_number']??0),$teams)
@@ -80,7 +87,7 @@ $pageTitle='Pre-Scouting';$moduleName='TRIDENT';include dirname(__DIR__).'/parti
   <?php if($event&&$event['tba_event_key']):?><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="op" value="refresh_tba"><input type="hidden" name="event_id" value="<?=$eventId?>"><button class="secondary"><i class="fa-solid fa-cloud-arrow-down"></i> Refresh TBA Team Info</button></form><?php endif;?>
 </div>
 <?php if($msg):?><div class="notice good"><?=e($msg)?></div><?php endif;?><?php if($error):?><div class="notice bad"><?=e($error)?></div><?php endif;?>
-<?php if($events):?><div class="card"><form method="get" class="analytics-toolbar"><div style="min-width:320px"><label style="margin-top:0">Event</label><select name="event_id" onchange="this.form.submit()"><?php foreach($events as $ev):?><option value="<?=$ev['id']?>" <?=$eventId===(int)$ev['id']?'selected':''?>><?=e(($ev['is_current']?'★ ':'').$ev['name'].' · '.$ev['game_name'])?></option><?php endforeach;?></select></div></form></div><?php endif;?>
+<?php if($events):?><div class="card"><form method="get" class="analytics-toolbar"><div style="min-width:320px"><label style="margin-top:0">Event</label><select name="event_id" onchange="this.form.submit()"><?=neptune_event_options_html($events,$eventId)?></select></div><div style="align-self:end"><?=neptune_history_toggle_html(neptune_selector_show_history(),'events')?></div></form></div><?php endif;?>
 
 <?php if(!$event):?>
 <div class="notice" style="margin-top:16px">No event is available yet. Create/import the event and its roster first.</div>
@@ -98,15 +105,16 @@ $pageTitle='Pre-Scouting';$moduleName='TRIDENT';include dirname(__DIR__).'/parti
 <div class="card" style="margin-top:16px"><div class="pit-list-toolbar"><div><label style="margin-top:0">Find team</label><input id="preSearch" placeholder="Team number, nickname, scout, state, or country"></div><div><label style="margin-top:0">Show</label><select id="preStatus"><option value="all">All teams</option><option value="not_started">Not started</option><option value="contacted">Contacted</option><option value="received">Received</option><option value="no_response">No response</option><option value="unavailable">Unavailable</option></select></div></div></div>
 
 <div class="card prescout-sheet-card" style="margin-top:12px">
-  <div class="prescout-sheet-note"><i class="fa-solid fa-table"></i> Spreadsheet view: team/location and event history come from TBA/cache; season record, Public EPA, Auto, Teleop, Endgame, and EPA rank come from Neptune's local AUGUR EPA database. Most Recent Event OPR and Previous Event OPR come from Neptune's local OPR table; Season Avg OPR is the qualification-match-weighted average of the team's prior event OPR values.</div>
+  <div class="prescout-sheet-note"><i class="fa-solid fa-table"></i> Spreadsheet view: team/location and event history come from TBA/cache; season record, Public EPA, Auto, Teleop, Endgame, EPA rank, D-EPA, and Nep. D-EPA come from Neptune's local AUGUR EPA database. Most Recent Event OPR and Previous Event OPR come from Neptune's local OPR table; Season Avg OPR is the qualification-match-weighted average of the team's prior event OPR values.</div>
   <div class="prescout-sheet-wrap">
     <table class="prescout-sheet" id="preScoutTable">
-      <thead><tr><th>Num</th><th>Team</th><th>State / Country</th><th>Win Rate</th><th>EPA</th><th>Auto</th><th>Teleop</th><th>Endgame</th><th>Most Recent Event OPR</th><th>Previous Event OPR</th><th>Season Avg OPR</th><th>Rank</th><th>Alliances / Events</th><th>Scout</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Num</th><th>Team</th><th>State / Country</th><th>Win Rate</th><th>EPA</th><th>Auto</th><th>Teleop</th><th>Endgame</th><th>D-EPA</th><th>Nep. D-EPA</th><th>Most Recent Event OPR</th><th>Previous Event OPR</th><th>Season Avg OPR</th><th>Rank</th><th>Alliances / Events</th><th>Scout</th><th>Status</th><th></th></tr></thead>
       <tbody>
       <?php foreach($teams as $t):
         $contact=$t['contact_status']?:'not_started';$known=(int)$t['season_profile_id']>0||(int)$t['prior_pit_count']>0||(int)$t['prior_pre_count']>0;
         $loc=trim(implode(' / ',array_filter([$t['state_prov']??'',$t['country']??''])));$n=(int)$t['frc_team_number'];
         $cached=$t['profile_intel'];$sm=$epaMap[$n]??($cached['public_epa']??($cached['statbotics']??[]));
+        $dm=$depaMap[$n]??[];
         $localOpr=$oprContext['teams'][$n]??[];
         $oprs=is_array($localOpr['events']??null)?array_values($localOpr['events']):[];
         if(!$oprs&&is_array($cached['oprs']??null))$oprs=array_values($cached['oprs']);
@@ -136,6 +144,8 @@ $pageTitle='Pre-Scouting';$moduleName='TRIDENT';include dirname(__DIR__).'/parti
         <td class="num"><?=e(neptune_prescout_num($sm['auto']??null,1))?></td>
         <td class="num"><?=e(neptune_prescout_num($sm['teleop']??null,1))?></td>
         <td class="num"><?=e(neptune_prescout_num($sm['endgame']??null,1))?></td>
+        <td class="num" title="Season all-match defensive suppression estimate"><?=e(neptune_prescout_num($dm['depa']??null,1))?></td>
+        <td class="num" title="Season scouting-confirmed defensive suppression; <?=e((string)($dm['validation_label']??'No defense observed'))?>"><?=e(neptune_prescout_num($dm['neptune_depa']??null,1))?></td>
         <td class="num" title="<?=e($opr1Title)?>"><?=e(neptune_prescout_num($opr1,2))?></td>
         <td class="num" title="<?=e($opr2Title)?>"><?=e(neptune_prescout_num($opr2,2))?></td>
         <td class="num" title="Combined local OPR across all prior qualification matches"><?=e(neptune_prescout_num($oprTotal,2))?></td>

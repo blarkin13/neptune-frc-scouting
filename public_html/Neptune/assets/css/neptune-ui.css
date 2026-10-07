@@ -10,6 +10,43 @@ body[data-module="VULCAN"]{--module-accent:var(--module-vulcan)}
 body[data-module="MERCURY"]{--module-accent:var(--module-system)}
 body[data-module="SALT"]{--module-accent:var(--module-augur)}
 
+/* System-wide form controls -------------------------------------------------
+   Keep selects and normal action buttons aligned when they share a toolbar.
+   Native select arrows vary by browser, so Neptune draws one consistent caret. */
+:root{--neptune-control-height:44px}
+select:not([multiple]),
+input[type="text"],input[type="search"],input[type="number"],input[type="email"],
+input[type="password"],input[type="tel"],input[type="url"],input[type="date"],
+input[type="time"],input[type="datetime-local"]{
+  min-height:var(--neptune-control-height);
+  box-sizing:border-box;
+}
+button,.btn{
+  min-height:var(--neptune-control-height);
+  box-sizing:border-box;
+}
+select:not([multiple]){
+  appearance:none;
+  -webkit-appearance:none;
+  height:var(--neptune-control-height);
+  min-height:var(--neptune-control-height);
+  padding-top:0;
+  padding-bottom:0;
+  padding-right:38px;
+  background-image:
+    linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+    linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:
+    calc(100% - 17px) calc(50% - 1px),
+    calc(100% - 12px) calc(50% - 1px);
+  background-size:5px 5px,5px 5px;
+  background-repeat:no-repeat;
+}
+/* Compact/icon controls intentionally remain compact. */
+button.compact,.btn.compact,.neptune-toast-close,.drag-controls button{
+  min-height:38px;
+}
+
 /* Breadcrumbs */
 .neptune-breadcrumbs{
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
@@ -235,3 +272,1041 @@ html[data-theme="light"] .neptune-hub-badge.access-owner{
 /* Breadcrumb/module hover accents should remain visible against white backgrounds too. */
 html[data-theme="light"] .neptune-breadcrumbs a:hover{color:var(--module-accent-readable)}
 
+/* 2026-09-26 control-row cleanup ------------------------------------------
+   Keep mixed select/button rows on one baseline without forcing large action
+   buttons (scouting controls, dialogs, etc.) into a fixed global height. */
+.analytics-toolbar>button,.analytics-toolbar>.btn,
+.analytics-toolbar>div>.btn,
+.toolbar>button,.toolbar>.btn{
+  flex-shrink:0;
+}
+.analytics-toolbar>div,.toolbar>div{min-width:0}
+
+/* Builder pages previously could create horizontal overflow on wide text/action
+   headers. Allow the descriptive side to shrink/wrap while keeping actions usable. */
+.builder-page{width:100%;min-width:0;overflow-x:clip}
+.builder-page .builder-page-header{min-width:0;flex-wrap:wrap}
+.builder-page .builder-page-header>div{flex:1 1 640px;min-width:0}
+.builder-page .builder-page-header>.btn{flex:0 0 auto;max-width:100%;white-space:nowrap}
+.builder-page .builder-game-row>*{min-width:0}
+.builder-page .builder-game-row .toolbar{min-width:0;flex-wrap:wrap}
+.builder-page .builder-game-row .toolbar>.muted{flex:1 1 260px;min-width:0}
+.builder-page .builder-game-row .toolbar>.btn{flex:0 0 auto;white-space:nowrap}
+@media(max-width:980px){
+  .builder-page .builder-page-header{align-items:stretch;flex-direction:column}
+  .builder-page .builder-page-header>.btn{align-self:flex-start}
+}
+
+
+
+/* 2026-09-28 page-header consistency ------------------------------------
+   Breadcrumbs already establish page context. Hide the older subsystem /
+   workspace eyebrow only when it is part of the page's PRIMARY heading.
+   Eyebrows inside cards, dialogs, feeds, and detail sections stay visible. */
+main.wrap > section.module-page > header.module-page-header > div:first-child > .module-code:first-child,
+main.wrap > section.module-page > header.module-page-header > div:first-child > .module-eyebrow:first-child,
+main.wrap > section.alliance-page > header.alliance-page-head > div:first-child > .module-code:first-child,
+main.wrap > section.alliance-page > header.alliance-page-head > div:first-child > .module-eyebrow:first-child,
+main.wrap > .toolbar > div:first-child > .module-code:first-child,
+main.wrap > .toolbar > div:first-child > .module-eyebrow:first-child {
+  display:none!important;
+}
+
+/* 2026-09-29 system-wide page hero v2 --------------------------------------
+   One compact hero language across authenticated Neptune pages.
+   The outer surface follows the same global palette recipe as Home; module
+   identity, quick-help chips, and hero actions provide page-specific context. */
+:root{
+  --neptune-hero-tone:var(--c1-blue);
+  --neptune-hero-radius:22px;
+  --neptune-hero-shadow:0 14px 34px var(--shadow);
+}
+
+.home-hero,
+.neptune-page-hero{
+  background:linear-gradient(115deg,
+    color-mix(in srgb,var(--neptune-hero-tone) 35%,var(--panel)),
+    var(--panel) 55%)!important;
+  border:1px solid color-mix(in srgb,var(--neptune-hero-tone) 78%,var(--line))!important;
+  box-shadow:var(--neptune-hero-shadow)!important;
+}
+
+.neptune-page-hero{
+  position:relative!important;
+  overflow:hidden!important;
+  width:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+  margin:0 0 20px!important;
+  padding:26px 28px!important;
+  border-radius:var(--neptune-hero-radius)!important;
+  color:var(--text)!important;
+  isolation:isolate;
+  align-self:auto!important;
+}
+.neptune-page-hero::after{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  width:300px;
+  height:300px;
+  right:-165px;
+  top:-185px;
+  border-radius:50%;
+  background:radial-gradient(circle,
+    color-mix(in srgb,var(--accent) 10%,transparent),
+    transparent 70%);
+  pointer-events:none;
+}
+
+.neptune-page-hero h1{
+  margin:8px 0 8px!important;
+  max-width:100%;
+  color:var(--text)!important;
+  font-size:clamp(2rem,4.4vw,3.7rem)!important;
+  line-height:.98!important;
+  letter-spacing:-.052em!important;
+}
+.neptune-page-hero p,
+.neptune-page-hero .muted{
+  max-width:980px;
+  color:var(--muted)!important;
+  line-height:1.5;
+}
+.neptune-page-hero p:last-child{margin-bottom:0}
+
+/* Compact subsystem / workspace line modeled after Match Scouting. */
+.neptune-hero-kicker,
+.neptune-page-hero .match-scout-kicker,
+.neptune-page-hero .vgb-kicker,
+.neptune-page-hero .dg-kicker{
+  display:flex!important;
+  align-items:center!important;
+  gap:9px!important;
+  width:max-content;
+  max-width:100%;
+  margin:0 0 2px!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  color:var(--module-accent-readable,var(--module-accent,var(--muted)))!important;
+  font-size:.72rem!important;
+  font-weight:950!important;
+  letter-spacing:.16em!important;
+  line-height:1.25!important;
+  text-transform:uppercase!important;
+}
+.neptune-hero-kicker i,
+.neptune-page-hero .match-scout-kicker i,
+.neptune-page-hero .vgb-kicker i,
+.neptune-page-hero .dg-kicker i{
+  flex:0 0 auto;
+  font-size:.78rem;
+}
+
+/* Primary-header module labels from older pages are replaced by the kicker. */
+.neptune-page-hero .module-code,
+.neptune-page-hero .module-eyebrow{
+  display:none!important;
+}
+
+/* Match Scouting joins the same outer hero system instead of keeping a one-off
+   border/background. Its title and workflow content remain page-specific. */
+.neptune-page-hero.match-scout-hero{
+  padding:26px 28px!important;
+  border-radius:var(--neptune-hero-radius)!important;
+}
+.neptune-page-hero.match-scout-hero::before{opacity:.09!important}
+.neptune-page-hero.match-scout-hero .match-scout-title{
+  margin:8px 0 10px!important;
+  font-size:clamp(2.15rem,5vw,4.35rem)!important;
+}
+
+/* Game Builder keeps its controls but not a separate VULCAN-tinted shell. */
+.neptune-page-hero.vgb-hero{
+  padding:26px 28px!important;
+  border-radius:var(--neptune-hero-radius)!important;
+}
+.neptune-page-hero.vgb-hero::before{display:none!important}
+.neptune-page-hero.vgb-hero .vgb-title{
+  color:var(--text)!important;
+  font-size:clamp(2.15rem,4.8vw,3.85rem)!important;
+  line-height:.96!important;
+  letter-spacing:-.055em!important;
+}
+.neptune-page-hero.vgb-hero .vgb-title span{
+  background:none!important;
+  -webkit-background-clip:border-box!important;
+  background-clip:border-box!important;
+  color:var(--text)!important;
+  -webkit-text-fill-color:var(--text)!important;
+}
+.neptune-page-hero.vgb-hero .vgb-sub{color:var(--muted)!important}
+
+/* Quick page guidance / information chips. Existing Match Scouting steps and
+   Match Board metric chips are promoted into this same shared visual language. */
+.neptune-hero-pills,
+.neptune-page-hero .match-scout-steps,
+.neptune-page-hero .mb-key,
+.neptune-page-hero .vgb-status-row{
+  display:flex!important;
+  align-items:center;
+  gap:8px!important;
+  flex-wrap:wrap!important;
+  width:auto;
+  max-width:100%;
+  margin:16px 0 0!important;
+}
+.neptune-hero-pill,
+.neptune-page-hero .match-scout-step,
+.neptune-page-hero .mb-key>span,
+.neptune-page-hero .vgb-status-row>.pill{
+  display:inline-flex!important;
+  align-items:center!important;
+  gap:7px!important;
+  min-height:34px!important;
+  width:auto!important;
+  margin:0!important;
+  padding:6px 11px!important;
+  border:1px solid color-mix(in srgb,var(--neptune-hero-tone) 36%,var(--line))!important;
+  border-radius:999px!important;
+  background:color-mix(in srgb,var(--panel2) 84%,transparent)!important;
+  color:var(--muted)!important;
+  font-size:.72rem!important;
+  font-weight:850!important;
+  line-height:1.1!important;
+  white-space:nowrap;
+}
+.neptune-hero-pill i,
+.neptune-page-hero .match-scout-step i,
+.neptune-page-hero .mb-key>span i{
+  color:var(--module-accent-readable,var(--module-accent,var(--accent)))!important;
+}
+.neptune-hero-pill strong,
+.neptune-page-hero .match-scout-step strong{
+  color:var(--text)!important;
+  font-weight:950!important;
+}
+
+/* Hero link/actions should read as compact pills, not rectangular form buttons. */
+.neptune-page-hero a.btn,
+.neptune-page-hero button.btn,
+.neptune-page-hero .vgb-hero-actions .btn,
+.neptune-page-hero .dg-hero-actions .btn{
+  width:auto!important;
+  min-width:0!important;
+  min-height:38px!important;
+  height:auto!important;
+  padding:8px 14px!important;
+  border-radius:999px!important;
+  white-space:nowrap;
+}
+.neptune-page-hero .toolbar{
+  gap:8px!important;
+}
+
+/* Existing header/action layouts can stay side-by-side on desktop. */
+.neptune-page-hero.module-page-header,
+.neptune-page-hero.builder-page-header,
+.neptune-page-hero.page-head,
+.neptune-page-hero.style-head,
+.neptune-page-hero.asb-head,
+.neptune-page-hero.alliance-page-head,
+.neptune-page-hero.ar-head,
+.neptune-page-hero.dr-head,
+.neptune-page-hero.dg-hero,
+.neptune-page-hero.spot-page-head,
+.neptune-page-hero.toolbar{
+  align-items:center!important;
+}
+.neptune-page-hero > .toolbar,
+.neptune-page-hero .vgb-hero-actions,
+.neptune-page-hero .dg-hero-actions{
+  position:relative;
+  z-index:1;
+}
+.neptune-page-hero.toolbar{
+  justify-content:space-between!important;
+  gap:18px!important;
+}
+.neptune-page-hero.toolbar>div:first-child{
+  min-width:0;
+  flex:1 1 540px;
+}
+.neptune-page-hero.toolbar>form,
+.neptune-page-hero.toolbar>.toolbar,
+.neptune-page-hero.toolbar>div:last-child:not(:first-child){flex:0 1 auto}
+
+.neptune-page-hero-generated{display:block}
+.neptune-page-hero.toolbar,
+.neptune-page-hero .toolbar:last-child{margin-top:0}
+
+/* Some feature pages supplied large min-heights for titlebars. A hero is always
+   content-height; data/results areas below the hero own the remaining viewport. */
+.neptune-page-hero.robot-page-titlebar,
+.neptune-page-hero.mb-titlebar,
+.neptune-page-hero.pit-board-titlebar,
+.neptune-page-hero.lab-title-row,
+.neptune-page-hero[class*="titlebar"],
+.neptune-page-hero[class*="page-head"]{
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+}
+
+@media(max-width:900px){
+  .neptune-page-hero{
+    padding:22px 22px!important;
+    border-radius:18px!important;
+  }
+  .neptune-page-hero h1{font-size:clamp(1.9rem,7.5vw,3rem)!important}
+}
+
+@media(max-width:760px){
+  .neptune-page-hero{
+    min-height:0!important;
+    height:auto!important;
+    max-height:none!important;
+    padding:19px 18px!important;
+    margin-bottom:16px!important;
+    border-radius:16px!important;
+  }
+  .neptune-page-hero h1{
+    margin-top:7px!important;
+    font-size:clamp(1.82rem,8.7vw,2.65rem)!important;
+    line-height:1!important;
+  }
+  .neptune-hero-kicker,
+  .neptune-page-hero .match-scout-kicker,
+  .neptune-page-hero .vgb-kicker,
+  .neptune-page-hero .dg-kicker{
+    font-size:.65rem!important;
+    letter-spacing:.13em!important;
+  }
+  .neptune-page-hero.toolbar,
+  .neptune-page-hero.module-page-header,
+  .neptune-page-hero.builder-page-header,
+  .neptune-page-hero.page-head,
+  .neptune-page-hero.style-head,
+  .neptune-page-hero.asb-head,
+  .neptune-page-hero.alliance-page-head,
+  .neptune-page-hero.ar-head,
+  .neptune-page-hero.dr-head,
+  .neptune-page-hero.dg-hero,
+  .neptune-page-hero.robot-page-titlebar,
+  .neptune-page-hero.mb-titlebar,
+  .neptune-page-hero.pit-board-titlebar{
+    align-items:stretch!important;
+    flex-direction:column!important;
+    grid-template-columns:1fr!important;
+  }
+  /* Critical: desktop flex-basis must not become 540px of HEIGHT in column mode. */
+  .neptune-page-hero.toolbar>div:first-child,
+  .neptune-page-hero.toolbar>div:last-child,
+  .neptune-page-hero.toolbar>form,
+  .neptune-page-hero.toolbar>.toolbar{
+    flex:0 1 auto!important;
+    min-height:0!important;
+    height:auto!important;
+  }
+  .neptune-page-hero .toolbar,
+  .neptune-page-hero .vgb-hero-actions,
+  .neptune-page-hero .dg-hero-actions{
+    justify-content:flex-start!important;
+    width:auto!important;
+  }
+  .neptune-page-hero.vgb-hero,
+  .neptune-page-hero.match-scout-hero{padding:19px 18px!important}
+  .neptune-hero-pills,
+  .neptune-page-hero .match-scout-steps,
+  .neptune-page-hero .mb-key,
+  .neptune-page-hero .vgb-status-row{margin-top:13px!important;gap:6px!important}
+  .neptune-hero-pill,
+  .neptune-page-hero .match-scout-step,
+  .neptune-page-hero .mb-key>span,
+  .neptune-page-hero .vgb-status-row>.pill{
+    min-height:31px!important;
+    padding:5px 9px!important;
+    font-size:.67rem!important;
+  }
+}
+
+@media(max-width:480px){
+  .neptune-page-hero{padding:17px 15px!important}
+  .neptune-hero-pill,
+  .neptune-page-hero .match-scout-step,
+  .neptune-page-hero .mb-key>span,
+  .neptune-page-hero .vgb-status-row>.pill{
+    white-space:normal;
+  }
+}
+
+/* System-wide footer -------------------------------------------------------
+   Shared, compact footer for normal Neptune pages. Fullscreen/hidden-chrome
+   surfaces are excluded by partials_footer.php. */
+.neptune-site-footer{
+  width:min(calc(100% - 52px),1368px);
+  margin:4px auto 24px;
+  padding:0 2px;
+  color:var(--muted);
+}
+.neptune-site-footer-inner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  min-height:50px;
+  padding:12px 4px 0;
+  border-top:1px solid var(--line);
+}
+.neptune-site-footer-brand{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+}
+.neptune-site-footer-brand>i{
+  color:var(--module-accent-readable,var(--module-accent,var(--accent)));
+  font-size:.95rem;
+}
+.neptune-site-footer-brand>span{
+  display:flex;
+  align-items:baseline;
+  gap:7px;
+  min-width:0;
+}
+.neptune-site-footer-brand strong{
+  color:var(--text);
+  font-size:.78rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.neptune-site-footer-brand small{
+  color:var(--muted);
+  font-size:.7rem;
+  white-space:nowrap;
+}
+.neptune-site-footer-meta{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:12px;
+  flex-wrap:wrap;
+  font-size:.7rem;
+}
+.neptune-site-footer-meta a{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  color:var(--muted);
+  font-weight:800;
+}
+.neptune-site-footer-meta a:hover{color:var(--text)}
+@media(max-width:760px){
+  .neptune-site-footer{width:calc(100% - 28px);margin-bottom:16px}
+  .neptune-site-footer-inner{align-items:flex-start;flex-direction:column;gap:7px;padding-top:10px}
+  .neptune-site-footer-meta{justify-content:flex-start;gap:9px 12px}
+}
+@media(max-width:420px){
+  .neptune-site-footer-brand small{display:none}
+}
+
+/* Share Neptune ------------------------------------------------------------
+   Footer promotion modal with a local, static QR code. No external QR service
+   or network dependency is required after the page itself has loaded. */
+.neptune-footer-share{
+  appearance:none;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:30px;
+  padding:5px 10px;
+  border:1px solid color-mix(in srgb,var(--line) 78%,var(--accent) 22%);
+  border-radius:999px;
+  background:color-mix(in srgb,var(--panel) 88%,var(--accent) 12%);
+  color:var(--text);
+  font:inherit;
+  font-size:.7rem;
+  font-weight:900;
+  line-height:1;
+  cursor:pointer;
+  transition:border-color .16s ease,background .16s ease,transform .16s ease;
+}
+.neptune-footer-share:hover{
+  border-color:color-mix(in srgb,var(--accent) 55%,var(--line) 45%);
+  background:color-mix(in srgb,var(--panel) 78%,var(--accent) 22%);
+  transform:translateY(-1px);
+}
+.neptune-footer-share:focus-visible{
+  outline:3px solid color-mix(in srgb,var(--focus,var(--accent)) 32%,transparent);
+  outline-offset:2px;
+}
+.neptune-footer-share i{color:var(--accent)}
+body.neptune-modal-open{overflow:hidden}
+.neptune-share-modal{
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  visibility:hidden;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease,visibility .18s ease;
+}
+.neptune-share-modal.is-open{
+  visibility:visible;
+  opacity:1;
+  pointer-events:auto;
+}
+.neptune-share-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(3,8,15,.72);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+}
+.neptune-share-dialog{
+  position:relative;
+  z-index:1;
+  width:min(460px,100%);
+  max-height:min(760px,calc(100vh - 32px));
+  overflow:auto;
+  padding:30px;
+  border:1px solid color-mix(in srgb,var(--line) 72%,var(--accent) 28%);
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 10% 0%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 42%),
+    var(--panel);
+  color:var(--text);
+  box-shadow:0 30px 80px rgba(0,0,0,.42);
+  text-align:center;
+  transform:translateY(10px) scale(.985);
+  transition:transform .18s ease;
+}
+.neptune-share-modal.is-open .neptune-share-dialog{transform:none}
+.neptune-share-dialog:focus{outline:none}
+.neptune-share-close{
+  position:absolute;
+  top:14px;
+  right:14px;
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:color-mix(in srgb,var(--panel) 90%,var(--text) 10%);
+  color:var(--text);
+  cursor:pointer;
+}
+.neptune-share-close:hover{background:color-mix(in srgb,var(--panel) 80%,var(--text) 20%)}
+.neptune-share-mark{
+  width:54px;
+  height:54px;
+  margin:0 auto 13px;
+  display:grid;
+  place-items:center;
+  border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line) 55%);
+  border-radius:17px;
+  background:color-mix(in srgb,var(--panel) 76%,var(--accent) 24%);
+  color:var(--accent);
+  font-size:1.25rem;
+}
+.neptune-share-kicker{
+  margin-bottom:8px;
+  color:var(--muted);
+  font-size:.68rem;
+  font-weight:950;
+  letter-spacing:.16em;
+}
+.neptune-share-dialog h2{
+  margin:0;
+  color:var(--text);
+  font-size:clamp(1.65rem,4vw,2.2rem);
+  line-height:1.04;
+  letter-spacing:-.035em;
+}
+.neptune-share-dialog p{
+  max-width:36ch;
+  margin:11px auto 19px;
+  color:var(--muted);
+  font-size:.94rem;
+  line-height:1.5;
+}
+.neptune-share-qr-wrap{
+  width:min(300px,82vw);
+  margin:0 auto;
+  padding:14px;
+  border-radius:22px;
+  background:#fff;
+  box-shadow:0 12px 30px rgba(0,0,0,.18);
+}
+.neptune-share-qr-wrap img{
+  display:block;
+  width:100%;
+  height:auto;
+  image-rendering:pixelated;
+}
+.neptune-share-url{
+  margin:15px auto 0;
+  color:var(--muted);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.74rem;
+  overflow-wrap:anywhere;
+}
+.neptune-share-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:18px;
+}
+.neptune-share-actions button,
+.neptune-share-open-link{
+  min-height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:10px 14px;
+  border-radius:13px;
+  font-weight:900;
+  text-decoration:none;
+}
+.neptune-share-open-link{
+  border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line) 45%);
+  background:var(--accent);
+  color:var(--solid-text,#050505);
+}
+.neptune-share-open-link:hover{filter:brightness(1.05)}
+@media(max-width:560px){
+  .neptune-share-modal{padding:12px}
+  .neptune-share-dialog{padding:26px 18px 20px;border-radius:20px}
+  .neptune-share-actions{grid-template-columns:1fr}
+  .neptune-footer-share{min-height:29px;padding:5px 9px}
+}
+@media(prefers-reduced-motion:reduce){
+  .neptune-share-modal,.neptune-share-dialog,.neptune-footer-share{transition:none}
+}
+
+
+/* 2026-09-29 shared header + footer cleanup ---------------------------------
+   Keep the same navigation behavior, but separate primary destinations from
+   compact utility controls and use one pill language across the footer. */
+.topbar-clean{
+  min-height:68px;
+  padding:7px 20px;
+  gap:14px;
+  border-bottom-color:color-mix(in srgb,var(--line) 88%,transparent);
+  box-shadow:0 5px 24px color-mix(in srgb,var(--shadow) 42%,transparent);
+}
+.topbar-clean .brand{padding-right:2px}
+.topbar-clean .brand-logo{width:102px;height:52px}
+.topbar-identity{
+  min-width:150px;
+  max-width:245px;
+  padding:5px 15px 5px 0;
+  margin-right:2px;
+  border-right:1px solid var(--line);
+}
+.topbar-identity b{font-size:.88rem;letter-spacing:.01em}
+.nav-clean{gap:5px;flex-wrap:nowrap;min-width:0}
+.nav-clean>a:not(.logout-link){
+  min-height:38px;
+  padding:8px 11px;
+  border:1px solid transparent;
+  border-radius:999px;
+  font-size:.86rem;
+  white-space:nowrap;
+}
+.nav-clean>a:not(.logout-link):hover{
+  border-color:var(--line);
+  background:var(--panel2);
+}
+.nav-clean>a.active{
+  border-color:color-mix(in srgb,var(--accent) 42%,var(--line));
+  background:color-mix(in srgb,var(--accent) 10%,var(--panel2));
+}
+.nav-clean>a.active:after{display:none!important}
+.nav-clean .neptune-nav-utility{flex:0 0 auto}
+.nav-clean .tba-live-toggle{
+  min-height:38px;
+  padding:7px 10px!important;
+  border-radius:999px!important;
+  font-size:.78rem;
+  font-weight:850;
+}
+.tba-live-toggle{display:inline-flex;align-items:center;gap:7px;border-color:var(--line)!important;background:var(--panel2)!important;color:var(--muted)!important;white-space:nowrap}
+.tba-live-toggle small{font-size:.58rem;font-weight:950;letter-spacing:.06em;padding:2px 5px;border:1px solid var(--line);border-radius:999px}
+.tba-live-toggle.is-on{color:var(--good)!important;border-color:color-mix(in srgb,var(--good) 48%,var(--line))!important;background:color-mix(in srgb,var(--good) 8%,var(--panel2))!important}
+.tba-live-toggle.is-on small{border-color:color-mix(in srgb,var(--good) 48%,var(--line));color:var(--good)}
+@media(min-width:761px){
+  .nav-clean .theme-toggle,
+  .nav-clean .logout-link{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:38px;
+    height:38px;
+    min-width:38px;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:var(--panel2);
+    color:var(--text);
+  }
+  .nav-clean .theme-toggle:hover,
+  .nav-clean .logout-link:hover{border-color:color-mix(in srgb,var(--accent) 42%,var(--line));background:color-mix(in srgb,var(--accent) 8%,var(--panel2))}
+  .nav-clean .theme-toggle .theme-label,
+  .nav-clean .logout-link .nav-logout{display:none!important}
+}
+@media(max-width:1120px) and (min-width:761px){
+  .topbar-identity{display:none}
+  .nav-clean>a:not(.logout-link){padding-left:9px;padding-right:9px;font-size:.82rem}
+}
+@media(max-width:760px){
+  .topbar-clean{min-height:64px;padding:6px 12px;box-shadow:0 4px 18px color-mix(in srgb,var(--shadow) 38%,transparent)}
+  .topbar-clean .brand-logo{width:92px;height:48px}
+  .nav-clean{gap:6px}
+  .nav-clean>a:not(.logout-link),
+  .nav-clean .theme-toggle,
+  .nav-clean .logout-link,
+  .nav-clean .tba-live-toggle{
+    width:100%!important;
+    min-height:48px!important;
+    height:auto!important;
+    padding:11px 13px!important;
+    justify-content:flex-start!important;
+    border:1px solid transparent!important;
+    border-radius:10px!important;
+    background:transparent!important;
+    font-size:.9rem;
+  }
+  .nav-clean>a.active{border-color:color-mix(in srgb,var(--accent) 35%,var(--line))!important;background:color-mix(in srgb,var(--accent) 9%,var(--panel2))!important}
+  .nav-clean .tba-live-toggle{border-color:var(--line)!important;background:var(--panel2)!important}
+  .nav-clean .tba-live-toggle small{margin-left:auto}
+}
+
+/* Footer action pills */
+.neptune-site-footer-meta{gap:8px 9px}
+.neptune-footer-pill,
+.neptune-site-footer-meta .neptune-footer-pill{
+  appearance:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  min-height:32px;
+  padding:6px 11px;
+  margin:0;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--panel2);
+  color:var(--text);
+  font:inherit;
+  font-size:.74rem;
+  font-weight:850;
+  line-height:1;
+  text-decoration:none;
+  text-transform:none;
+  cursor:pointer;
+  box-shadow:none;
+}
+.neptune-footer-pill:hover,
+.neptune-site-footer-meta .neptune-footer-pill:hover{
+  filter:none;
+  border-color:color-mix(in srgb,var(--accent) 44%,var(--line));
+  background:color-mix(in srgb,var(--accent) 8%,var(--panel2));
+  color:var(--text);
+}
+.neptune-footer-pill:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 60%,transparent);outline-offset:2px}
+.neptune-footer-pill i{color:var(--accent)}
+.neptune-footer-share{min-height:32px!important;padding:6px 11px!important}
+
+/* Global quick walkthrough */
+.neptune-walkthrough-modal{
+  position:fixed;
+  inset:0;
+  z-index:10020;
+  display:none;
+  place-items:center;
+  padding:20px;
+}
+.neptune-walkthrough-modal.is-open{display:grid}
+.neptune-walkthrough-backdrop{position:absolute;inset:0;background:var(--overlay-strong);backdrop-filter:blur(7px)}
+.neptune-walkthrough-dialog{
+  position:relative;
+  z-index:1;
+  width:min(820px,calc(100vw - 28px));
+  max-height:min(88vh,820px);
+  overflow:auto;
+  padding:24px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  background:var(--panel);
+  color:var(--text);
+  box-shadow:0 28px 90px var(--overlay-strong);
+}
+.neptune-walkthrough-dialog:focus{outline:none}
+.neptune-walkthrough-close{
+  position:absolute;
+  top:14px;
+  right:14px;
+  width:38px;
+  height:38px;
+  padding:0;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--panel2);
+  color:var(--text);
+}
+.neptune-walkthrough-head{display:grid;grid-template-columns:52px minmax(0,1fr);gap:14px;align-items:start;padding-right:44px}
+.neptune-walkthrough-mark{display:grid;place-items:center;width:52px;height:52px;border-radius:15px;background:color-mix(in srgb,var(--accent) 14%,var(--panel2));border:1px solid color-mix(in srgb,var(--accent) 38%,var(--line));color:var(--accent);font-size:1.25rem}
+.neptune-walkthrough-kicker{margin:2px 0 5px;color:var(--accent);font-size:.68rem;font-weight:950;letter-spacing:.13em}
+.neptune-walkthrough-head h2{margin:0 0 7px;font-size:clamp(1.6rem,4vw,2.25rem)}
+.neptune-walkthrough-head p{margin:0;color:var(--muted);line-height:1.5}
+.neptune-walkthrough-steps{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:20px}
+.neptune-walkthrough-steps>div{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
+.neptune-walkthrough-steps>div>span{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--accent) 13%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 38%,var(--line));color:var(--accent);font-weight:950}
+.neptune-walkthrough-steps b{display:block;font-size:.86rem}
+.neptune-walkthrough-steps p{margin:4px 0 0;color:var(--muted);font-size:.78rem;line-height:1.42}
+.neptune-walkthrough-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+@media(max-width:700px){
+  .neptune-walkthrough-modal{padding:12px}
+  .neptune-walkthrough-dialog{padding:20px 16px 16px;border-radius:18px}
+  .neptune-walkthrough-head{grid-template-columns:42px minmax(0,1fr);gap:11px;padding-right:38px}
+  .neptune-walkthrough-mark{width:42px;height:42px;border-radius:12px}
+  .neptune-walkthrough-steps{grid-template-columns:1fr}
+  .neptune-walkthrough-actions{align-items:stretch;flex-direction:column}
+  .neptune-walkthrough-actions .neptune-footer-pill{width:100%}
+}
+@media(prefers-reduced-motion:reduce){.neptune-walkthrough-modal,.neptune-walkthrough-dialog{transition:none}}
+
+/* ==========================================================================
+   Neptune system-wide page geometry
+   --------------------------------------------------------------------------
+   One wide page shell for normal authenticated pages and one hero radius.
+   This intentionally changes geometry only: no hero colors, content, controls,
+   or feature behavior are changed.
+   ========================================================================== */
+:root{
+  --neptune-page-max:1900px;
+  --neptune-page-gutter:clamp(12px,1.15vw,22px);
+  /* Home's .card radius is 8px. Use that exact radius everywhere. */
+  --neptune-hero-radius:8px;
+}
+
+/* The shared app shell used to stop at 1420px while individual pages then
+   imposed several different inner limits (1180/1260/1440/1580/1600/1800).
+   Normal pages now share the same wide shell. Fullscreen/TV wrap-wide surfaces
+   retain their purpose-built geometry. */
+body:not(.tv-mode) main.wrap:not(.wrap-wide){
+  width:100%;
+  max-width:var(--neptune-page-max)!important;
+  padding-left:var(--neptune-page-gutter)!important;
+  padding-right:var(--neptune-page-gutter)!important;
+}
+
+/* These are page-level shells, not functional widgets. Let the common main
+   shell own their width so headings, cards, tables, and heroes start/end on
+   the same visual rails. Inner feature components keep their own constraints. */
+body:not(.tv-mode) main.wrap:not(.wrap-wide) :is(
+  .module-page,
+  .command-page,
+  .neptune-hub,
+  .builder-page,
+  .style-page,
+  .vgb,
+  .ar-public-wrap,
+  .dr-public-wrap,
+  .asb-page,
+  .alliance-page
+){
+  width:100%!important;
+  max-width:none!important;
+  margin-left:0!important;
+  margin-right:0!important;
+}
+
+/* Breadcrumbs follow the same rails rather than retaining the old 1260px cap. */
+body:not(.tv-mode) main.wrap:not(.wrap-wide) .neptune-breadcrumbs{
+  width:100%;
+  max-width:none!important;
+}
+
+/* Every large bordered hero uses the Home page corner radius.  Match Console
+   is included because it is intentionally not converted by the shared hero
+   compositor, but should still align visually with the rest of Neptune. */
+body:not(.tv-mode) main.wrap:not(.wrap-wide) :is(
+  .home-hero,
+  .neptune-page-hero,
+  .match-console-hero
+){
+  width:100%!important;
+  max-width:none!important;
+  border-radius:var(--neptune-hero-radius)!important;
+}
+
+/* Older responsive hero rules used 18px/16px corners. Keep the Home radius
+   unchanged on tablet and phone as well so pages do not visibly change shape
+   across breakpoints. */
+@media(max-width:900px){
+  body:not(.tv-mode) main.wrap:not(.wrap-wide) :is(.home-hero,.neptune-page-hero,.match-console-hero){
+    border-radius:var(--neptune-hero-radius)!important;
+  }
+}
+@media(max-width:760px){
+  body:not(.tv-mode) main.wrap:not(.wrap-wide){
+    padding-left:12px!important;
+    padding-right:12px!important;
+  }
+  body:not(.tv-mode) main.wrap:not(.wrap-wide) :is(.home-hero,.neptune-page-hero,.match-console-hero){
+    border-radius:var(--neptune-hero-radius)!important;
+  }
+}
+
+/* ==========================================================================
+   2026-09-30 tablet / iPad shell hardening
+   --------------------------------------------------------------------------
+   Neptune's desktop navigation no longer tries to squeeze across tablet
+   widths. Tablets use the existing hamburger drawer, and the Home current
+   event card is allowed to shrink without its four metrics forcing overflow.
+   ========================================================================== */
+@media (max-width:1180px) and (min-width:761px){
+  /* Header: use Neptune's existing mobile drawer at tablet widths. */
+  .topbar-clean{
+    position:sticky;
+    top:0;
+    width:100%;
+    max-width:100vw;
+    min-height:68px;
+    padding:7px 14px;
+    gap:10px;
+    overflow:visible;
+  }
+  .topbar-clean .brand{
+    min-width:0;
+    flex:0 0 auto;
+  }
+  .topbar-clean .brand-logo{
+    width:98px;
+    height:52px;
+  }
+  .topbar-identity{display:none!important}
+  .mobile-menu-toggle{
+    display:inline-flex!important;
+    width:46px;
+    height:46px;
+    min-width:46px;
+    padding:0;
+    margin-left:auto;
+    flex:0 0 46px;
+    align-items:center;
+    justify-content:center;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:var(--panel2);
+    color:var(--text);
+    font-size:1.12rem;
+    z-index:2;
+  }
+  .nav:not(.nav-public){
+    display:none;
+    position:absolute;
+    top:100%;
+    left:0;
+    right:0;
+    width:100%;
+    max-width:100vw;
+    margin:0;
+    padding:10px 14px 16px;
+    gap:6px;
+    flex-direction:column;
+    align-items:stretch;
+    flex-wrap:nowrap;
+    background:color-mix(in srgb,var(--bg) 97%,transparent);
+    border-bottom:1px solid var(--line);
+    box-shadow:0 18px 35px var(--shadow);
+    backdrop-filter:blur(16px);
+    z-index:50;
+  }
+  .nav:not(.nav-public).mobile-open{display:flex}
+  .mobile-nav-heading{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    padding:8px 10px 12px;
+    margin-bottom:2px;
+    border-bottom:1px solid var(--line);
+  }
+  .nav-clean>a:not(.logout-link),
+  .nav-clean .theme-toggle,
+  .nav-clean .logout-link,
+  .nav-clean .tba-live-toggle{
+    width:100%!important;
+    min-height:48px!important;
+    height:auto!important;
+    padding:11px 13px!important;
+    justify-content:flex-start!important;
+    border:1px solid transparent!important;
+    border-radius:10px!important;
+    background:transparent!important;
+    font-size:.9rem!important;
+  }
+  .nav-clean>a.active{
+    border-color:color-mix(in srgb,var(--accent) 35%,var(--line))!important;
+    background:color-mix(in srgb,var(--accent) 9%,var(--panel2))!important;
+  }
+  .nav-clean .tba-live-toggle{
+    border-color:var(--line)!important;
+    background:var(--panel2)!important;
+  }
+  .nav-clean .tba-live-toggle small{margin-left:auto}
+  .nav-clean a span,
+  .nav-clean .theme-label,
+  .nav-clean .nav-logout{display:inline!important}
+  .nav-clean .theme-toggle i,
+  .nav-clean .logout-link i,
+  .nav-clean a i{width:23px;text-align:center}
+
+  /* Home hero/current-event card: stop the metric row from forcing the
+     right-hand column wider than the viewport. */
+  .home-hero{
+    grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr)!important;
+    gap:18px;
+  }
+  .home-hero>*,
+  .home-hero .status-panel{
+    min-width:0;
+    max-width:100%;
+  }
+  .home-hero .status-panel h2{
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+  .home-event-metrics{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .home-event-metrics>div{
+    min-width:0;
+  }
+  .home-event-metrics b,
+  .home-event-metrics span{
+    overflow-wrap:anywhere;
+  }
+}
+
+/* Once the Home hero stacks, keep the event metrics in a comfortable 2x2
+   layout until there is enough phone width to collapse further naturally. */
+@media (max-width:900px){
+  .home-hero>*,
+  .home-hero .status-panel{min-width:0;max-width:100%}
+  .home-event-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+
+/* Do not let the chrome itself create document-level horizontal scrolling. */
+.topbar-clean{box-sizing:border-box}
+.topbar-clean>*{min-width:0}

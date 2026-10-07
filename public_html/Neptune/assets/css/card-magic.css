@@ -1,0 +1,104 @@
+
+html:has(.card-magic-running),body.card-magic-running{height:100%;overflow:hidden;background:#030509}
+.card-magic-running .wrap{max-width:none;padding:0}
+.magic-setup{max-width:980px}.magic-setup h2{margin:5px 0}.magic-setup-form{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}.magic-field{border:1px solid var(--line);border-radius:8px;padding:14px;margin:0}.magic-field>span,.magic-field>legend{font-size:.78rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.magic-tricks{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px}.magic-tricks legend{grid-column:1/-1}.magic-choice{display:flex;gap:10px;align-items:flex-start;margin:0;padding:12px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);cursor:pointer}.magic-choice input{width:auto;margin-top:3px}.magic-choice span{display:flex;flex-direction:column;gap:3px}.magic-choice small{color:var(--muted);line-height:1.35}.magic-launch{grid-column:1/-1}
+.magic-stage{position:fixed;inset:0;z-index:9999;display:grid;grid-template-rows:auto 1fr auto;background:radial-gradient(circle at 50% -15%,#12345d 0,transparent 38%),linear-gradient(180deg,#05070b,#090d15 62%,#030509);color:#f7f9fc;font-family:Inter,system-ui,sans-serif}
+.magic-stage-top{min-height:78px;padding:12px 22px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:1px solid #263247;background:#05070bd9;backdrop-filter:blur(12px)}
+.magic-brand{display:flex;align-items:center;gap:10px}.magic-brand>i{font-size:1.7rem;color:#d9b44a}.magic-brand span{display:flex;flex-direction:column}.magic-brand b{font-size:1rem;letter-spacing:.12em}.magic-brand small{font-size:.62rem;letter-spacing:.14em;color:#9eabbc}
+.magic-source{text-align:center;display:flex;flex-direction:column;gap:2px}.magic-source span{font-size:.9rem;font-weight:900}.magic-source small{color:#9eabbc}
+.magic-stage-actions{justify-self:end;display:flex;gap:7px}.magic-icon-btn{width:42px;height:42px;padding:0;border-radius:7px;border:1px solid #2b3950;background:#101725;color:#f7f9fc;display:grid;place-items:center;text-decoration:none}.magic-icon-btn:hover{background:#18243a;color:#fff}
+.magic-content{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 4vw 14px;text-align:center}
+.magic-kicker{font-size:.75rem;font-weight:950;letter-spacing:.18em;color:#d9b44a;margin-bottom:8px}.magic-content h1{margin:0;font-size:clamp(2.2rem,5vw,5rem);line-height:.98;letter-spacing:-.05em}.magic-content>p{max-width:1000px;margin:12px auto 18px;color:#b8c2d1;font-size:clamp(1rem,1.8vw,1.45rem);line-height:1.35}
+.magic-board{width:min(1500px,95vw);min-height:360px;display:flex;align-items:center;justify-content:center}
+.magic-card-grid{width:100%;display:grid;grid-template-columns:repeat(var(--cols,6),minmax(0,1fr));gap:clamp(8px,1.2vw,18px)}
+.magic-card{position:relative;min-height:210px;padding:14px 10px 12px;border-radius:12px;border:1px solid #34445e;background:linear-gradient(145deg,#161e2b,#0e141f);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 14px 38px #0008}
+.magic-card-index{position:absolute;top:8px;left:9px;width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:#d9b44a;color:#090b10;font-size:.8rem;font-weight:950}
+.magic-card img{display:block;width:min(150px,75%);height:130px;object-fit:contain;filter:drop-shadow(0 8px 14px #0008)}
+.magic-card-fallback{display:grid;place-items:center;width:125px;height:125px;border-radius:50%;border:2px solid #4d607d;color:#dfe6ef;font-size:2rem;font-weight:950;background:#111a28}
+.magic-card strong{font-size:clamp(1.25rem,2vw,2rem);margin-top:8px}.magic-card small{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#9eabbc}
+.magic-card.reveal{border-color:#d9b44a;box-shadow:0 0 0 2px #d9b44355,0 18px 55px #d9b44a22;transform:scale(1.035)}
+.magic-card.dim{opacity:.28;filter:saturate(.4)}
+.magic-prediction{display:grid;place-items:center;gap:16px;min-width:min(680px,90vw);min-height:330px;padding:30px;border:1px solid #3a4a64;border-radius:16px;background:#101725;box-shadow:0 20px 70px #0009}.magic-prediction i{font-size:4rem;color:#d9b44a}.magic-prediction strong{font-size:clamp(2rem,5vw,4.5rem)}.magic-prediction small{color:#aeb8c8;font-size:1rem;letter-spacing:.1em}
+.magic-equation{font-size:clamp(2.2rem,7vw,7rem);font-weight:950;letter-spacing:-.05em;color:#fff}.magic-equation .accent{color:#d9b44a}
+.magic-note{min-height:26px;margin-top:10px;color:#8ea0b8;font-size:.85rem}
+.magic-stage-footer{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;padding:10px 20px 14px}.magic-cycle-state{font-size:.68rem;font-weight:900;color:#8ea0b8;letter-spacing:.11em}.magic-progress{height:4px;border-radius:99px;background:#1b2637;overflow:hidden}.magic-progress span{display:block;width:0;height:100%;background:#d9b44a;transition:width .15s linear}
+.magic-paused .magic-progress span{opacity:.45}
+@media(max-width:900px){.magic-setup-form,.magic-tricks{grid-template-columns:1fr}.magic-stage-top{grid-template-columns:1fr auto}.magic-source{display:none}.magic-card-grid{grid-template-columns:repeat(var(--cols-mobile,3),minmax(0,1fr))}.magic-card{min-height:150px}.magic-card img{height:90px}.magic-stage-actions .magic-icon-btn:nth-child(2){display:none}}
+@media(max-height:760px){.magic-stage-top{min-height:58px;padding:7px 16px}.magic-icon-btn{width:36px;height:36px}.magic-content{padding-top:8px}.magic-content h1{font-size:clamp(1.8rem,4.3vw,3.8rem)}.magic-content>p{margin:7px auto 10px}.magic-card{min-height:150px}.magic-card img{height:88px}.magic-board{min-height:280px}}
+
+/* Pit Magic mobile stacking / overflow fix */
+.magic-stage-top{
+  position:relative;
+  z-index:50;
+}
+.magic-content{
+  position:relative;
+  z-index:10;
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.magic-kicker,
+.magic-content h1,
+.magic-content>p,
+.magic-note{
+  position:relative;
+  z-index:20;
+  flex:0 0 auto;
+}
+.magic-board{
+  position:relative;
+  z-index:10;
+  flex:0 0 auto;
+}
+.magic-stage-footer{
+  position:relative;
+  z-index:50;
+  background:#030509e8;
+}
+
+@media(max-width:900px){
+  .magic-content{
+    justify-content:flex-start;
+    padding-top:24px;
+  }
+  .magic-board{
+    min-height:0;
+    align-items:flex-start;
+  }
+  .magic-card-grid{
+    align-self:flex-start;
+  }
+}
+
+@media(max-width:600px){
+  .magic-content{
+    padding:22px 12px 18px;
+  }
+  .magic-content h1{
+    font-size:clamp(2rem,10vw,3.5rem);
+    line-height:1.02;
+  }
+  .magic-content>p{
+    margin:10px auto 16px;
+  }
+  .magic-board{
+    width:100%;
+  }
+}
+
+/* Pit Magic card number badge stacking fix */
+.magic-card-index{
+  z-index:30;
+  isolation:isolate;
+  box-shadow:0 2px 8px #0009;
+}
+.magic-card img,
+.magic-card-fallback{
+  position:relative;
+  z-index:1;
+}
+.magic-card strong,
+.magic-card small{
+  position:relative;
+  z-index:2;
+}

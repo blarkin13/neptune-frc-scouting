@@ -1,0 +1,176 @@
+{
+  "game": "2025 Reefscape Official",
+  "buttons": [
+    {
+      "name": "SP1",
+      "code": "sp1",
+      "type": "offense",
+      "location": "sarting_line",
+      "layout": "circle-2",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "SP2",
+      "code": "sp2",
+      "type": "offense",
+      "location": "sarting_line",
+      "layout": "circle-2",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "SP3",
+      "code": "sp3",
+      "type": "offense",
+      "location": "sarting_line",
+      "layout": "circle-2",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Zone",
+      "code": "zone",
+      "type": "offense",
+      "location": "sarting_line",
+      "layout": "circle-2",
+      "autonPoints": 3,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Picks Up Coral",
+      "code": "picks_up_coral",
+      "type": "offense",
+      "location": "anywhere",
+      "layout": "square-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Score Coral in Trough (Level 1)",
+      "code": "score_coral_trough_l1",
+      "type": "offense",
+      "location": "reef",
+      "layout": "rect-2",
+      "autonPoints": 3,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Score Coral on Branch (Level 2)",
+      "code": "score_coral_branch_l2",
+      "type": "offense",
+      "location": "reef",
+      "layout": "rect-2",
+      "autonPoints": 4,
+      "teleopPoints": 3
+    },
+    {
+      "name": "Score Coral on Branch (Level 3)",
+      "code": "score_coral_branch_l3",
+      "type": "offense",
+      "location": "reef",
+      "layout": "rect-2",
+      "autonPoints": 6,
+      "teleopPoints": 4
+    },
+    {
+      "name": "Score Coral on Branch (Level 4)",
+      "code": "score_coral_branch_l4",
+      "type": "offense",
+      "location": "reef",
+      "layout": "rect-2",
+      "autonPoints": 7,
+      "teleopPoints": 5
+    },
+    {
+      "name": "Picks Up Algae",
+      "code": "picks_up_algae",
+      "type": "offense",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Score Algae in Processor",
+      "code": "score_algae_processor",
+      "type": "offense",
+      "location": "processor",
+      "layout": "rect-2",
+      "autonPoints": 0,
+      "teleopPoints": 6
+    },
+    {
+      "name": "Score Algae in Net",
+      "code": "score_algae_net",
+      "type": "offense",
+      "location": "barge",
+      "layout": "rect-2",
+      "autonPoints": 0,
+      "teleopPoints": 4
+    },
+    {
+      "name": "Park in Barge Zone",
+      "code": "park_barge_zone",
+      "type": "offense",
+      "location": "barge",
+      "layout": "square-1",
+      "autonPoints": 0,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Climb Off Ground via Shallow Cage",
+      "code": "climb_shallow_cage",
+      "type": "offense",
+      "location": "barge",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 6
+    },
+    {
+      "name": "Climb Off Ground via Deep Cage",
+      "code": "climb_deep_cage",
+      "type": "offense",
+      "location": "barge",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Plays Defense",
+      "code": "plays_defense",
+      "type": "defense",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Block Intake",
+      "code": "block_intake",
+      "type": "defense",
+      "location": "intake",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Disabled",
+      "code": "disabled",
+      "type": "cooperative",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Did Not Show",
+      "code": "did_not_show",
+      "type": "cooperative",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    }
+  ]
+}

@@ -1,28 +1,12 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_event_selection.php';
 $u=require_role(['owner','admin']);
 $org=(int)$u['organization_id'];
 $msg='';
 $error='';
 
-$s=$pdo->prepare(
-    "SELECT g.*,o.name owner_org_name,
-            CASE WHEN g.organization_id=? THEN 1 ELSE 0 END is_owned,
-            cr.revision_number current_revision_number,
-            dr.revision_number draft_revision_number
-     FROM games g
-     JOIN organizations o ON o.id=g.organization_id
-     LEFT JOIN game_revisions cr ON cr.id=g.current_revision_id
-     LEFT JOIN game_revisions dr ON dr.id=g.draft_revision_id
-     WHERE g.organization_id=?
-        OR EXISTS(
-           SELECT 1 FROM game_config_shares gcs
-           WHERE gcs.game_id=g.id AND gcs.recipient_organization_id=?
-        )
-     ORDER BY is_owned DESC,g.season_year DESC,g.name"
-);
-$s->execute([$org,$org,$org]);
-$games=$s->fetchAll();
+$games=neptune_game_selector_rows($pdo,$org,true,neptune_selector_show_history());
 
 $gameId=(int)($_GET['game_id']??$_POST['game_id']??($games[0]['id']??0));
 $game=null;
@@ -80,8 +64,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }catch(Throwable $e){$error=$e->getMessage();}
 }
 
-$config=$viewRevision?json_decode((string)($viewRevision['pre_scout_config_json']??''),true):[];
-$questions=is_array($config['questions']??null)?$config['questions']:[];
+$builderConfig=$viewRevision?json_decode((string)($viewRevision['pre_scout_config_json']??''),true):[];
+$questions=is_array($builderConfig['questions']??null)?$builderConfig['questions']:[];
 
 $pageTitle='Pre-Scout Form Builder';
 $moduleName='VULCAN';
@@ -162,14 +146,14 @@ include dirname(__DIR__).'/partials_header.php';
   <?php endif;?>
 
   <div class="card builder-card">
-    <form method="get" class="builder-game-row">
+    <form method="get" class="builder-game-row"><?php if(neptune_selector_show_history()):?><input type="hidden" name="history" value="1"><?php endif;?>
       <div>
         <label style="margin-top:0">Game</label>
         <select name="game_id" onchange="this.form.submit()">
-          <?php foreach($games as $g):?><option value="<?=$g['id']?>" <?=$gameId===(int)$g['id']?'selected':''?>><?=e($g['season_year'].' · '.$g['name'].((int)$g['organization_id']===$org?(!empty($g['draft_revision_number'])?' · Draft r'.$g['draft_revision_number']:' · Published r'.($g['current_revision_number']??'—')):' · Shared by '.$g['owner_org_name'].' · r'.($g['current_revision_number']??'—')))?></option><?php endforeach;?>
+          <?=neptune_game_options_html($games,$gameId,true)?>
         </select>
       </div>
-      <span class="muted">Choose which season/game configuration you are editing.</span>
+      <div class="toolbar" style="margin:0;align-items:end"><span class="muted">Choose which season/game configuration you are editing.</span><?=neptune_history_toggle_html(neptune_selector_show_history(),'games')?></div>
     </form>
   </div>
 

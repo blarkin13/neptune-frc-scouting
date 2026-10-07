@@ -22,6 +22,16 @@ $darkFields = [
 $brandFields = [
     'c1-blue'=>'Primary button','accent'=>'Links / focus','c1-red'=>'Competition red','c1-green'=>'Competition green','good'=>'Success','bad'=>'Error','warn'=>'Warning','ready'=>'Ready / alliance highlight','alliance-blue'=>'Blue alliance','alliance-blue-deep'=>'Blue alliance deep','solid-text'=>'Text on solid colors',
 ];
+$gameFields = [
+    'game-primary'=>'Primary scoring',
+    'game-secondary'=>'Secondary scoring',
+    'game-intake'=>'Intake / collection',
+    'game-defense'=>'Defense',
+    'game-coop'=>'Co-op',
+    'game-endgame'=>'Endgame',
+    'game-special'=>'Special',
+    'game-utility'=>'Utility / alternate',
+];
 $moduleFields = [
     'module-trident'=>'TRIDENT','module-augur'=>'AUGUR','module-saturn'=>'SATURN','module-vulcan'=>'VULCAN','module-system'=>'MERCURY','module-org'=>'Organization','module-ops'=>'Operations',
 ];
@@ -38,6 +48,7 @@ $lightFields = [
 $defaults = [
  'dark'=>[
   'c1-blue'=>'#004977','c1-red'=>'#D03027','c1-green'=>'#27814e','accent'=>'#0b79b7','good'=>'#3da66e','bad'=>'#e04a43','warn'=>'#7db7dc','ready'=>'#2c91cf','solid-text'=>'#ffffff',
+  'game-primary'=>'#004977','game-secondary'=>'#0b79b7','game-intake'=>'#3f7a67','game-defense'=>'#e04a43','game-coop'=>'#3da66e','game-endgame'=>'#6d62aa','game-special'=>'#8d6b32','game-utility'=>'#657482',
   'bg'=>'#05080b','bg2'=>'#080d12','panel'=>'#0b1118','panel2'=>'#101923','line'=>'#24323f','text'=>'#f4f7fa','muted'=>'#91a1b1','bg-glow'=>'#0b2336','shadow'=>'#00000088',
   'alliance-blue'=>'#1d6c9f','alliance-blue-deep'=>'#1f6fa5','c1-border'=>'#d1d5db','c1-neutral-bg'=>'#f7f3eb','c1-selected-bg'=>'#e3e8f0','black'=>'#000000','ink-strong'=>'#111111','overlay-strong'=>'#000000cc','overlay-medium'=>'#000000bb',
   'module-trident'=>'#0b79b7','module-augur'=>'#6d62aa','module-saturn'=>'#8d6b32','module-vulcan'=>'#a2523f','module-system'=>'#657482','module-org'=>'#3f7a67','module-ops'=>'#0b79b7',
@@ -72,6 +83,8 @@ function styling_palette_css(array $dark, array $light): string {
 "  --bg:{$d('bg')};\n  --bg2:{$d('bg2')};\n  --panel:{$d('panel')};\n  --panel2:{$d('panel2')};\n  --line:{$d('line')};\n  --text:{$d('text')};\n  --muted:{$d('muted')};\n  --bg-glow:{$d('bg-glow')};\n  --shadow:{$d('shadow')};\n\n".
 "  /* Competition colors */\n".
 "  --alliance-blue:{$d('alliance-blue')};\n  --alliance-blue-deep:{$d('alliance-blue-deep')};\n\n".
+"  /* Game Builder action palette */\n".
+"  --game-primary:{$d('game-primary')};\n  --game-secondary:{$d('game-secondary')};\n  --game-intake:{$d('game-intake')};\n  --game-defense:{$d('game-defense')};\n  --game-coop:{$d('game-coop')};\n  --game-endgame:{$d('game-endgame')};\n  --game-special:{$d('game-special')};\n  --game-utility:{$d('game-utility')};\n\n".
 "  /* Shared neutral/utility colors */\n".
 "  --c1-border:{$d('c1-border')};\n  --c1-neutral-bg:{$d('c1-neutral-bg')};\n  --c1-selected-bg:{$d('c1-selected-bg')};\n  --black:{$d('black')};\n  --ink-strong:{$d('ink-strong')};\n  --overlay-strong:{$d('overlay-strong')};\n  --overlay-medium:{$d('overlay-medium')};\n  --action-text:var(--solid-text);\n\n".
 "  /* Neptune subsystem accents */\n".
@@ -89,8 +102,20 @@ if($css!==''){
     $start=strpos($css,$markerStart);$end=strpos($css,$markerEnd);
     if($start!==false && $end!==false && $end>$start){
         $block=substr($css,$start,$end-$start+strlen($markerEnd));
-        $current['dark']=array_replace($current['dark'],styling_extract_scope($block,':root'));
+        $extractedDark=styling_extract_scope($block,':root');
+        $current['dark']=array_replace($current['dark'],$extractedDark);
         $current['light']=array_replace($current['light'],styling_extract_scope($block,'light'));
+        if(!isset($extractedDark['game-primary'])){
+            // First run after the Game Builder palette update: seed the new slots from the exact active Neptune palette.
+            $current['dark']['game-primary']=$current['dark']['c1-blue'];
+            $current['dark']['game-secondary']=$current['dark']['accent'];
+            $current['dark']['game-intake']=$current['dark']['module-org'];
+            $current['dark']['game-defense']=$current['dark']['bad'];
+            $current['dark']['game-coop']=$current['dark']['good'];
+            $current['dark']['game-endgame']=$current['dark']['module-augur'];
+            $current['dark']['game-special']=$current['dark']['module-saturn'];
+            $current['dark']['game-utility']=$current['dark']['module-system'];
+        }
     }
 }
 
@@ -145,6 +170,21 @@ $presets=[
  'Obsidian'=>['c1-blue'=>'#F5F5F5','solid-text'=>'#050505','accent'=>'#FFFFFF','c1-green'=>'#AFAFAF','good'=>'#6FD08C','bad'=>'#FF6B6B','warn'=>'#E6B85C','ready'=>'#FFFFFF','bg'=>'#000000','bg2'=>'#030303','panel'=>'#070707','panel2'=>'#0E0E0E','line'=>'#2A2A2A','text'=>'#FFFFFF','muted'=>'#A6A6A6','bg-glow'=>'#111111','alliance-blue'=>'#BFC7D5','alliance-blue-deep'=>'#7E8795','module-trident'=>'#FFFFFF','module-augur'=>'#D8D8D8','module-saturn'=>'#BEBEBE','module-vulcan'=>'#A8A8A8','module-system'=>'#8F8F8F','module-org'=>'#D0D0D0','module-ops'=>'#FFFFFF','access-strategy'=>'#9F9F9F','access-admin'=>'#C8C8C8','access-owner'=>'#FFFFFF'],
 ];
 $presets['Neptune Default']=$defaults['dark'];
+// Each preset gets a dedicated Game Builder palette derived from colors already present in that preset.
+// This keeps the action palette coordinated without inventing an unrelated second theme.
+foreach($presets as $presetName=>$presetValues){
+    $resolved=array_replace($defaults['dark'],$presetValues);
+    $presets[$presetName]=array_replace($presetValues,[
+        'game-primary'=>$resolved['c1-blue'],
+        'game-secondary'=>$resolved['accent'],
+        'game-intake'=>$resolved['module-org'],
+        'game-defense'=>$resolved['bad'],
+        'game-coop'=>$resolved['good'],
+        'game-endgame'=>$resolved['module-augur'],
+        'game-special'=>$resolved['module-saturn'],
+        'game-utility'=>$resolved['module-system'],
+    ]);
+}
 $presetLight=[
  'Neptune Default'=>$defaults['light'],
  'Deep Ocean'=>['c1-blue'=>'#166B8F','solid-text'=>'#FFFFFF','bg'=>'#F4F8FA','bg2'=>'#EAF1F4','panel'=>'#FFFFFF','panel2'=>'#F0F5F7','line'=>'#CBD8DE','text'=>'#14232C','muted'=>'#60717B','accent'=>'#166B8F','good'=>'#27814E','bad'=>'#C7443E','warn'=>'#7A5A16','bg-glow'=>'#DCEBF1','shadow'=>'#10212B1A'],
@@ -175,7 +215,7 @@ $presetMeta=[
 include dirname(__DIR__) . '/partials_header.php';
 ?>
 <style>
-.style-page{max-width:1260px;margin:0 auto}.style-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:18px}.style-head h1{margin:0 0 5px}.style-head p{margin:0;color:var(--muted);max-width:830px;line-height:1.5}.style-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;align-items:start}.style-groups{display:grid;gap:16px}.palette-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px}.palette-field{display:grid;grid-template-columns:36px minmax(0,1fr);gap:8px;align-items:end}.palette-field label{grid-column:1/-1;margin:0;color:var(--muted);font-size:.72rem;font-weight:850}.palette-picker{width:36px;height:36px;padding:2px;border:1px solid var(--line);border-radius:5px;background:var(--panel2);cursor:pointer}.palette-picker::-webkit-color-swatch-wrapper{padding:0}.palette-picker::-webkit-color-swatch{border:0;border-radius:3px}.palette-hex{min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem}.palette-field.alpha{grid-template-columns:1fr}.style-card h2{display:flex;align-items:center;gap:8px;margin-bottom:5px}.style-card>p{margin:0 0 14px;color:var(--muted);font-size:.82rem;line-height:1.4}.preset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.preset-button{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:10px;border-radius:7px}.preset-button b{display:block}.preset-note{display:block;margin-top:3px;color:var(--muted);font-size:.7rem;line-height:1.3}.preset-swatches{display:flex;gap:4px;margin-top:7px}.preset-swatch{width:22px;height:9px;border-radius:99px;border:1px solid color-mix(in srgb,var(--line) 75%,transparent)}.style-preview{position:sticky;top:98px;display:grid;gap:12px}.preview-shell{padding:14px;border:1px solid var(--preview-line);border-radius:10px;background:linear-gradient(180deg,var(--preview-bg),var(--preview-bg2));color:var(--preview-text)}.preview-shell .p-card{padding:13px;border:1px solid var(--preview-line);border-radius:8px;background:var(--preview-panel)}.preview-shell .p-muted{color:var(--preview-muted);font-size:.78rem}.preview-shell .p-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}.preview-shell .p-button{padding:7px 9px;border-radius:4px;background:var(--preview-primary);color:var(--preview-solid);font-size:.75rem;font-weight:850}.preview-shell .p-chip{padding:5px 7px;border-radius:99px;background:var(--preview-panel2);border:1px solid var(--preview-line);font-size:.68rem}.preview-modules{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:12px}.preview-modules span{height:5px;border-radius:99px}.style-save{display:flex;justify-content:flex-end;gap:9px;position:sticky;bottom:10px;padding:12px;border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb,var(--panel) 95%,transparent);backdrop-filter:blur(10px);z-index:5}.global-warning{border-left:4px solid var(--warn)}@media(max-width:980px){.style-layout{grid-template-columns:1fr}.style-preview{position:static}}@media(max-width:650px){.palette-grid,.preset-grid{grid-template-columns:1fr}.style-head{align-items:stretch;flex-direction:column}}
+.style-page{max-width:1260px;margin:0 auto}.style-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:18px}.style-head h1{margin:0 0 5px}.style-head p{margin:0;color:var(--muted);max-width:830px;line-height:1.5}.style-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;align-items:start}.style-groups{display:grid;gap:16px}.palette-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px}.palette-field{display:grid;grid-template-columns:36px minmax(0,1fr);gap:8px;align-items:end}.palette-field label{grid-column:1/-1;margin:0;color:var(--muted);font-size:.72rem;font-weight:850}.palette-picker{width:36px;height:36px;padding:2px;border:1px solid var(--line);border-radius:5px;background:var(--panel2);cursor:pointer}.palette-picker::-webkit-color-swatch-wrapper{padding:0}.palette-picker::-webkit-color-swatch{border:0;border-radius:3px}.palette-hex{min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem}.palette-field.alpha{grid-template-columns:1fr}.style-card h2{display:flex;align-items:center;gap:8px;margin-bottom:5px}.style-card>p{margin:0 0 14px;color:var(--muted);font-size:.82rem;line-height:1.4}.preset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.preset-button{display:block;width:100%;text-align:left;background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:10px;border-radius:7px}.preset-button b{display:block}.preset-note{display:block;margin-top:3px;color:var(--muted);font-size:.7rem;line-height:1.3}.preset-swatches{display:flex;gap:4px;margin-top:7px}.preset-swatch{width:22px;height:9px;border-radius:99px;border:1px solid color-mix(in srgb,var(--line) 75%,transparent)}.style-preview{position:sticky;top:98px;display:grid;gap:12px}.preview-shell{padding:14px;border:1px solid var(--preview-line);border-radius:10px;background:linear-gradient(180deg,var(--preview-bg),var(--preview-bg2));color:var(--preview-text)}.preview-shell .p-card{padding:13px;border:1px solid var(--preview-line);border-radius:8px;background:var(--preview-panel)}.preview-shell .p-muted{color:var(--preview-muted);font-size:.78rem}.preview-shell .p-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}.preview-shell .p-button{padding:7px 9px;border-radius:4px;background:var(--preview-primary);color:var(--preview-solid);font-size:.75rem;font-weight:850}.preview-shell .p-chip{padding:5px 7px;border-radius:99px;background:var(--preview-panel2);border:1px solid var(--preview-line);font-size:.68rem}.preview-modules{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:12px}.preview-modules span{height:5px;border-radius:99px}.preview-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:12px}.preview-actions span{height:30px;border-radius:7px;border:1px solid color-mix(in srgb,var(--preview-line) 70%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}.style-save{display:flex;justify-content:flex-end;gap:9px;position:sticky;bottom:10px;padding:12px;border:1px solid var(--line);border-radius:9px;background:color-mix(in srgb,var(--panel) 95%,transparent);backdrop-filter:blur(10px);z-index:5}.global-warning{border-left:4px solid var(--warn)}@media(max-width:980px){.style-layout{grid-template-columns:1fr}.style-preview{position:static}}@media(max-width:650px){.palette-grid,.preset-grid{grid-template-columns:1fr}.style-head{align-items:stretch;flex-direction:column}}
 </style>
 <section class="style-page">
   <header class="style-head">
@@ -209,6 +249,7 @@ include dirname(__DIR__) . '/partials_header.php';
         </div></section><?php };
         $renderGroup('Dark foundation','Page, panels, borders and text in Night mode.','dark',$darkFields);
         $renderGroup('Brand, match & status','Buttons, focus, alliances and status feedback.','dark',$brandFields);
+        $renderGroup('Game Builder · Action Palette','Eight theme-aware scouting colors. Games save the palette role, so changing these colors recolors theme-aware Match Scouting buttons immediately without publishing a new game revision.','dark',$gameFields);
         $renderGroup('Subsystem accents','Identity colors used by TRIDENT, AUGUR, SATURN, VULCAN, MERCURY and Command Center cards.','dark',$moduleFields);
         $renderGroup('Access badges','Small access-level labels shown on launch cards.','dark',$accessFields);
         $renderGroup('Light foundation','The equivalent palette used when Day mode is active.','light',$lightFields);
@@ -219,8 +260,8 @@ include dirname(__DIR__) . '/partials_header.php';
 
       <aside class="style-preview">
         <section class="card"><h2 style="margin-bottom:4px">Live Preview</h2><p class="muted" style="margin-top:0;font-size:.82rem">Updates as you edit. Nothing is saved until you press Save Global Palette.</p></section>
-        <div id="previewDark" class="preview-shell"><div class="p-card"><b>Night mode</b><div class="p-muted">Cards, controls and module accents</div><div class="p-row"><span class="p-button">Primary action</span><span class="p-chip">Secondary</span></div><div class="preview-modules"><span data-module-color="module-trident"></span><span data-module-color="module-augur"></span><span data-module-color="module-saturn"></span><span data-module-color="module-vulcan"></span></div></div></div>
-        <div id="previewLight" class="preview-shell"><div class="p-card"><b>Day mode</b><div class="p-muted">Same Neptune layout with the light foundation</div><div class="p-row"><span class="p-button">Primary action</span><span class="p-chip">Secondary</span></div><div class="preview-modules"><span data-module-color="module-trident"></span><span data-module-color="module-augur"></span><span data-module-color="module-saturn"></span><span data-module-color="module-vulcan"></span></div></div></div>
+        <div id="previewDark" class="preview-shell"><div class="p-card"><b>Night mode</b><div class="p-muted">Cards, controls and module accents</div><div class="p-row"><span class="p-button">Primary action</span><span class="p-chip">Secondary</span></div><div class="preview-modules"><span data-module-color="module-trident"></span><span data-module-color="module-augur"></span><span data-module-color="module-saturn"></span><span data-module-color="module-vulcan"></span></div><div class="preview-actions" title="Game Builder action palette"><span data-game-color="game-primary"></span><span data-game-color="game-secondary"></span><span data-game-color="game-intake"></span><span data-game-color="game-defense"></span><span data-game-color="game-coop"></span><span data-game-color="game-endgame"></span><span data-game-color="game-special"></span><span data-game-color="game-utility"></span></div></div></div>
+        <div id="previewLight" class="preview-shell"><div class="p-card"><b>Day mode</b><div class="p-muted">Same Neptune layout with the light foundation</div><div class="p-row"><span class="p-button">Primary action</span><span class="p-chip">Secondary</span></div><div class="preview-modules"><span data-module-color="module-trident"></span><span data-module-color="module-augur"></span><span data-module-color="module-saturn"></span><span data-module-color="module-vulcan"></span></div><div class="preview-actions" title="Game Builder action palette"><span data-game-color="game-primary"></span><span data-game-color="game-secondary"></span><span data-game-color="game-intake"></span><span data-game-color="game-defense"></span><span data-game-color="game-coop"></span><span data-game-color="game-endgame"></span><span data-game-color="game-special"></span><span data-game-color="game-utility"></span></div></div></div>
       </aside>
     </div>
   </form>
@@ -248,6 +289,7 @@ include dirname(__DIR__) . '/partials_header.php';
    el.style.setProperty('--preview-primary',read(scope,'c1-blue',defaults[scope]['c1-blue']||defaults.dark['c1-blue']));
    el.style.setProperty('--preview-solid',read(scope,'solid-text',defaults[scope]['solid-text']||defaults.dark['solid-text']));
    el.querySelectorAll('[data-module-color]').forEach(x=>x.style.background=read('dark',x.dataset.moduleColor,defaults.dark[x.dataset.moduleColor]));
+   el.querySelectorAll('[data-game-color]').forEach(x=>x.style.background=read('dark',x.dataset.gameColor,defaults.dark[x.dataset.gameColor]));
  }
  function preview(){paintPreview(document.getElementById('previewDark'),'dark');paintPreview(document.getElementById('previewLight'),'light');}
  fields.forEach(box=>{const t=box.querySelector('.palette-hex'),p=box.querySelector('.palette-picker');t.addEventListener('input',()=>{if(p&&/^#[0-9a-f]{6}$/i.test(t.value))p.value=t.value;preview();});if(p)p.addEventListener('input',()=>{t.value=p.value;preview();});});

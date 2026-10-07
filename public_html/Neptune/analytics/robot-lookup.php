@@ -2,9 +2,12 @@
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
 require_once __DIR__.'/_augur_epa.php';
-
+require_once __DIR__.'/_depa_metrics.php';
+require_once dirname(__DIR__).'/scout/_tag_scouting.php';
+require_once __DIR__.'/_team_logo_cache.php';
 
 $u=require_login();
+tag_unified_ensure_schema($pdo);
 $org=(int)$u['organization_id'];
 $pageTitle='Robot Lookup';
 $moduleName='AUGUR';
@@ -145,6 +148,50 @@ function rl_num(float|int|string|null $n,int $dec=1): string {
     if($n===null || $n==='') return '—';
     return number_format((float)$n,$dec);
 }
+
+function rl_sparkline_svg(array $values,string $label,string $idSuffix='epa'): string {
+    $clean=[];
+    foreach($values as $value){
+        if($value!==null && $value!=='' && is_numeric($value)) $clean[]=(float)$value;
+    }
+    if(count($clean)<2){
+        return '<div class="robot-lookup-spark-empty">More match history needed</div>';
+    }
+
+    $width=640.0;$height=140.0;$padX=10.0;$padY=12.0;
+    $min=min($clean);$max=max($clean);
+    if(abs($max-$min)<0.001){$min-=1.0;$max+=1.0;}
+    else{$extra=max(0.5,($max-$min)*0.14);$min-=$extra;$max+=$extra;}
+
+    $usableW=$width-($padX*2);$usableH=$height-($padY*2);$count=count($clean);$points=[];
+    foreach($clean as $i=>$value){
+        $x=$padX+($usableW*($i/($count-1)));
+        $y=$padY+(($max-$value)/($max-$min))*$usableH;
+        $points[]=['x'=>$x,'y'=>$y];
+    }
+
+    $pointText=implode(' ',array_map(
+        static fn($p)=>number_format($p['x'],2,'.','').','.number_format($p['y'],2,'.',''),
+        $points
+    ));
+    $areaText=$padX.','.($height-$padY).' '.$pointText.' '.($width-$padX).','.($height-$padY);
+    $last=$points[count($points)-1];
+    $id='rlSpark'.preg_replace('/[^A-Za-z0-9_-]+/','',$idSuffix);
+
+    return '<svg class="robot-lookup-spark-svg" viewBox="0 0 640 140" preserveAspectRatio="none" role="img" aria-label="'
+        .htmlspecialchars($label,ENT_QUOTES,'UTF-8').'">'
+        .'<defs><linearGradient id="'.$id.'" x1="0" y1="0" x2="0" y2="1">'
+        .'<stop offset="0%" stop-color="var(--accent)" stop-opacity=".24"/>'
+        .'<stop offset="100%" stop-color="var(--accent)" stop-opacity=".01"/>'
+        .'</linearGradient></defs>'
+        .'<line class="robot-lookup-spark-grid" x1="10" y1="38" x2="630" y2="38"/>'
+        .'<line class="robot-lookup-spark-grid" x1="10" y1="70" x2="630" y2="70"/>'
+        .'<line class="robot-lookup-spark-grid" x1="10" y1="102" x2="630" y2="102"/>'
+        .'<polygon class="robot-lookup-spark-area" points="'.$areaText.'" fill="url(#'.$id.')"/>'
+        .'<polyline class="robot-lookup-spark-line" points="'.$pointText.'"/>'
+        .'<circle class="robot-lookup-spark-last" cx="'.number_format($last['x'],2,'.','').'" cy="'.number_format($last['y'],2,'.','').'" r="5"/>'
+        .'</svg>';
+}
 function rl_percentile(mixed $value): string {
     if($value===null || $value==='') return '—';
     $n=(float)$value;
@@ -157,13 +204,6 @@ function rl_https_url(mixed $value): string {
     $parts=parse_url($url);
     if(!is_array($parts) || strtolower((string)($parts['scheme']??''))!=='https') return '';
     return $url;
-}
-function rl_avatar_src(mixed $value): string {
-    $b64=preg_replace('/\s+/','',trim((string)$value));
-    if($b64==='' || strlen($b64)>3000000) return '';
-    if(!preg_match('/^[A-Za-z0-9+\/=]+$/',$b64)) return '';
-    if(base64_decode($b64,true)===false) return '';
-    return 'data:image/png;base64,'.$b64;
 }
 function rl_media_image(array $media): array {
     $type=(string)($media['type']??'');
@@ -375,9 +415,11 @@ $tbaAvatar='';
 $tbaMedia=[];
 $tbaMediaYears=[];
 $epaSeasonRating=null;
+$depaSeasonRating=null;
 $epaYears=[];
 $epaYear=0;
 $epaLastEvent=null;
+$epaProgressRows=[];
 $spotRows=[];
 $spotMedia=[];
 
@@ -440,7 +482,17 @@ if($team>0){
             $s->execute([(string)$epaSeasonRating['last_event_key']]);
             $epaLastEvent=$s->fetch()?:null;
         }
+        $s=$pdo->prepare("SELECT mr.tba_event_key,mr.match_number,
+                mr.post_rating,mr.post_auto_rating,mr.post_teleop_rating,mr.post_endgame_rating,
+                ae.name event_name,ae.short_name event_short_name,ae.start_date
+            FROM augur_epa_match_ratings mr
+            LEFT JOIN augur_epa_archive_events ae ON ae.tba_event_key=mr.tba_event_key
+            WHERE mr.season_year=? AND mr.frc_team_number=?
+            ORDER BY COALESCE(ae.start_date,'9999-12-31'),mr.tba_event_key,mr.match_number,mr.id");
+        $s->execute([$epaYear,$team]);
+        $epaProgressRows=$s->fetchAll();
     }
+    try{$depaSeasonRating=neptune_depa_season_rating($pdo,$epaYear,$team);}catch(Throwable $ignored){$depaSeasonRating=null;}
 
     try{
         $live=tba_get("team/frc{$team}",3600);
@@ -449,10 +501,20 @@ if($team>0){
         $tbaError=$ex->getMessage();
     }
 
-    // TBA media is season-specific. Check the current season plus the two
-    // previous seasons so an available team avatar or recent robot image can
-    // still be shown when the current season has not published media yet.
+    // Team logos use Neptune's persistent organization/team cache. TBA is
+    // contacted only when this team has no cached/custom logo yet.
     $currentYear=(int)date('Y');
+    try{
+        $logoInfo=neptune_team_logo_info($org,$currentYear,$team);
+        if(empty($logoInfo['exists'])) $logoInfo=neptune_team_logo_fetch_tba($org,$currentYear,$team,false);
+        if(!empty($logoInfo['exists'])){
+            $tbaAvatar=base_url((string)$logoInfo['path']).'?v='.rawurlencode((string)$logoInfo['version']);
+        }
+    }catch(Throwable $ignored){}
+
+    // TBA media is still season-specific for the optional robot/media gallery.
+    // Avatar/logo media is skipped because the persistent Neptune cache above
+    // is the single source of truth for team logos.
     $years=[$currentYear,$currentYear-1,$currentYear-2];
     foreach($seasonProfiles as $profile){
         $y=(int)($profile['season_year']??0);
@@ -471,14 +533,7 @@ if($team>0){
             foreach($mediaRows as $media){
                 if(!is_array($media)) continue;
 
-                if($tbaAvatar==='' && ($media['type']??'')==='avatar'){
-                    $candidate=rl_avatar_src($media['details']['base64Image']??'');
-                    if($candidate!==''){
-                        $tbaAvatar=$candidate;
-                        $tbaMediaYears[]=$year;
-                    }
-                    continue;
-                }
+                if(($media['type']??'')==='avatar') continue;
 
                 $img=rl_media_image($media);
                 if($img['src']==='') continue;
@@ -630,30 +685,30 @@ if($team>0){
     $s->execute([$org,$team]);
     $preRows=$s->fetchAll();
 
-    // Spot Scouting is intentionally organization-private and remains separate
+    // Tag Scouting is intentionally organization-private and remains separate
     // from public EPA. Show the latest human observations for strategy review.
-    if(rl_table_exists($pdo,'spot_observations') && rl_table_exists($pdo,'spot_tags') && rl_table_exists($pdo,'spot_observation_tags') && rl_table_exists($pdo,'spot_observation_media')){
+    if(rl_table_exists($pdo,'tag_scouting_observations') && rl_table_exists($pdo,'tag_scouting_tags') && rl_table_exists($pdo,'tag_scouting_observation_tags') && rl_table_exists($pdo,'tag_scouting_media')){
         $s=$pdo->prepare("SELECT o.*,e.name event_name,m.comp_level,m.set_number,m.match_number,u.display_name scout_name,ru.display_name resolved_by_name,
             GROUP_CONCAT(DISTINCT CONCAT(t.label,'||',t.icon,'||',t.severity) ORDER BY t.category,t.sort_order,t.label SEPARATOR '~~') tag_blob,
             COUNT(DISTINCT med.id) media_count
-          FROM spot_observations o
+          FROM tag_scouting_observations o
           LEFT JOIN events e ON e.id=o.event_id
           LEFT JOIN matches m ON m.id=o.match_id
           LEFT JOIN users u ON u.id=o.created_by
           LEFT JOIN users ru ON ru.id=o.resolved_by
-          LEFT JOIN spot_observation_tags ot ON ot.observation_id=o.id
-          LEFT JOIN spot_tags t ON t.id=ot.tag_id
-          LEFT JOIN spot_observation_media med ON med.observation_id=o.id
+          LEFT JOIN tag_scouting_observation_tags ot ON ot.observation_id=o.id
+          LEFT JOIN tag_scouting_tags t ON t.id=ot.tag_id
+          LEFT JOIN tag_scouting_media med ON med.observation_id=o.id
           WHERE o.organization_id=? AND o.frc_team_number=?
           GROUP BY o.id
           ORDER BY o.created_at DESC,o.id DESC
           LIMIT 30");
         $s->execute([$org,$team]);
         $spotRows=$s->fetchAll();
-        if($spotRows && rl_table_exists($pdo,'spot_observation_media')){
+        if($spotRows && rl_table_exists($pdo,'tag_scouting_media')){
             $ids=array_map('intval',array_column($spotRows,'id'));
             $ph=implode(',',array_fill(0,count($ids),'?'));
-            $s=$pdo->prepare("SELECT id,observation_id,media_type,original_filename FROM spot_observation_media WHERE organization_id=? AND observation_id IN ({$ph}) ORDER BY observation_id,id");
+            $s=$pdo->prepare("SELECT id,observation_id,media_type,original_filename FROM tag_scouting_media WHERE organization_id=? AND observation_id IN ({$ph}) ORDER BY observation_id,id");
             $s->execute(array_merge([$org],$ids));
             foreach($s->fetchAll() as $media)$spotMedia[(int)$media['observation_id']][]=$media;
         }
@@ -679,11 +734,50 @@ include dirname(__DIR__).'/partials_header.php';
 .robot-lookup-tba-media-card img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#fff}
 .robot-lookup-tba-media-card span{display:block;padding:7px 9px;font-size:.75rem}
 .robot-lookup-stat-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-.robot-lookup-stat-ranks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+.robot-lookup-stat-ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px}
 .robot-lookup-stat-rank{padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
 .robot-lookup-stat-rank b{display:block;font-size:1.15rem}
 .robot-lookup-stat-rank small{color:var(--muted)}
 .robot-lookup-stat-details summary{cursor:pointer;font-weight:800}
+
+.robot-lookup-epa-card{overflow:hidden}
+.robot-lookup-epa-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.robot-lookup-epa-header h2{margin:0;font-size:clamp(1.45rem,3vw,2rem)}
+.robot-lookup-epa-header-copy{max-width:820px}
+.robot-lookup-epa-primary{display:grid;grid-template-columns:minmax(170px,.36fr) minmax(0,1.64fr);gap:16px;margin-top:16px;padding:16px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 7%,var(--panel)),var(--panel2))}
+.robot-lookup-epa-primary-value{display:flex;flex-direction:column;justify-content:center;min-height:150px}
+.robot-lookup-epa-primary-value span{font-size:.78rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.robot-lookup-epa-primary-value b{font-size:clamp(3rem,7vw,5.7rem);line-height:.9;letter-spacing:-.06em;margin:8px 0 5px}
+.robot-lookup-epa-primary-value small{color:var(--muted)}
+.robot-lookup-epa-chart{min-width:0;display:flex;flex-direction:column;justify-content:center}
+.robot-lookup-epa-chart-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:5px;font-size:.75rem}
+.robot-lookup-epa-chart-head b{font-size:.8rem}.robot-lookup-epa-chart-head span{color:var(--muted)}
+.robot-lookup-spark{height:140px;min-width:0}
+.robot-lookup-spark.mini{height:54px;margin-top:8px}
+.robot-lookup-spark-svg{display:block;width:100%;height:100%;overflow:visible}
+.robot-lookup-spark-grid{stroke:var(--line);stroke-width:1;opacity:.58}
+.robot-lookup-spark-line{fill:none;stroke:var(--accent);stroke-width:4;vector-effect:non-scaling-stroke;stroke-linecap:round;stroke-linejoin:round}
+.robot-lookup-spark-area{pointer-events:none}
+.robot-lookup-spark-last{fill:var(--accent);stroke:var(--panel);stroke-width:3;vector-effect:non-scaling-stroke}
+.robot-lookup-spark-empty{height:100%;display:grid;place-items:center;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:.72rem}
+.robot-lookup-epa-components{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+.robot-lookup-epa-metric{padding:13px;border:1px solid var(--line);border-radius:11px;background:var(--panel2);min-width:0}
+.robot-lookup-epa-metric-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.robot-lookup-epa-metric b{font-size:1.45rem}.robot-lookup-epa-metric span{font-size:.75rem;font-weight:850;color:var(--muted)}
+.robot-lookup-epa-section-label{display:flex;align-items:center;gap:8px;margin:16px 0 8px;font-size:.7rem;font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.robot-lookup-epa-section-label:after{content:"";height:1px;background:var(--line);flex:1}
+.robot-lookup-epa-defense{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.robot-lookup-epa-defense-card{padding:14px;border:1px solid var(--line);border-radius:11px;background:var(--panel2)}
+.robot-lookup-epa-defense-card b{display:block;font-size:1.55rem}.robot-lookup-epa-defense-card span{display:block;font-weight:900;margin-top:1px}.robot-lookup-epa-defense-card small{display:block;color:var(--muted);margin-top:3px}
+.robot-lookup-epa-context{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.robot-lookup-epa-context-item{padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);min-width:0}
+.robot-lookup-epa-context-item b{display:block;font-size:1.05rem;overflow-wrap:anywhere}
+.robot-lookup-epa-context-item span{display:block;color:var(--muted);font-size:.7rem;font-weight:800;margin-top:2px}
+.robot-lookup-epa-context-item small{display:block;color:var(--muted);font-size:.66rem;margin-top:2px}
+.robot-lookup-epa-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:.72rem;color:var(--muted)}
+.robot-lookup-epa-footer b{color:var(--text)}
+.robot-lookup-epa-model summary{cursor:pointer;font-weight:850;color:var(--text)}
+.robot-lookup-epa-model div{margin-top:5px}
 
 .robot-lookup-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
 .robot-lookup-kpi{padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
@@ -721,6 +815,9 @@ include dirname(__DIR__).'/partials_header.php';
 @media(max-width:900px){
   .robot-lookup-hero,.robot-lookup-grid{grid-template-columns:1fr}
   .robot-lookup-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .robot-lookup-epa-primary{grid-template-columns:1fr}
+  .robot-lookup-epa-primary-value{min-height:auto}
+  .robot-lookup-epa-context{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media(max-width:600px){
   .robot-lookup-search{grid-template-columns:1fr}
@@ -729,6 +826,11 @@ include dirname(__DIR__).'/partials_header.php';
   .robot-lookup-identity{grid-template-columns:1fr}
   .robot-lookup-avatar{width:88px;height:88px}
   .robot-lookup-stat-ranks{grid-template-columns:1fr}
+  .robot-lookup-epa-components{grid-template-columns:1fr}
+  .robot-lookup-epa-defense{grid-template-columns:1fr}
+  .robot-lookup-epa-context{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .robot-lookup-epa-primary{padding:13px}
+  .robot-lookup-spark{height:118px}
 }
 </style>
 
@@ -746,7 +848,7 @@ include dirname(__DIR__).'/partials_header.php';
     <form method="get" class="robot-lookup-search">
       <div>
         <label style="margin-top:0">Team number or name</label>
-        <input type="search" name="q" value="<?=e($q!==''?$q:($team>0?(string)$team:''))?>" placeholder="6369 or Mercenaries" autofocus>
+        <input type="search" name="q" value="<?=e($q!==''?$q:($team>0?(string)$team:''))?>" placeholder="Robot number or team name" autofocus>
       </div>
       <button type="submit"><i class="fa-solid fa-magnifying-glass"></i> Look Up Robot</button>
     </form>
@@ -786,7 +888,7 @@ include dirname(__DIR__).'/partials_header.php';
       <div class="card">
         <div class="robot-lookup-identity">
           <?php if($tbaAvatar!==''):?>
-            <img class="robot-lookup-avatar" src="<?=e($tbaAvatar)?>" alt="<?=e('Team '.$team.' TBA avatar')?>">
+            <img class="robot-lookup-avatar" src="<?=e($tbaAvatar)?>" alt="<?=e('Team '.$team.' logo')?>">
           <?php endif;?>
           <div>
             <div class="module-eyebrow"><span>FRC #<?=e($team)?></span><small>Robot Profile</small></div>
@@ -802,7 +904,7 @@ include dirname(__DIR__).'/partials_header.php';
               <?php if(!empty($tbaTeam['website'])):?><a class="btn secondary" href="<?=e($tbaTeam['website'])?>" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> Team Website</a><?php endif;?>
               <a class="btn secondary" href="<?=e('https://www.thebluealliance.com/team/'.$team)?>" target="_blank" rel="noopener"><i class="fa-solid fa-bolt"></i> View on TBA</a>
             </div>
-            <div class="robot-lookup-tba-note">Team identity and TBA media are powered by The Blue Alliance.</div>
+            <div class="robot-lookup-tba-note">Team identity and media are powered by The Blue Alliance. Team logos are served from Neptune's persistent local cache.</div>
           </div>
         </div>
         <?php if($tbaError && !$tbaTeam):?><div class="notice" style="margin-top:12px">TBA is unavailable right now. Neptune scouting data is still shown below.</div><?php endif;?>
@@ -842,12 +944,12 @@ include dirname(__DIR__).'/partials_header.php';
       </div>
     <?php endif;?>
 
-    <div class="card" style="margin-top:16px">
-      <div class="robot-lookup-stat-head">
-        <div>
-          <div class="module-eyebrow"><span>AUGUR</span><small>Public EPA Archive</small></div>
-          <h2 style="margin:0">Public EPA · <?=e($epaYear)?></h2>
-          <div class="muted">Public TBA-derived EPA stored locally in Neptune. No Statbotics request is made when this page loads.</div>
+    <div class="card robot-lookup-epa-card" style="margin-top:16px">
+      <div class="robot-lookup-epa-header">
+        <div class="robot-lookup-epa-header-copy">
+          <div class="module-eyebrow"><span>AUGUR</span><small>Season Performance</small></div>
+          <h2>EPA · <?=e($epaYear)?></h2>
+          <div class="muted">TBA-derived season performance ratings calculated and stored by Neptune.</div>
         </div>
         <?php if(count($epaYears)>1):?>
           <form method="get" class="toolbar" style="margin:0">
@@ -891,61 +993,93 @@ include dirname(__DIR__).'/partials_header.php';
                 $seasonPercentile=100.0;
             }
         }
+
+        $overallProgress=array_column($epaProgressRows,'post_rating');
+        $autoProgress=array_column($epaProgressRows,'post_auto_rating');
+        $teleopProgress=array_column($epaProgressRows,'post_teleop_rating');
+        $endgameProgress=array_column($epaProgressRows,'post_endgame_rating');
+        $trend=(float)($epaSeasonRating['trend']??0);
+        $progressMatches=count($overallProgress);
       ?>
-        <div class="robot-lookup-kpis">
-          <div class="robot-lookup-kpi"><b><?=rl_num($epaTotal,1)?></b><span class="muted">Public EPA</span></div>
-          <div class="robot-lookup-kpi"><b><?=rl_num($autoEpa,1)?></b><span class="muted">Auto EPA</span></div>
-          <div class="robot-lookup-kpi"><b><?=rl_num($teleopEpa,1)?></b><span class="muted">Teleop EPA</span></div>
-          <div class="robot-lookup-kpi"><b><?=rl_num($endgameEpa,1)?></b><span class="muted">Endgame EPA</span></div>
-        </div>
-
-        <div class="robot-lookup-kpis">
-          <div class="robot-lookup-kpi">
-            <b><?=e($wins.'-'.$losses.'-'.$ties)?></b>
-            <span class="muted">Archived record</span>
+        <div class="robot-lookup-epa-primary">
+          <div class="robot-lookup-epa-primary-value">
+            <span>Overall EPA</span>
+            <b><?=rl_num($epaTotal,1)?></b>
+            <small><?=e((int)($epaSeasonRating['matches_played']??0))?> qualification matches · <?=e((int)($epaSeasonRating['events_played']??0))?> events</small>
           </div>
-          <div class="robot-lookup-kpi">
-            <b><?=$winrate!==null?number_format($winrate*100,1).'%':'—'?></b>
-            <span class="muted">Win rate</span>
-          </div>
-          <div class="robot-lookup-kpi">
-            <b><?=((float)($epaSeasonRating['trend']??0)>=0?'+':'').rl_num($epaSeasonRating['trend']??0,1)?></b>
-            <span class="muted">EPA trend</span>
-          </div>
-          <div class="robot-lookup-kpi">
-            <b><?=rl_num($epaSeasonRating['confidence']??null,0)?>%</b>
-            <span class="muted">Model confidence</span>
+          <div class="robot-lookup-epa-chart">
+            <div class="robot-lookup-epa-chart-head">
+              <b>Season progression</b>
+              <span>Trend <?=($trend>=0?'+':'').rl_num($trend,1)?></span>
+            </div>
+            <div class="robot-lookup-spark">
+              <?=rl_sparkline_svg($overallProgress,'Overall EPA progression across '.$progressMatches.' qualification matches','overall'.$team.$epaYear)?>
+            </div>
           </div>
         </div>
 
-        <div class="robot-lookup-stat-ranks">
-          <div class="robot-lookup-stat-rank">
-            <b><?=$seasonRank!==null?'#'.e($seasonRank):'—'?></b>
-            <span>Archived season rank</span>
-            <?php if($seasonPercentile!==null):?><small><?=number_format($seasonPercentile,1)?> percentile · <?=e($seasonTeams)?> teams</small><?php endif;?>
+        <div class="robot-lookup-epa-components">
+          <div class="robot-lookup-epa-metric">
+            <div class="robot-lookup-epa-metric-head"><b><?=rl_num($autoEpa,1)?></b><span>Auto EPA</span></div>
+            <div class="robot-lookup-spark mini"><?=rl_sparkline_svg($autoProgress,'Auto EPA progression','auto'.$team.$epaYear)?></div>
           </div>
-          <div class="robot-lookup-stat-rank">
-            <b><?=e((int)($epaSeasonRating['events_played']??0))?></b>
-            <span>Rated events</span>
-            <small><?=e((int)($epaSeasonRating['matches_played']??0))?> qualification matches</small>
+          <div class="robot-lookup-epa-metric">
+            <div class="robot-lookup-epa-metric-head"><b><?=rl_num($teleopEpa,1)?></b><span>Teleop EPA</span></div>
+            <div class="robot-lookup-spark mini"><?=rl_sparkline_svg($teleopProgress,'Teleop EPA progression','teleop'.$team.$epaYear)?></div>
           </div>
-          <div class="robot-lookup-stat-rank">
-            <b><?=e($epaLastEvent['short_name']??$epaLastEvent['name']??($epaSeasonRating['last_event_key']??'—'))?></b>
-            <span>Latest archived event</span>
-            <?php if(!empty($epaSeasonRating['model_version'])):?><small><?=e($epaSeasonRating['model_version'])?></small><?php endif;?>
+          <div class="robot-lookup-epa-metric">
+            <div class="robot-lookup-epa-metric-head"><b><?=rl_num($endgameEpa,1)?></b><span>Endgame EPA</span></div>
+            <div class="robot-lookup-spark mini"><?=rl_sparkline_svg($endgameProgress,'Endgame EPA progression','endgame'.$team.$epaYear)?></div>
           </div>
         </div>
 
-        <div class="robot-lookup-tba-note">Source: AUGUR Public EPA Archive using public TBA match results. Neptune scouting observations remain separate below and can be blended into AUGUR predictions without changing this public EPA value.</div>
+        <div class="robot-lookup-epa-section-label"><i class="fa-solid fa-shield-halved"></i> Defense</div>
+        <div class="robot-lookup-epa-defense">
+          <div class="robot-lookup-epa-defense-card">
+            <b><?=rl_num($depaSeasonRating['depa']??null,1)?></b>
+            <span>D-EPA</span>
+            <small>All-match defensive suppression</small>
+          </div>
+          <div class="robot-lookup-epa-defense-card">
+            <b><?=rl_num($depaSeasonRating['neptune_depa']??null,1)?></b>
+            <span>Nep. D-EPA</span>
+            <small>Scouting-confirmed defense</small>
+          </div>
+        </div>
+
+        <div class="robot-lookup-epa-section-label"><i class="fa-solid fa-chart-simple"></i> Season context</div>
+        <div class="robot-lookup-epa-context">
+          <div class="robot-lookup-epa-context-item"><b><?=e($wins.'-'.$losses.'-'.$ties)?></b><span>Record</span></div>
+          <div class="robot-lookup-epa-context-item"><b><?=$winrate!==null?number_format($winrate*100,1).'%':'—'?></b><span>Win rate</span></div>
+          <div class="robot-lookup-epa-context-item">
+            <b><?=$seasonRank!==null?'#'.e($seasonRank).' / '.e($seasonTeams):'—'?></b>
+            <span>Season rank</span>
+            <?php if($seasonPercentile!==null):?><small><?=number_format($seasonPercentile,1)?>th percentile</small><?php endif;?>
+          </div>
+          <div class="robot-lookup-epa-context-item"><b><?=e((int)($epaSeasonRating['events_played']??0))?> / <?=e((int)($epaSeasonRating['matches_played']??0))?></b><span>Events / quals</span></div>
+          <div class="robot-lookup-epa-context-item"><b><?=rl_num($epaSeasonRating['confidence']??null,0)?>%</b><span>Model confidence</span></div>
+        </div>
+
+        <div class="robot-lookup-epa-footer">
+          <div>Last rated event: <b><?=e($epaLastEvent['short_name']??$epaLastEvent['name']??($epaSeasonRating['last_event_key']??'—'))?></b></div>
+          <?php if(!empty($epaSeasonRating['model_version'])):?>
+            <details class="robot-lookup-epa-model">
+              <summary>Model details</summary>
+              <div><?=e($epaSeasonRating['model_version'])?></div>
+            </details>
+          <?php endif;?>
+        </div>
+
+        <div class="robot-lookup-tba-note">Source: AUGUR EPA ratings derived from public TBA match results. D-EPA is the all-match defensive suppression signal; Nep. D-EPA uses Neptune scouting-confirmed defense matches.</div>
       <?php else:?>
         <div class="notice" style="margin-top:12px">
-          <i class="fa-solid fa-database"></i>
-          No archived Public EPA is available for team #<?=e($team)?> in <?=e($epaYear)?>.
+          <i class="fa-solid fa-chart-line"></i>
+          No EPA rating is available for team #<?=e($team)?> in <?=e($epaYear)?>.
           <span class="muted" style="display:block;margin-top:4px">
             <?php if(!augur_epa_tables_ready($pdo)):?>
-              The AUGUR Public EPA Archive tables are not installed yet.
+              The AUGUR EPA tables are not installed yet.
             <?php else:?>
-              Backfill or rebuild this season from the AUGUR Public EPA Archive page. Robot Lookup will use the stored result automatically afterward.
+              Rebuild this season from the EPA Ratings page. Robot Lookup will use the stored result automatically afterward.
             <?php endif;?>
           </span>
         </div>
@@ -1008,9 +1142,9 @@ include dirname(__DIR__).'/partials_header.php';
     </div>
 
     <div class="card" style="margin-top:16px">
-      <div class="robot-lookup-section-title"><div><div class="module-eyebrow"><span>SPOT</span><small>Human Observations</small></div><h2>Spot Scouting</h2></div><div class="toolbar" style="margin:0"><span class="pill"><?=count($spotRows)?></span><a class="btn secondary" href="<?=e(base_url('spot/index.php'))?>"><i class="fa-solid fa-plus"></i> Add Observation</a></div></div>
+      <div class="robot-lookup-section-title"><div><div class="module-eyebrow"><span>TAG</span><small>Human Observations</small></div><h2>Tag Scouting</h2></div><div class="toolbar" style="margin:0"><span class="pill"><?=count($spotRows)?></span><a class="btn secondary" href="<?=e(base_url('scout/tag.php?tab=team&team='.$team))?>"><i class="fa-solid fa-plus"></i> Add Observation</a></div></div>
       <?php if(!$spotRows):?>
-        <div class="notice">No Spot Scouting observations are available for this robot.</div>
+        <div class="notice">No Tag Scouting observations are available for this robot.</div>
       <?php else:?>
         <div class="robot-lookup-spot-list">
         <?php foreach($spotRows as $spot):
@@ -1021,10 +1155,10 @@ include dirname(__DIR__).'/partials_header.php';
           $spotMatch=!empty($spot['match_id'])?neptune_match_label($spot):'';
         ?>
           <div class="robot-lookup-spot <?=($spot['status']??'open')==='resolved'?'resolved':''?>">
-            <div class="robot-lookup-spot-head"><div><b><?=e(($spot['context']??'general')==='match'?'Match':(($spot['context']??'general')==='pit'?'Pit':'Team Only'))?><?=!empty($spot['event_name'])?' · '.e($spot['event_name']):''?><?=($spotMatch!=='')?' · '.e($spotMatch):''?></b><div class="robot-lookup-spot-meta"><?=e($spot['scout_name']?:'Scout')?> · <?=e($spot['created_at'])?><?=!empty($spot['field_id'])&&$spot['field_id']>1?' · Field '.e($spot['field_id']):''?></div></div><span class="pill"><?=e($spot['status'])?></span></div>
+            <div class="robot-lookup-spot-head"><div><b><?=e(($spot['context']??'team')==='match'?'Match':(($spot['context']??'team')==='pit'?'Pit':'Team'))?><?=!empty($spot['event_name'])?' · '.e($spot['event_name']):''?><?=($spotMatch!=='')?' · '.e($spotMatch):''?></b><div class="robot-lookup-spot-meta"><?=e($spot['scout_name']?:'Scout')?> · <?=e($spot['created_at'])?><?=!empty($spot['field_id'])&&$spot['field_id']>1?' · Field '.e($spot['field_id']):''?></div></div><span class="pill"><?=e($spot['status'])?></span></div>
             <?php if($spotTags):?><div class="robot-lookup-spot-tags"><?php foreach($spotTags as $t):?><span class="pill"><i class="<?=e($t['icon'])?>"></i> <?=e($t['label'])?></span><?php endforeach;?></div><?php endif;?>
             <?php if(trim((string)($spot['note']??''))!==''):?><div class="robot-lookup-spot-note"><?=nl2br(e($spot['note']))?></div><?php endif;?>
-            <?php if(!empty($spotMedia[(int)$spot['id']])):?><div class="robot-lookup-spot-media"><?php foreach($spotMedia[(int)$spot['id']] as $media):?><a href="<?=e(base_url('spot/media.php?id='.(int)$media['id']))?>" target="_blank" rel="noopener"><i class="fa-solid <?=$media['media_type']==='video'?'fa-video':'fa-camera'?>"></i> <?=e($media['media_type']==='video'?'Video':'Photo')?></a><?php endforeach;?></div><?php endif;?>
+            <?php if(!empty($spotMedia[(int)$spot['id']])):?><div class="robot-lookup-spot-media"><?php foreach($spotMedia[(int)$spot['id']] as $media):?><a href="<?=e(base_url('scout/tag-media.php?id='.(int)$media['id']))?>" target="_blank" rel="noopener"><i class="fa-solid <?=$media['media_type']==='video'?'fa-video':'fa-camera'?>"></i> <?=e($media['media_type']==='video'?'Video':'Photo')?></a><?php endforeach;?></div><?php endif;?>
             <?php if(($spot['status']??'open')==='resolved' && !empty($spot['resolution_note'])):?><div class="robot-lookup-spot-meta" style="margin-top:7px">Resolved<?=!empty($spot['resolved_by_name'])?' by '.e($spot['resolved_by_name']):''?>: <?=e($spot['resolution_note'])?></div><?php endif;?>
           </div>
         <?php endforeach;?>

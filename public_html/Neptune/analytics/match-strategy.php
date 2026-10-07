@@ -3,6 +3,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once __DIR__.'/_helpers.php';
 require_once __DIR__.'/_alliance_helpers.php';
 require_once __DIR__.'/_augur_prediction_model.php';
+require_once __DIR__.'/_depa_metrics.php';
 
 $u=require_login();
 $org=(int)$u['organization_id'];
@@ -325,6 +326,7 @@ if($eventId){
     }
 }
 $teamNumbers=array_values(array_unique(array_map(static fn($t)=>(int)$t['frc_team_number'],$matchTeams)));
+$depaMap=[];if($predictionEvent&&$teamNumbers){try{$depaMap=neptune_depa_event_map_with_season_fallback($pdo,$predictionEvent,$teamNumbers);}catch(Throwable $ignored){$depaMap=[];}}
 $pitByTeam=[];$preByTeam=[];
 if($teamNumbers){
     $ph=implode(',',array_fill(0,count($teamNumbers),'?'));
@@ -492,6 +494,18 @@ if($projectionReady){
         }
     }
 }
+// If the full matchup model is unavailable, Public EPA can still be shown from
+// the same pre-match archive snapshot. Neptune EPA stays blank rather than
+// leaking a later/current estimate into a historical match.
+if($predictionEvent&&$teamNumbers){
+    try{
+        $fallbackEpa=augur_epa_rating_map($pdo,$org,$predictionEvent,$teamNumbers,$match?:null);
+        foreach($fallbackEpa as $n=>$row){
+            if(!isset($predictionMetricsByTeam[$n]))$predictionMetricsByTeam[$n]=[];
+            if(!isset($predictionMetricsByTeam[$n]['epa'])&&isset($row['epa']))$predictionMetricsByTeam[$n]['epa']=$row['epa'];
+        }
+    }catch(Throwable $ignored){}
+}
 
 $pageTitle='Match Strategy';$moduleName='AUGUR';
 include dirname(__DIR__).'/partials_header.php';
@@ -524,7 +538,7 @@ include dirname(__DIR__).'/partials_header.php';
 .strategy-role-grid,.strategy-intel-grid,.strategy-endgame-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:14px}
 .strategy-role-card,.strategy-intel-card,.strategy-endgame-card{border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel2);min-width:0}.strategy-role-card h3,.strategy-intel-card h3,.strategy-endgame-card h3{margin:0 0 8px;font-size:1rem}
 .strategy-role-suggest{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:9px;font-size:.72rem;color:var(--muted)}.strategy-why{margin:8px 0 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.strategy-why summary{cursor:pointer;padding:7px 9px;font-size:.72rem;font-weight:800;color:var(--accent)}.strategy-why-content{padding:0 9px 9px;font-size:.72rem;line-height:1.45;color:var(--muted)}.strategy-why-content b{color:var(--text)}
-.strategy-metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.strategy-metric{padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.strategy-metric span{display:block;color:var(--muted);font-size:.63rem}.strategy-metric b{display:block;margin-top:2px;font-size:.84rem}
+.strategy-metric-group{margin-top:10px}.strategy-metric-group+.strategy-metric-group{padding-top:9px;border-top:1px solid var(--line)}.strategy-metric-group-label{display:flex;align-items:center;gap:5px;margin-bottom:6px;color:var(--muted);font-size:.61rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase}.strategy-metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.strategy-metric-group .strategy-metric-row{margin-top:0}.strategy-metric{padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.strategy-metric span{display:block;color:var(--muted);font-size:.63rem}.strategy-metric b{display:block;margin-top:2px;font-size:.84rem}
 .strategy-source{margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}.strategy-source span{display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800}.strategy-source p{margin:4px 0 0;font-size:.78rem;line-height:1.4;white-space:pre-wrap}
 .strategy-threat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:14px}.strategy-threat{border:1px solid var(--line);border-radius:8px;padding:13px;background:var(--panel2)}.strategy-threat:first-child{border-top:3px solid var(--accent)}.strategy-threat-head{display:flex;justify-content:space-between;gap:8px}.strategy-threat h3{margin:0}.strategy-threat-tag{font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;font-weight:800;color:var(--accent)}
 .strategy-plan-wrap{overflow:auto}.strategy-plan{width:100%;border-collapse:collapse;min-width:820px}.strategy-plan th,.strategy-plan td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}.strategy-plan th{background:var(--panel2);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;text-align:left}.strategy-plan textarea{min-height:84px;resize:vertical;margin:0}.strategy-plan .robot-cell{min-width:130px}.strategy-plan .robot-cell b{display:block;font-size:1rem}.strategy-plan .robot-cell small{color:var(--muted)}
@@ -552,10 +566,9 @@ include dirname(__DIR__).'/partials_header.php';
 
   <div class="card">
     <form method="get" class="strategy-filter">
-      <div><label>Event</label><select name="event_id"><?php foreach($events as $e):?><option value="<?=$e['id']?>" <?=$eventId===(int)$e['id']?'selected':''?>><?=e($e['name'])?></option><?php endforeach;?></select></div>
-      <div><label>Our team</label><select name="team"><?php foreach($myTeams as $t):?><option value="<?=$t['frc_team_number']?>" <?=$teamNumber===(int)$t['frc_team_number']?'selected':''?>>#<?=e($t['frc_team_number'].' '.($t['display_name']?:$t['nickname']))?></option><?php endforeach;?></select></div>
-      <div><label>Match</label><select name="match_id"><?php foreach($matchesForTeam as $m):?><option value="<?=$m['id']?>" <?=$matchId===(int)$m['id']?'selected':''?>><?=e(neptune_match_label($m).' · '.ucfirst($m['state']))?></option><?php endforeach;?></select></div>
-      <button type="submit"><i class="fa-solid fa-crosshairs"></i> Load Match</button>
+      <div><label>Event</label><select name="event_id" onchange="this.form.submit()"><?=neptune_event_options_html($events,$eventId)?></select></div><div style="align-self:end"><?=neptune_history_toggle_html(neptune_selector_show_history(),'events')?></div>
+      <div><label>Our team</label><select name="team" onchange="this.form.submit()"><?php foreach($myTeams as $t):?><option value="<?=$t['frc_team_number']?>" <?=$teamNumber===(int)$t['frc_team_number']?'selected':''?>>#<?=e($t['frc_team_number'].' '.($t['display_name']?:$t['nickname']))?></option><?php endforeach;?></select></div>
+      <div><label>Match</label><select name="match_id" onchange="this.form.submit()"><?php foreach($matchesForTeam as $m):?><option value="<?=$m['id']?>" <?=$matchId===(int)$m['id']?'selected':''?>><?=e(neptune_match_label($m).' · '.ucfirst($m['state']))?></option><?php endforeach;?></select></div>
     </form>
   </div>
 
@@ -658,6 +671,9 @@ include dirname(__DIR__).'/partials_header.php';
             $selected=(string)($roleValues[(string)$n]??$suggested??$pitRole??'Flexible');
             $rawPitRole=$pitByTeam[$n]['data']['preferred_roles']??'';
             if(is_array($rawPitRole))$rawPitRole=implode(', ',array_map('strval',$rawPitRole));
+            $pm=$predictionMetricsByTeam[$n]??[];
+            $publicEpa=isset($pm['epa'])&&is_numeric($pm['epa'])?(float)$pm['epa']:null;
+            $neptuneEpa=isset($pm['neptune_epa'])&&is_numeric($pm['neptune_epa'])?(float)$pm['neptune_epa']:(isset($pm['augur_epa'])&&is_numeric($pm['augur_epa'])?(float)$pm['augur_epa']:null);
           ?>
             <div class="strategy-role-card">
               <h3>#<?=e($n)?> <?=e($t['nickname']?:'')?></h3>
@@ -677,10 +693,23 @@ include dirname(__DIR__).'/partials_header.php';
                 </div>
               </details>
               <label>Match role</label><select name="role[<?=$n?>]" <?=$canEdit&&$tableReady?'':'disabled'?>><?php foreach(['Primary scorer','Secondary scorer','Defense','Feeder / support','Flexible'] as $role):?><option <?=$selected===$role?'selected':''?>><?=e($role)?></option><?php endforeach;?></select>
-              <div class="strategy-metric-row">
-                <div class="strategy-metric"><span>PPM</span><b><?=$matchesSeen?number_format((float)($r['ppm']??0),1):'No data'?></b></div>
-                <div class="strategy-metric"><span>Defense / match</span><b><?=$matchesSeen?number_format((float)($r['defense_per_match']??0),1):'No data'?></b></div>
-                <div class="strategy-metric"><span>Success</span><b><?=$matchesSeen?number_format((float)($r['success_rate']??0),0).'%':'No data'?></b></div>
+              <div class="strategy-metric-group">
+                <div class="strategy-metric-group-label"><i class="fa-solid fa-bullseye"></i> Offense</div>
+                <div class="strategy-metric-row">
+                  <div class="strategy-metric"><span>PPM</span><b><?=$matchesSeen?number_format((float)($r['ppm']??0),1):'No data'?></b></div>
+                  <div class="strategy-metric"><span>Cycle</span><b><?=$matchesSeen?(isset($r['cycle_time'])&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'):'No data'?></b></div>
+                  <div class="strategy-metric"><span>Success</span><b><?=$matchesSeen?number_format((float)($r['success_rate']??0),0).'%':'No data'?></b></div>
+                  <div class="strategy-metric"><span>EPA</span><b><?=$publicEpa!==null?number_format($publicEpa,1):'—'?></b></div>
+                  <div class="strategy-metric"><span>Nep. EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
+                </div>
+              </div>
+              <div class="strategy-metric-group">
+                <div class="strategy-metric-group-label"><i class="fa-solid fa-shield-halved"></i> Defense</div>
+                <div class="strategy-metric-row">
+                  <div class="strategy-metric"><span>Defense / match</span><b><?=$matchesSeen?number_format((float)($r['defense_per_match']??0),1):'No data'?></b></div>
+                  <div class="strategy-metric"><span>D-EPA</span><b><?=isset($depaMap[$n]['depa'])&&$depaMap[$n]['depa']!==null?number_format((float)$depaMap[$n]['depa'],1):'—'?></b></div>
+                  <div class="strategy-metric"><span>Nep. D-EPA</span><b><?=isset($depaMap[$n]['neptune_depa'])&&$depaMap[$n]['neptune_depa']!==null?number_format((float)$depaMap[$n]['neptune_depa'],1):'—'?></b></div>
+                </div>
               </div>
             </div>
           <?php endforeach;?>
@@ -712,10 +741,27 @@ include dirname(__DIR__).'/partials_header.php';
       <section class="card strategy-section">
         <div class="strategy-section-head"><div><h2><i class="fa-solid fa-crosshairs"></i> Opponent Watch</h2><p>Prioritize what deserves attention, then choose a defense target if appropriate.</p></div></div>
         <div class="strategy-threat-grid">
-          <?php foreach($sortedOpp as $i=>$t):$n=(int)$t['frc_team_number'];$r=$stats[$n]??[];$pit=$pitByTeam[$n]['data']??[];$pre=$preByTeam[$n]['data']??[];$oppMatches=(int)($r['matches']??0);if($oppMatches>0)$observedOppIndex++;$threatTag=$oppMatches===0?'No prior scout data':($oppMatches<$projectionMinMatches?'Limited data':($observedOppIndex===1?'Highest observed PPM':($observedOppIndex===2?'Second observed PPM':'Opponent')));?>
+          <?php foreach($sortedOpp as $i=>$t):$n=(int)$t['frc_team_number'];$r=$stats[$n]??[];$pit=$pitByTeam[$n]['data']??[];$pre=$preByTeam[$n]['data']??[];$oppMatches=(int)($r['matches']??0);if($oppMatches>0)$observedOppIndex++;$threatTag=$oppMatches===0?'No prior scout data':($oppMatches<$projectionMinMatches?'Limited data':($observedOppIndex===1?'Highest observed PPM':($observedOppIndex===2?'Second observed PPM':'Opponent')));$pm=$predictionMetricsByTeam[$n]??[];$publicEpa=isset($pm['epa'])&&is_numeric($pm['epa'])?(float)$pm['epa']:null;$neptuneEpa=isset($pm['neptune_epa'])&&is_numeric($pm['neptune_epa'])?(float)$pm['neptune_epa']:(isset($pm['augur_epa'])&&is_numeric($pm['augur_epa'])?(float)$pm['augur_epa']:null);?>
             <div class="strategy-threat">
               <div class="strategy-threat-head"><div><div class="strategy-threat-tag"><?=e($threatTag)?></div><h3>#<?=e($n)?> <?=e($t['nickname']?:'')?></h3></div><button type="button" class="secondary robot-detail-trigger" data-event-id="<?=$eventId?>" data-team="<?=$n?>" aria-label="Open robot intelligence for team <?=$n?>"><i class="fa-solid fa-circle-info"></i></button></div>
-              <div class="strategy-metric-row"><div class="strategy-metric"><span>PPM</span><b><?=$oppMatches?number_format((float)($r['ppm']??0),1):'No data'?></b></div><div class="strategy-metric"><span>Cycle</span><b><?=$oppMatches?(isset($r['cycle_time'])&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'):'No data'?></b></div><div class="strategy-metric"><span>Defense / match</span><b><?=$oppMatches?number_format((float)($r['defense_per_match']??0),1):'No data'?></b></div></div>
+              <div class="strategy-metric-group">
+                <div class="strategy-metric-group-label"><i class="fa-solid fa-bullseye"></i> Offense</div>
+                <div class="strategy-metric-row">
+                  <div class="strategy-metric"><span>PPM</span><b><?=$oppMatches?number_format((float)($r['ppm']??0),1):'No data'?></b></div>
+                  <div class="strategy-metric"><span>Cycle</span><b><?=$oppMatches?(isset($r['cycle_time'])&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'):'No data'?></b></div>
+                  <div class="strategy-metric"><span>Success</span><b><?=$oppMatches?number_format((float)($r['success_rate']??0),0).'%':'No data'?></b></div>
+                  <div class="strategy-metric"><span>EPA</span><b><?=$publicEpa!==null?number_format($publicEpa,1):'—'?></b></div>
+                  <div class="strategy-metric"><span>Nep. EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
+                </div>
+              </div>
+              <div class="strategy-metric-group">
+                <div class="strategy-metric-group-label"><i class="fa-solid fa-shield-halved"></i> Defense</div>
+                <div class="strategy-metric-row">
+                  <div class="strategy-metric"><span>Defense / match</span><b><?=$oppMatches?number_format((float)($r['defense_per_match']??0),1):'No data'?></b></div>
+                  <div class="strategy-metric"><span>D-EPA</span><b><?=isset($depaMap[$n]['depa'])&&$depaMap[$n]['depa']!==null?number_format((float)$depaMap[$n]['depa'],1):'—'?></b></div>
+                  <div class="strategy-metric"><span>Nep. D-EPA</span><b><?=isset($depaMap[$n]['neptune_depa'])&&$depaMap[$n]['neptune_depa']!==null?number_format((float)$depaMap[$n]['neptune_depa'],1):'—'?></b></div>
+                </div>
+              </div>
               <?php $drive=strategy_first_nonempty([$pit['drive_notes']??''],[$pre['drive_notes']??'']);if($drive!==''):?><div class="strategy-source"><span>Drive notes</span><p><?=e($drive)?></p></div><?php endif;?>
               <?php $def=strategy_first_nonempty([$pit['defense_resistance']??''],[$pre['defense_notes']??'']);if($def!==''):?><div class="strategy-source"><span>Defense / counter-defense</span><p><?=e($def)?></p></div><?php endif;?>
             </div>

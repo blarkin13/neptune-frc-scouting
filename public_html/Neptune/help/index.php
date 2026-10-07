@@ -4,6 +4,8 @@ $u=require_login();
 $pageTitle='Neptune User Guide';
 $moduleName='NEPTUNE';
 include dirname(__DIR__).'/partials_header.php';
+$trainingActive='guide';
+require_once __DIR__.'/_training_media.php';
 ?>
 <style>
 .ng{max-width:1500px;margin:0 auto}.ng-hero{padding:18px 0 20px;border-bottom:1px solid var(--line);margin-bottom:18px}
@@ -16,12 +18,13 @@ include dirname(__DIR__).'/partials_header.php';
 .ng-hide{display:none!important}@media(max-width:980px){.ng-grid{grid-template-columns:1fr}.ng-nav{position:relative;top:auto;max-height:none}.ng-flow{grid-template-columns:1fr 1fr}}@media(max-width:650px){.ng-cardgrid,.ng-flow{grid-template-columns:1fr}.ng-sec{padding:15px}}
 </style>
 <section class="module-page ng">
-<header class="ng-hero">
-  <div class="module-code">NEPTUNE HELP</div>
-  <h1>Complete Neptune Walkthrough</h1>
-  <p>End-to-end instructions for configuring Neptune, preparing an event, scouting robots and matches, using AUGUR analytics and strategy, running alliance selection, managing organizations, and maintaining the platform.</p>
-  <span class="pill">Updated September 22, 2026</span>
+<header class="neptune-page-hero">
+  <div class="neptune-hero-kicker"><i class="fa-solid fa-graduation-cap"></i> NEPTUNE · FULL REFERENCE</div>
+  <h1>Neptune User Guide</h1>
+  <p>The complete reference for configuring Neptune, preparing an event, scouting robots and matches, using AUGUR analytics and strategy, running alliance selection, managing organizations, and maintaining the platform.</p>
+  <div class="neptune-hero-pills" aria-label="Guide workflow"><span class="neptune-hero-pill"><i class="fa-solid fa-magnifying-glass"></i><strong>1</strong> Find a feature</span><span class="neptune-hero-pill"><i class="fa-solid fa-route"></i><strong>2</strong> Follow the workflow</span><span class="neptune-hero-pill"><i class="fa-solid fa-screwdriver-wrench"></i><strong>3</strong> Troubleshoot</span></div><div class="toolbar" style="margin-top:12px"><a class="btn secondary" href="<?=e(base_url('help/training/'))?>"><i class="fa-solid fa-graduation-cap"></i> Training Home</a><a class="btn secondary" href="<?=e(base_url('help/training/#cbt-courses'))?>"><i class="fa-solid fa-laptop-file"></i> CBT Training</a></div>
 </header>
+<?php include __DIR__.'/_training_nav.php'; ?>
 <div class="ng-grid">
 <aside class="ng-nav">
   <input id="ngSearch" type="search" placeholder="Filter guide…" aria-label="Filter guide">
@@ -44,6 +47,8 @@ include dirname(__DIR__).'/partials_header.php';
 </div>
 <h3>Subsystems</h3>
 <ul><li><b>TRIDENT</b> — scouting interfaces.</li><li><b>SATURN</b> — Command Center and event operations.</li><li><b>VULCAN</b> — game and form builders.</li><li><b>AUGUR</b> — analytics, EPA, predictions, strategy, and alliance selection.</li></ul>
+<div class="ntp-visual-note"><i class="fa-solid fa-image"></i><p>Screenshots in this guide are live Neptune examples. Click or tap any image to enlarge it. Additional screenshots can be added later through the shared training-media library without restructuring the guide.</p></div>
+<?php neptune_training_figure('command-center','Use the Command Center as the operational map of Neptune. Event Operations contains the pages used to prepare and run live scouting.'); ?>
 </section>
 
 <section id="roles" class="ng-sec"><h2>2. Roles and access</h2>
@@ -57,8 +62,10 @@ include dirname(__DIR__).'/partials_header.php';
 </section>
 
 <section id="setup" class="ng-sec"><h2>3. Initial organization setup</h2>
+<p>A fresh Neptune installation creates its first organization through <code>register.php</code> or the public <b>Register an organization</b> link. There is no <code>admin/install.php</code> browser installer. The first organization is the platform organization and its owners receive platform-only administration tools.</p>
 <ol>
-<li>Open <b>Teams & Users</b>. Add your FRC team(s), create accounts, and assign roles.</li>
+<li>Open <b>Teams & Users</b>. Add your FRC team(s), create accounts, assign roles and primary teams, and verify owner/admin access.</li>
+<li>For password users, test a temporary-password reset and required password change. For Google users, confirm the verified Google identity is linked to the correct Neptune membership.</li>
 <li>Open <b>Game Builder</b>. Configure the current game, phases, scoring actions, values, button layouts, and timing.</li>
 <li>Open <b>Pit Form Builder</b>. Define the questions scouts answer at each robot.</li>
 <li>Open <b>Pre-Scout Form Builder</b>. Define the research questions used before the event.</li>
@@ -66,7 +73,14 @@ include dirname(__DIR__).'/partials_header.php';
 <li>Add a preliminary roster manually or use <b>TBA Sync</b>.</li>
 <li>Link the official TBA event when it becomes available, preserving existing pit/pre-scout data.</li>
 <li>Test one complete practice match with real scout devices.</li>
-</ol></section>
+</ol>
+<h3>Signing in and recovery</h3>
+<ul>
+<li><b>Password sign-in</b> uses organization name or Neptune slug + username + password. Neptune does not publish an organization dropdown.</li>
+<li><b>Google sign-in</b> does not ask for an organization first. Neptune routes only to memberships already tied to the verified Google identity, an approved Workspace domain, or a direct invitation.</li>
+<li><b>Forgot Password</b> verifies the user's Google identity before allowing a new local Neptune password.</li>
+<li>Owners/admins can edit users, change roles and primary-team assignments, deactivate/reactivate accounts, issue temporary passwords, and manage invitations from <b>Teams & Users</b>.</li>
+</ul></section>
 
 <section id="vulcan" class="ng-sec"><h2>4. VULCAN builders</h2>
 <div class="ng-cardgrid">
@@ -74,7 +88,13 @@ include dirname(__DIR__).'/partials_header.php';
 <div class="ng-card"><h3>Pit Form Builder <span class="ng-role">Admin+</span></h3><p>Build questions about mechanisms, drivetrain, autonomous capability, capacity, endgame, roles, restrictions, and mechanical context.</p><a href="<?=e(base_url('admin/pit-builder.php'))?>">Open Pit Form Builder</a></div>
 <div class="ng-card"><h3>Pre-Scout Form Builder <span class="ng-role">Admin+</span></h3><p>Build season research fields using yes/no, select, multi-select, number, text, and long-text questions. Answers can be reused for the same game/season.</p><a href="<?=e(base_url('admin/pre-scout-builder.php'))?>">Open Pre-Scout Builder</a></div>
 <div class="ng-card"><h3>Builder rule of thumb</h3><p>Use live actions for things a scout can observe repeatedly during a match. Use pit/pre-scout/Spot for capabilities, context, and qualitative observations.</p></div>
-</div></section>
+</div>
+<?php neptune_training_gallery([
+ ['game-builder','Configure match timing, action types, point values, button layout, and the live scouting-grid preview.'],
+ ['pit-form-builder','Add game-specific pit questions and manage the published/draft revision used by events.'],
+ ['pre-scout-builder','Create reusable pre-event research questions for the current season/game.']
+],'ntp-shot-grid-3'); ?>
+</section>
 
 <section id="event" class="ng-sec"><h2>5. Event preparation</h2>
 <h3>Event Setup <span class="ng-role">Strategy+</span></h3>
@@ -84,17 +104,36 @@ include dirname(__DIR__).'/partials_header.php';
 <p>Use TBA Sync to import/refresh rosters and schedules. If you already created a manual event, use <b>Link & Sync</b> so Neptune keeps the existing event ID and its pre-scout/pit work while adding official TBA information.</p>
 <p><a href="<?=e(base_url('admin/tba-sync.php'))?>">Open TBA Sync</a></p>
 <h3>Before the event</h3><ul><li>Verify all expected teams are on the roster.</li><li>Load the schedule once published.</li><li>Confirm the correct game/revision is attached.</li><li>Have every scout sign in from the device they will use.</li></ul>
+<?php neptune_training_gallery([
+ ['event-setup','Create the event, select the game and dates, then make the correct event current.'],
+ ['event-roster','Use roster status and completion counts to verify event readiness before match scouting begins.'],
+ ['tba-sync','Find official TBA events or link a manually created Neptune event when TBA catches up.'],
+ ['tba-events','Imported-event cards provide a fast readiness check for roster, schedule, pre-scout, and pit completion.']
+]); ?>
 </section>
 
 <section id="trident" class="ng-sec"><h2>6. TRIDENT scouting</h2>
 <div class="ng-cardgrid">
 <div class="ng-card"><h3>Pre-Scouting</h3><p>Research the current-season robot before competition. Enter prior performance, architecture, auto/endgame history, archetype, drive notes, and the game-specific questions configured by VULCAN.</p><a href="<?=e(base_url('prescout/index.php'))?>">Open Pre-Scouting</a></div>
 <div class="ng-card"><h3>Pit Scouting</h3><p>Select the event and team, confirm any pre-filled same-season data, answer the pit form, add photos, save a draft or mark complete, then move to Next Unscouted.</p><a href="<?=e(base_url('pit/index.php'))?>">Open Pit Scouting</a></div>
-<div class="ng-card"><h3>Spot Scouting</h3><p>Add qualitative observations that do not belong as repeated match actions: damage, configuration changes, driver behavior, defense quality, reliability issues, and other strategic notes.</p><a href="<?=e(base_url('spot/index.php'))?>">Open Spot Scouting</a></div>
+<div class="ng-card"><h3>Tag Scouting</h3><p>Add qualitative observations that do not belong as repeated match actions: damage, configuration changes, driver behavior, defense quality, reliability issues, and other strategic notes.</p><a href="<?=e(base_url('scout/tag.php'))?>">Open Tag Scouting</a></div>
 <div class="ng-card"><h3>Live Match Scouting</h3><p>Only Ready/Running/Paused matches appear. Choose your assigned alliance station; Neptune gets the robot directly from the match schedule.</p><a href="<?=e(base_url('scout/index.php'))?>">Open Match Scouting</a></div>
 </div>
 <h3>How to scout a live action</h3><ol><li>Wait for Command to start the match.</li><li>Tap the observed action.</li><li>Swipe <b>right</b> for Success or <b>left</b> for Failure.</li><li>Leave the popup open and repeat swipes for repeated actions.</li><li>Watch Actions, Score, Last Action, timer, and phase.</li></ol>
 <p>Keyboard: Right Arrow = Success, Left Arrow = Failure, Escape = close popup. Actions are blocked while the match is not running and during the configured Auto → Teleop transition pause.</p>
+<h3>Visual scouting examples</h3>
+<?php neptune_training_gallery([
+ ['pre-scout-team','Pre-Scouting combines public and Neptune season context before the scout reaches the editable research questions.'],
+ ['pit-basics','Pit Scouting begins with structured robot basics and game-piece handling.'],
+ ['pit-auton-endgame','Capture autonomous routines and endgame capability as separate structured sections.','phone'],
+ ['pit-strategy-reliability','Record preferred roles, defense tolerance, reliability, and issues strategy should know.','phone'],
+ ['pit-auton-path','Draw the expected autonomous route directly on the field when that context matters.','phone'],
+ ['pit-photos','Capture standard robot views and mechanism details; Neptune handles image optimization.','phone'],
+ ['tag-match','Tag Scouting starts by confirming event, match, alliance, and the robot being observed.','phone'],
+ ['tag-observations','Apply only the qualitative tags actually demonstrated in the observed match.','phone'],
+ ['live-match-scouting','The mobile live-scout view keeps the assigned robot, phase, action totals, points, and action grid together.','phone'],
+ ['action-swipe','After tapping an action, swipe left for Failure or right for Success; leave the popup open for repeated observations.','phone']
+]); ?>
 </section>
 
 <section id="operations" class="ng-sec"><h2>7. SATURN live event operations</h2>
@@ -103,6 +142,10 @@ include dirname(__DIR__).'/partials_header.php';
 <div class="ng-card"><h3>Live Monitor <span class="ng-role">Strategy+</span></h3><p>Watch connected scouts, assigned robots/stations, incoming actions, match state, and missing coverage. Keep this open during qualifications.</p><a href="<?=e(base_url('admin/live.php'))?>">Open Live Monitor</a></div>
 </div>
 <h3>Recommended match sequence</h3><ol><li>Make the match Ready.</li><li>Confirm six scheduled robots.</li><li>Confirm scout connections in Live Monitor.</li><li>Start Neptune with the field.</li><li>Monitor coverage while scouts record actions.</li><li>End the Neptune match state.</li><li>Check for missing or obviously incorrect coverage before advancing.</li></ol>
+<?php neptune_training_gallery([
+ ['match-control','Match Control is the source of truth for Ready, Running, Paused, Ended, and re-scout state.'],
+ ['live-monitor','Live Monitor shows station coverage, connection state, incoming actions, and tools for correcting isolated data problems.']
+]); ?>
 </section>
 
 <section id="augur" class="ng-sec"><h2>8. AUGUR analytics</h2>
@@ -131,13 +174,17 @@ include dirname(__DIR__).'/partials_header.php';
 
 <section id="org" class="ng-sec"><h2>11. Organization and system tools</h2>
 <div class="ng-cardgrid">
-<div class="ng-card"><h3>Teams & Users <span class="ng-role">Admin+</span></h3><p>Manage FRC teams, user accounts, roles, and organization access.</p><a href="<?=e(base_url('admin/teams.php'))?>">Open</a></div>
+<div class="ng-card"><h3>Teams & Users <span class="ng-role">Strategy+</span></h3><p>User administration follows a role ceiling: Strategy can manage Scouts and assign up to Strategy; Admin can manage Scouts/Strategy and assign up to Admin; Owner can manage lower roles and assign up to Owner. Users cannot change their own role/status, and account recovery/provider actions cannot target peers or higher roles. Admin+ can add FRC teams.</p><a href="<?=e(base_url('admin/teams.php'))?>">Open</a></div>
 <div class="ng-card"><h3>Data Sharing <span class="ng-role">Strategy+</span></h3><p>Grant partner teams permission-specific access to selected match, pit, notes, raw-action, or analytics data without merging organizations.</p><a href="<?=e(base_url('admin/sharing.php'))?>">Open</a></div>
 <div class="ng-card"><h3>System Check <span class="ng-role">Admin+</span></h3><p>Verify PHP, image processing, storage, configuration, and host capabilities after upgrades or before an event.</p><a href="<?=e(base_url('admin/system-check.php'))?>">Open</a></div>
+<div class="ng-card"><h3>Platform Administration <span class="ng-role">Platform owner</span></h3><p>Installation-wide organization oversight: owners, user/team counts, last activity, status, organization details, owner password reset, suspend/reactivate, and tenant-scoped data export.</p><a href="<?=e(base_url('admin/platform-administration.php'))?>">Open</a></div>
 <div class="ng-card"><h3>Interface Styling <span class="ng-role">Platform owner</span></h3><p>Manage global dark/light, subsystem, status, and access colors. Check light-mode icon contrast after palette changes.</p><a href="<?=e(base_url('admin/styling.php'))?>">Open</a></div>
-<div class="ng-card"><h3>File Manager <span class="ng-role">Platform owner</span></h3><p>Browse, upload, edit, rename, move, download, and maintain application files. Keep source-control/server backups.</p><a href="<?=e(base_url('admin/file-manager.php'))?>">Open</a></div>
-<div class="ng-card"><h3>Maintenance Console <span class="ng-role">Platform owner</span></h3><p>Server health, patch ZIP inspection/install, rollback, and restricted diagnostics.</p><a href="<?=e(base_url('admin/maintenance.php'))?>">Open</a></div>
-</div></section>
+<div class="ng-card"><h3>File Manager <span class="ng-role">Platform owner</span></h3><p>Browse, upload, edit, rename, move, download, and maintain application files. It is platform-owner-only; tenant owners do not receive filesystem access.</p><a href="<?=e(base_url('admin/file-manager.php'))?>">Open</a></div>
+<div class="ng-card"><h3>Maintenance Console <span class="ng-role">Platform owner</span></h3><p>Server health, patch ZIP inspection/install, file rollback, restricted diagnostics, installed-update history, and tracked database migrations. File rollback does not undo database migrations.</p><a href="<?=e(base_url('admin/maintenance.php'))?>">Open</a></div>
+</div>
+<h3>Update and migration rule</h3>
+<p>Neptune keeps schema-changing updates self-contained. Each current schema change checks and records a migration key in the global <code>neptune_migrations</code> table. Maintenance Console reports <b>Files updated</b> and <b>DB migrations applied</b> so a future maintainer can see what a package changed.</p>
+</section>
 
 <section id="day" class="ng-sec"><h2>12. Recommended competition-day workflow</h2>
 <h3>Before pits open</h3><ul><li>Verify current event, roster, and schedule.</li><li>Run TBA Sync.</li><li>Run System Check if server/network changed.</li><li>Test one scout device end-to-end.</li></ul>
@@ -161,10 +208,12 @@ include dirname(__DIR__).'/partials_header.php';
 <h3>Manual event now exists on TBA</h3><p>Use Link & Sync rather than creating a duplicate event.</p>
 <h3>Neptune EPA values differ between pages</h3><p>Determine whether one view is historical/pre-match. Compare Current Neptune EPA for the same team/event/settings and verify shared Model Settings.</p>
 <h3>Connection warning</h3><p>Notify the scouting lead, restore network/server connectivity, and allow the protected queue to flush.</p>
+<h3>User cannot sign in</h3><p>For password sign-in, verify the organization name/slug, username, account status, and whether that organization requires Google sign-in. The public error intentionally does not reveal which credential was wrong.</p>
+<h3>User forgot a password</h3><p>Use <b>Forgot Password</b> for Google-verified self-service recovery, or have an owner/admin issue a temporary password in <b>Teams & Users</b>. Routine password recovery should not require MySQL access.</p>
 </section>
 
 <section id="glossary" class="ng-sec"><h2>15. Glossary</h2>
-<ul><li><b>Public EPA</b> — independent public TBA-derived expected-points rating.</li><li><b>Neptune EPA</b> — organization-specific offensive estimate blending Public EPA with Neptune scouting and trend.</li><li><b>Current Subtotal</b> — selected three field robots' Neptune EPA sum in Alliance Selection; backup excluded.</li><li><b>PPM</b> — scouted points per match.</li><li><b>Cycle Time</b> — average time between consecutive successful positive-point scoring actions.</li><li><b>Opponent Suppression</b> — observational estimate of opponent under-performance while a robot was on the field.</li><li><b>Run / Re-scout</b> — a version of a match scouting attempt; a newer run replaces the prior active observation for analytics.</li><li><b>TBA</b> — The Blue Alliance.</li></ul>
+<ul><li><b>Platform owner</b> — an owner in Neptune's designated platform organization; receives installation-wide Platform Administration, File Manager, Styling, and Maintenance tools.</li><li><b>Migration key</b> — unique identifier recorded in <code>neptune_migrations</code> when a schema-changing update is applied.</li><li><b>Public EPA</b> — independent public TBA-derived expected-points rating.</li><li><b>Neptune EPA</b> — organization-specific offensive estimate blending Public EPA with Neptune scouting and trend.</li><li><b>Current Subtotal</b> — selected three field robots' Neptune EPA sum in Alliance Selection; backup excluded.</li><li><b>PPM</b> — scouted points per match.</li><li><b>Cycle Time</b> — average time between consecutive successful positive-point scoring actions.</li><li><b>Opponent Suppression</b> — observational estimate of opponent under-performance while a robot was on the field.</li><li><b>Run / Re-scout</b> — a version of a match scouting attempt; a newer run replaces the prior active observation for analytics.</li><li><b>TBA</b> — The Blue Alliance.</li></ul>
 </section>
 </main></div>
 </section>

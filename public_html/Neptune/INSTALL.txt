@@ -1,55 +1,138 @@
-SAFE NEPTUNE SEO UPDATE
+Neptune - Current Installation and Update Guide
+================================================
 
-IMPORTANT:
-- This package DOES NOT contain index.php.
-- Do not change the working authentication controller.
-- Back up partials_header.php and landing.php first.
+This file describes the current application. Neptune does NOT use
+/Neptune/admin/install.php.
 
-From /var/www/neptune/public_html/Neptune:
+FRESH INSTALLATION
+------------------
 
-sudo cp partials_header.php partials_header.php.before-seo
-sudo cp landing.php landing.php.before-seo
+1. Requirements
+   - PHP 8.x
+   - PDO MySQL
+   - cURL
+   - PHP sessions
+   - MySQL 8.x or compatible MariaDB
+   - Apache/Nginx or another PHP-capable web server
+   - HTTPS for production
+   - The Blue Alliance API key
+   - GD or Imagick recommended for pit-photo optimization
 
-Upload/copy the package contents into the Neptune root so these paths exist:
-  partials_header.php
-  landing.php
-  robots.txt
-  sitemap.xml
-  images/neptune-og.png
+2. Directory layout
 
-Then run:
-  php -l partials_header.php
-  php -l landing.php
-  sudo chown root:www-data partials_header.php landing.php robots.txt sitemap.xml images/neptune-og.png
-  sudo chmod 664 partials_header.php landing.php robots.txt sitemap.xml images/neptune-og.png
-  sudo systemctl reload apache2
+   public_html/Neptune/     Public web application
+   neptune_secure/          Private PHP configuration/helpers; keep outside web root
+   sql/                     Baseline database schema
+   scripts/                 Host/support scripts
 
-Test:
-  https://neptune.mckinneysteamacademy.org/
-  https://neptune.mckinneysteamacademy.org/robots.txt
-  https://neptune.mckinneysteamacademy.org/sitemap.xml
+3. Database
 
-This update fixes:
-- language tag
-- ASCII-safe title separator
-- meta description
-- canonical URL
-- Open Graph metadata
-- Twitter card metadata (except twitter:site, because no account was supplied)
-- Organization, WebSite, WebPage, WebApplication and BreadcrumbList JSON-LD
-- 1200x630 Open Graph image
-- logo width/height and fetchpriority
-- resource hints
-- shorter keyword-aligned H1
-- landing inline style attributes
-- robots.txt
-- sitemap.xml
+   Create a database and import:
 
-The following audit items are intentionally separate:
-- HTTP/2
-- HSTS
-- CSP
-- COOP
-- session Cache-Control
-- RSS feed
-- twitter:site without a real X/Twitter account
+     sql/neptune_schema.sql
+
+   This is the baseline schema for a fresh installation.
+
+4. Private configuration
+
+   Copy:
+
+     neptune_secure/config.example.php
+
+   to:
+
+     neptune_secure/config.php
+
+   Enter the database settings, base URL/timezone as needed, and TBA API key.
+   Never commit live credentials.
+
+5. First organization
+
+   Open:
+
+     /Neptune/register.php
+
+   or open Neptune's public sign-in page and choose "Register an organization".
+
+   Create the first organization and owner there. The first organization is the
+   platform organization and its owners receive the platform-only administration
+   and maintenance tools.
+
+   There is no admin/install.php step and no installer file to remove afterward.
+
+6. Optional Google sign-in
+
+   Current Google/OIDC support reads these values from:
+
+     /etc/scout/neptune.env
+
+   GOOGLE_OAUTH_CLIENT_ID="..."
+   GOOGLE_OAUTH_CLIENT_SECRET="..."
+   GOOGLE_OAUTH_REDIRECT_URI="https://your-host/Neptune/auth/google-callback.php"
+
+   If these settings are absent, password sign-in remains available.
+
+7. Validate the installation
+
+   Sign in as the first owner and check:
+   - Command Center -> System Check
+   - Command Center -> Platform Administration
+   - Command Center -> Maintenance Console
+   - Teams & Users
+
+PASSWORD / GOOGLE LOGIN
+-----------------------
+
+Password sign-in uses:
+  organization name or Neptune slug + username + password
+
+The public login page does not expose a global organization dropdown.
+
+Google sign-in does not ask the user to select an organization first. Neptune
+routes only to memberships tied to that verified identity, an approved Workspace
+domain, or a valid invitation.
+
+Forgot Password uses Google verification before allowing a new local Neptune
+password. Owners/admins can also issue temporary passwords in Teams & Users.
+
+UPDATES AND DATABASE MIGRATIONS
+-------------------------------
+
+Neptune intentionally keeps updates self-contained rather than using a large
+migration framework.
+
+Schema-changing updates use the shared migration helper and record:
+
+  neptune_migrations
+  ------------------
+  migration_key
+  applied_at
+  package
+
+Maintenance Console shows:
+  - Files updated
+  - DB migrations applied
+  - Installed update history
+  - DB migration history
+
+A Maintenance Console file rollback restores files only. It does NOT automatically
+reverse database migrations. Schema migrations should therefore remain idempotent
+and forward-safe.
+
+Do not manually replay old migration SQL unless a package specifically instructs
+you to do so.
+
+PRODUCTION HANDOFF
+------------------
+
+The platform owner should know how to:
+  - manage tenant organizations in Platform Administration
+  - recover an organization owner
+  - suspend/reactivate a tenant
+  - export tenant data
+  - manage files through the platform-owner File Manager
+  - install/rollback patch files through Maintenance Console
+  - review neptune_migrations
+  - manage users/roles/temporary passwords/invitations through Teams & Users
+
+For normal account recovery, direct MySQL edits should not be necessary.

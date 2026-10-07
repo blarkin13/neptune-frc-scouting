@@ -303,7 +303,7 @@ $scoutValue=trim((string)($currentData['scout']??''));if($scoutValue==='')$scout
   canvas?.addEventListener('pointerup',stopDrawing);
   canvas?.addEventListener('pointercancel',stopDrawing);
   undoBtn?.addEventListener('click',()=>{strokes.pop();syncHidden();draw();});
-  clearBtn?.addEventListener('click',()=>{if(strokes.length&&confirm('Clear the entire autonomous path?')){strokes=[];syncHidden();draw();}});
+  clearBtn?.addEventListener('click',async()=>{if(!strokes.length)return;const ok=await window.NeptuneUI.confirm('Clear the entire autonomous path?',{title:'Clear autonomous path',confirmText:'Clear path',danger:true});if(!ok)return;strokes=[];syncHidden();draw();});
 
   if(fieldUrl){
     bg=new Image();

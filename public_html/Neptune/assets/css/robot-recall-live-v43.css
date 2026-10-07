@@ -1,0 +1,90 @@
+/* Robot Recall v4.3 live synchronization + lobby intro additions. */
+.rr-mc-intro{
+  display:grid;
+  grid-template-columns:minmax(0,1.5fr) minmax(280px,.55fr);
+  gap:clamp(22px,4vw,56px);
+  align-items:center;
+  width:min(1480px,100%);
+  margin:0 auto;
+}
+.rr-mc-intro-copy{min-width:0}
+.rr-mc-intro h1{
+  margin:.18em 0 .22em;
+  font-size:clamp(3rem,6.7vw,7.25rem);
+  line-height:.88;
+  letter-spacing:-.055em;
+}
+.rr-mc-lede{
+  max-width:900px;
+  margin:0 0 22px;
+  color:var(--muted);
+  font-size:clamp(1rem,1.45vw,1.45rem);
+  line-height:1.5;
+}
+.rr-mc-rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.rr-mc-rules article{
+  display:flex;
+  gap:13px;
+  align-items:flex-start;
+  padding:15px;
+  border:1px solid var(--line);
+  background:var(--panel2);
+  border-radius:8px;
+  box-shadow:0 5px 0 color-mix(in srgb,var(--line) 72%,transparent);
+}
+.rr-mc-rules article b{display:block;font-size:clamp(.95rem,1.4vw,1.2rem);margin-bottom:4px}
+.rr-mc-rules article small{display:block;color:var(--muted);font-size:clamp(.8rem,1vw,.98rem);line-height:1.35}
+.rr-mc-block{
+  flex:0 0 44px;
+  width:44px;height:44px;
+  display:grid;place-items:center;
+  font-weight:1000;
+  font-size:1.25rem;
+  border:2px solid rgba(255,255,255,.18);
+  border-radius:3px;
+  box-shadow:inset -5px -5px 0 rgba(0,0,0,.18),inset 5px 5px 0 rgba(255,255,255,.12);
+  image-rendering:pixelated;
+}
+.rr-mc-grass{background:#4c9b45;color:#fff;border-bottom-color:#6a4426}
+.rr-mc-diamond{background:#43cad2;color:#09282b}
+.rr-mc-gold{background:#efb92f;color:#2e2205}
+.rr-mc-punchline{
+  display:inline-flex;align-items:center;gap:9px;
+  margin-top:18px;padding:10px 13px;
+  border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--line));
+  border-radius:7px;
+  font-weight:800;
+  color:var(--text);
+}
+.rr-mc-lobby-meta{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:20px}
+.rr-mc-lobby-meta .rr-lobby-code{margin:0}
+.rr-mc-qr-card{align-self:center}
+.rr-mc-qr-card small{display:block;margin-top:8px;color:var(--muted);text-align:center}
+
+.rr-mc-phone-lobby .rr-mc-phone-rules{display:grid;gap:8px;margin:18px 0 12px}
+.rr-mc-phone-rules>div{
+  display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;
+  padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);
+}
+.rr-mc-phone-rules>div>b{
+  width:34px;height:34px;display:grid;place-items:center;border-radius:3px;
+  background:color-mix(in srgb,var(--accent) 70%,#243d2a);
+  color:#fff;box-shadow:inset -4px -4px 0 rgba(0,0,0,.16);
+}
+.rr-mc-phone-rules>div>span{font-size:.9rem;line-height:1.25}
+.rr-mc-phone-note{font-size:.78rem;color:var(--muted);font-weight:700}
+
+/* Keep the mystery image ready to paint as soon as state changes. */
+#rrLogo,#rrPhoneLogo,#rrHostLogo{image-rendering:pixelated;will-change:contents}
+
+@media(max-width:1000px){
+  .rr-mc-intro{grid-template-columns:minmax(0,1fr) minmax(240px,.48fr);gap:24px}
+  .rr-mc-rules{grid-template-columns:1fr}
+  .rr-mc-intro h1{font-size:clamp(3rem,8vw,5rem)}
+}
+@media(max-width:720px){
+  .rr-mc-intro{grid-template-columns:1fr;align-items:start}
+  .rr-mc-intro h1{font-size:clamp(2.7rem,13vw,4.5rem)}
+  .rr-mc-qr-card{width:min(360px,100%);justify-self:center}
+  .rr-mc-punchline{font-size:.86rem}
+}

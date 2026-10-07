@@ -56,6 +56,7 @@ button.compact,.btn.compact{padding:8px 10px;font-size:.75rem}
 .alliance-team-row:hover{filter:none;border-color:var(--accent)}
 .alliance-team-row.selected{border-color:var(--good);box-shadow:0 0 0 1px color-mix(in srgb,var(--good) 30%,transparent)}
 .alliance-team-row.state-selected{opacity:.72;background:color-mix(in srgb,var(--good) 8%,var(--panel2))}
+.alliance-team-row.state-already_picked{border-color:color-mix(in srgb,var(--accent) 62%,var(--line));background:color-mix(in srgb,var(--accent) 10%,var(--panel2))}
 .alliance-team-row.state-declined,.alliance-team-row.state-do_not_pick{border-color:color-mix(in srgb,var(--c1-red) 55%,var(--line));background:color-mix(in srgb,var(--c1-red) 8%,var(--panel2))}
 .alliance-team-row.state-broken{border-color:color-mix(in srgb,var(--warn) 55%,var(--line));background:color-mix(in srgb,var(--warn) 8%,var(--panel2))}
 .alliance-team-rank{color:var(--muted);font-size:.62rem;min-width:16px;text-align:right}
@@ -65,6 +66,7 @@ button.compact,.btn.compact{padding:8px 10px;font-size:.75rem}
 .alliance-team-metrics{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:.6rem;white-space:nowrap}
 .alliance-team-favorite{color:var(--warn)}
 .alliance-team-state-icon{color:var(--muted)}
+.state-already_picked .alliance-team-state-icon{color:var(--accent)}
 .state-declined .alliance-team-state-icon,.state-do_not_pick .alliance-team-state-icon{color:var(--bad)}
 .state-broken .alliance-team-state-icon{color:var(--warn)}
 .state-selected .alliance-team-state-icon{color:var(--good)}
@@ -1028,7 +1030,16 @@ html[data-theme="light"] .alliance-alliance.active{background:color-mix(in srgb,
 .alliance-rule-toggle.active {
   border-color: color-mix(in srgb, var(--accent, #57b7ff) 72%, transparent);
   background: color-mix(in srgb, var(--accent, #57b7ff) 12%, var(--surface-2, #172033));
-  color: var(--text, #f8fafc);
+  /* Active control sits on a dark/navy surface in both themes. Do not use
+     --text here: in light mode --text is intentionally dark. */
+  color: #fff;
+}
+.alliance-rule-toggle.active > i,
+.alliance-rule-toggle.active .alliance-rule-toggle-copy {
+  color: #fff;
+}
+.alliance-rule-toggle.active:hover:not(:disabled) {
+  color: #fff;
 }
 .alliance-rule-toggle:disabled {
   opacity: .7;
@@ -1556,7 +1567,7 @@ html[data-theme="light"] .alliance-alliance.active{background:color-mix(in srgb,
 }
 .alliance-team-intelligence-dialog .alliance-status-actions{
   display:grid !important;
-  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  grid-template-columns:repeat(auto-fit,minmax(105px,1fr)) !important;
   gap:7px !important;
 }
 .alliance-team-intelligence-dialog .alliance-status-actions button{
@@ -1912,11 +1923,20 @@ html[data-theme="light"] .alliance-alliance.active{background:color-mix(in srgb,
 .alliance-strategy-tag.compact i{font-size:.58rem}.alliance-strategy-tag.compact.more{color:var(--muted)}
 .alliance-team-record{color:var(--muted)}
 
-/* Slide-in alliance pick-list drawer. It is intentionally non-modal so robot cards remain draggable. */
-.alliance-pick-drawer{position:fixed;z-index:980;left:0;top:0;bottom:0;width:min(390px,32vw);min-width:330px;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);box-shadow:18px 0 55px var(--overlay-strong);transform:translateX(-104%);transition:transform .22s ease;visibility:hidden}
-.alliance-pick-drawer.open{transform:translateX(0);visibility:visible}
+/* Alliance pick-list drawer.
+   The pull tab stays visible at the viewport edge so the list behaves like a
+   physical drawer instead of relying on a toolbar button. */
+.alliance-pick-drawer{position:fixed;z-index:980;left:0;top:0;bottom:0;width:min(390px,32vw);min-width:330px;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);box-shadow:18px 0 55px var(--overlay-strong);transform:translateX(-100%);transition:transform .22s ease,width .22s ease,height .22s ease;visibility:visible;overflow:visible}
+.alliance-pick-drawer.open{transform:translateX(0)}
+.alliance-pick-drawer-pull{position:absolute;z-index:3;right:-48px;top:42%;width:48px;min-width:48px;padding:12px 7px!important;display:flex;flex-direction:column;align-items:center;gap:7px;border:1px solid var(--line)!important;border-left:0!important;border-radius:0 10px 10px 0!important;background:var(--panel)!important;color:var(--text)!important;box-shadow:9px 4px 22px var(--overlay-strong)!important;font-size:.62rem!important;font-weight:950!important;writing-mode:vertical-rl;text-orientation:mixed;text-transform:none!important;letter-spacing:.02em;cursor:pointer}
+.alliance-pick-drawer-pull i{writing-mode:horizontal-tb;font-size:.8rem}
+.alliance-pick-drawer-pull-arrow{transition:transform .18s ease}
+.alliance-pick-drawer.open .alliance-pick-drawer-pull-arrow{transform:rotate(180deg)}
+.alliance-pick-drawer.expanded .alliance-pick-drawer-pull{display:none}
 .alliance-pick-drawer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 14px 10px;border-bottom:1px solid var(--line);background:var(--panel2)}
-.alliance-pick-drawer-head small{display:block;color:var(--muted);font-size:.58rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.alliance-pick-drawer-head h2{margin:2px 0 0;font-size:1.2rem}
+.alliance-pick-drawer-head small{display:block;color:var(--muted);font-size:.58rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.alliance-pick-drawer-head h2{margin:2px 0 0;font-size:1.2rem}
+.alliance-pick-drawer-actions{display:flex;align-items:center;gap:7px}
 .alliance-pick-drawer-help{margin:0;padding:10px 14px;color:var(--muted);font-size:.7rem;line-height:1.4;border-bottom:1px solid var(--line)}
 .alliance-pick-lists{min-height:0;overflow:hidden;padding:10px 12px 20px;display:grid;grid-template-rows:repeat(4,minmax(0,1fr));gap:12px}
 .alliance-pick-list-tier{min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;background:var(--panel2);overflow:hidden}
@@ -1924,35 +1944,62 @@ html[data-theme="light"] .alliance-alliance.active{background:color-mix(in srgb,
 .alliance-pick-list-tier-head span{font-size:.78rem;font-weight:950}.alliance-pick-list-tier-head small{color:var(--muted);font-size:.58rem;font-weight:800}
 .alliance-pick-list-slots{min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable;display:grid;align-content:start;gap:5px;padding:7px}
 .alliance-pick-list-slots::-webkit-scrollbar{width:8px}.alliance-pick-list-slots::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 48%,transparent);border-radius:999px}.alliance-pick-list-slots::-webkit-scrollbar-track{background:transparent}
-.alliance-pick-list-slot{display:grid;grid-template-columns:26px minmax(0,1fr) auto;align-items:center;gap:7px;min-height:48px;padding:5px 6px;border:1px dashed var(--line);border-radius:7px;background:var(--panel);transition:border-color .12s ease,background .12s ease}
-.alliance-pick-list-slot.filled{border-style:solid}.alliance-pick-list-slot.drag-over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel))}
+.alliance-pick-list-slot{display:grid;grid-template-columns:26px minmax(0,1fr) auto;align-items:center;gap:7px;min-height:48px;padding:5px 6px;border:1px dashed var(--line);border-radius:7px;background:var(--panel);transition:border-color .12s ease,background .12s ease,transform .12s ease}
+.alliance-pick-list-slot.filled{border-style:solid}.alliance-pick-list-slot.empty{cursor:pointer}
+.alliance-pick-list-slot.empty:hover,.alliance-pick-list-slot.empty:focus-visible{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--panel));outline:none;transform:translateY(-1px)}
 .alliance-pick-list-position{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--panel2);color:var(--muted);font-size:.62rem;font-weight:950}
-.alliance-pick-list-empty{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.67rem;font-weight:800}.alliance-pick-list-empty i{color:var(--accent)}
+.alliance-pick-list-empty{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.67rem;font-weight:800;min-width:0}
+.alliance-pick-list-empty>i{color:var(--accent);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 10%,var(--panel2))}
+.alliance-pick-list-empty>span{display:grid;gap:1px;min-width:0}.alliance-pick-list-empty b{color:var(--text);font-size:.67rem}.alliance-pick-list-empty small{font-size:.54rem;color:var(--muted)}
 .alliance-pick-list-team{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:7px;row-gap:1px;width:100%;padding:0;border:0;background:transparent;color:var(--text);box-shadow:none;text-align:left;text-transform:none;min-width:0}
 .alliance-pick-list-team:hover{filter:none}.alliance-pick-list-team b{grid-row:1/3;font-size:.8rem;align-self:center}.alliance-pick-list-team span,.alliance-pick-list-team small{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.alliance-pick-list-team span{font-size:.66rem}.alliance-pick-list-team small{font-size:.56rem;color:var(--muted)}
 .alliance-pick-list-clear{width:28px;height:28px;padding:0!important;border:0!important;background:transparent!important;color:var(--muted)!important;box-shadow:none!important}
-.alliance-pick-use-selected{padding:5px 7px!important;font-size:.58rem!important;white-space:nowrap}
+
+.alliance-pick-drawer.expanded{inset:0;width:100vw;max-width:none;min-width:0;height:100dvh;border:0;transform:translate(0)!important;box-shadow:none}
+.alliance-pick-drawer.expanded .alliance-pick-drawer-help{padding-block:8px}
+.alliance-pick-drawer.expanded .alliance-pick-lists{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr;gap:14px;padding:14px 16px 18px}
+.alliance-pick-drawer.expanded .alliance-pick-list-slots{overflow:visible;grid-template-columns:1fr;align-content:start}
+.alliance-page.pick-drawer-expanded{overflow:hidden}
+.alliance-page.pick-drawer-expanded .alliance-workspace-shell{margin-left:0!important}
+
+.alliance-pick-team-dialog{width:min(720px,calc(100vw - 28px));max-width:none;max-height:min(760px,calc(100dvh - 28px));padding:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);box-shadow:0 28px 90px var(--overlay-strong)}
+.alliance-pick-team-dialog::backdrop{background:var(--overlay-strong);backdrop-filter:blur(4px)}
+.alliance-pick-team-dialog-shell{display:flex;flex-direction:column;max-height:min(760px,calc(100dvh - 28px));min-height:420px}
+.alliance-pick-team-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.alliance-pick-team-dialog-head small{display:block;color:var(--muted);font-size:.6rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.alliance-pick-team-dialog-head h2{margin:2px 0 0;font-size:1.15rem}
+.alliance-pick-team-search{display:flex;align-items:center;gap:9px;margin:12px 14px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
+.alliance-pick-team-search i{color:var(--muted)}.alliance-pick-team-search input{width:100%;min-width:0;padding:11px 0;border:0!important;outline:0!important;background:transparent!important;color:var(--text);box-shadow:none!important}
+.alliance-pick-team-list{min-height:0;overflow-y:auto;padding:0 14px 14px;display:grid;gap:6px}
+.alliance-pick-team-choice{width:100%;display:grid;grid-template-columns:74px minmax(0,1fr) 94px 18px;align-items:center;gap:10px;padding:10px 12px!important;border:1px solid var(--line)!important;border-radius:9px!important;background:var(--panel2)!important;color:var(--text)!important;box-shadow:none!important;text-align:left;text-transform:none!important}
+.alliance-pick-team-choice:hover,.alliance-pick-team-choice:focus-visible{border-color:var(--accent)!important;background:color-mix(in srgb,var(--accent) 8%,var(--panel2))!important;outline:none}
+.alliance-pick-team-choice-number{font-size:.86rem;font-weight:950}.alliance-pick-team-choice-name{display:grid;gap:2px;min-width:0}.alliance-pick-team-choice-name b,.alliance-pick-team-choice-name small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.alliance-pick-team-choice-name b{font-size:.74rem}.alliance-pick-team-choice-name small{font-size:.59rem;color:var(--muted)}
+.alliance-pick-team-choice-epa{display:grid;gap:1px;text-align:right}.alliance-pick-team-choice-epa small{font-size:.51rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.alliance-pick-team-choice-epa b{font-size:.76rem}.alliance-pick-team-choice>i{color:var(--muted)}
+.alliance-pick-team-empty{min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:.72rem}
 
 @media (min-width:901px){
-  .alliance-page.pick-drawer-open .alliance-workspace-shell{margin-left:min(390px,32vw);transition:margin-left .22s ease}
+  .alliance-page.pick-drawer-open:not(.pick-drawer-expanded) .alliance-workspace-shell{margin-left:min(390px,32vw);transition:margin-left .22s ease}
   .alliance-workspace-shell{transition:margin-left .22s ease}
 }
 @media (max-width:900px){
-  .alliance-pick-drawer{left:0;right:0;top:auto;bottom:0;width:100%;min-width:0;height:min(62dvh,620px);border-right:0;border-top:1px solid var(--line);transform:translateY(104%);box-shadow:0 -18px 55px var(--overlay-strong)}
+  .alliance-pick-drawer{left:0;right:0;top:auto;bottom:0;width:100%;min-width:0;height:min(62dvh,620px);border-right:0;border-top:1px solid var(--line);transform:translateY(100%);box-shadow:0 -18px 55px var(--overlay-strong)}
   .alliance-pick-drawer.open{transform:translateY(0)}
+  .alliance-pick-drawer-pull{right:auto;top:-44px;left:50%;transform:translateX(-50%);width:auto;min-width:148px;height:44px;padding:7px 14px!important;flex-direction:row;justify-content:center;border:1px solid var(--line)!important;border-bottom:0!important;border-radius:10px 10px 0 0!important;writing-mode:horizontal-tb;box-shadow:0 -7px 20px var(--overlay-strong)!important}
+  .alliance-pick-drawer-pull-arrow{transform:rotate(-90deg)}.alliance-pick-drawer.open .alliance-pick-drawer-pull-arrow{transform:rotate(90deg)}
   .alliance-pick-list-slots{grid-template-columns:repeat(2,minmax(0,1fr))}
   .alliance-pick-list-slot{grid-template-columns:24px minmax(0,1fr) auto;min-height:52px}
+  .alliance-pick-drawer.expanded .alliance-pick-lists{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:8px;padding:8px}
+  .alliance-pick-drawer.expanded .alliance-pick-list-slots{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:5px}
+  .alliance-pick-drawer.expanded .alliance-pick-list-slot{min-height:46px;padding:4px}
 }
 @media (max-width:700px){
-  .alliance-tag-choice-grid{grid-template-columns:1fr}
-  .alliance-team-strategy-tags{max-width:160px}
-  .alliance-strategy-tag.compact span{display:none}
-  .alliance-strategy-tag.compact{width:23px;height:23px;padding:0;justify-content:center}
-  .alliance-strategy-tag.compact.more{width:auto;padding:0 5px}
+  .alliance-tag-choice-grid{grid-template-columns:1fr}.alliance-team-strategy-tags{max-width:160px}.alliance-strategy-tag.compact span{display:none}.alliance-strategy-tag.compact{width:23px;height:23px;padding:0;justify-content:center}.alliance-strategy-tag.compact.more{width:auto;padding:0 5px}
+  .alliance-pick-drawer-actions #alliancePickDrawerExpandBtn span{display:none}
+  .alliance-pick-team-choice{grid-template-columns:64px minmax(0,1fr) 72px 14px;gap:7px;padding:9px!important}
 }
 @media (max-width:520px){
-  .alliance-pick-list-slots{grid-template-columns:1fr}
-  .alliance-pick-drawer{height:min(68dvh,680px)}
+  .alliance-pick-list-slots{grid-template-columns:1fr}.alliance-pick-drawer{height:min(68dvh,680px)}.alliance-pick-drawer.expanded{height:100dvh}
+  .alliance-pick-drawer.expanded .alliance-pick-list-slots{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .alliance-pick-drawer.expanded .alliance-pick-list-empty small{display:none}.alliance-pick-team-choice-epa small{display:none}
 }
 
 /* ========================================================================
@@ -2203,5 +2250,826 @@ html[data-theme="light"] .alliance-alliance.active{background:color-mix(in srgb,
     height:42px !important;
     min-width:42px !important;
     min-height:42px !important;
+  }
+}
+
+
+/* ========================================================================
+   Pick Lists · touch-first chooser + taken markers
+   2026-09-24 follow-up: explicit add buttons, persistent Taken state, and a
+   mobile layout that favors readable full-width rows over dense mini-cards.
+   ======================================================================== */
+.alliance-pick-tier-jump{
+  display:none;
+}
+.alliance-pick-lists{
+  flex:1 1 auto;
+}
+.alliance-pick-list-slot{
+  grid-template-columns:26px minmax(0,1fr) auto;
+}
+.alliance-pick-list-slot.taken{
+  border-color:color-mix(in srgb,var(--bad) 72%,var(--line)) !important;
+  background:color-mix(in srgb,var(--bad) 12%,var(--panel)) !important;
+}
+.alliance-pick-list-slot.taken .alliance-pick-list-position{
+  background:color-mix(in srgb,var(--bad) 18%,var(--panel2));
+  color:color-mix(in srgb,var(--bad) 72%,white);
+}
+.alliance-pick-list-choose{
+  display:flex !important;
+  align-items:center !important;
+  gap:9px !important;
+  width:100% !important;
+  min-width:0 !important;
+  min-height:38px !important;
+  padding:3px 2px !important;
+  border:0 !important;
+  border-radius:5px !important;
+  background:transparent !important;
+  color:var(--text) !important;
+  box-shadow:none !important;
+  text-align:left !important;
+  text-transform:none !important;
+}
+.alliance-pick-list-choose>i{
+  flex:0 0 24px;
+  width:24px;
+  height:24px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:color-mix(in srgb,var(--accent) 12%,var(--panel2));
+  color:var(--accent);
+}
+.alliance-pick-list-choose>span{
+  display:grid;
+  gap:1px;
+  min-width:0;
+}
+.alliance-pick-list-choose b{
+  font-size:.70rem;
+  line-height:1.15;
+}
+.alliance-pick-list-choose small{
+  color:var(--muted);
+  font-size:.56rem;
+  line-height:1.15;
+}
+.alliance-pick-list-choose:hover,
+.alliance-pick-list-choose:focus-visible{
+  background:color-mix(in srgb,var(--accent) 8%,transparent) !important;
+  outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent) !important;
+  outline-offset:2px;
+}
+.alliance-pick-list-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:3px;
+}
+.alliance-pick-list-taken{
+  min-width:0 !important;
+  height:28px !important;
+  padding:0 7px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:4px !important;
+  border:1px solid var(--line) !important;
+  border-radius:999px !important;
+  background:var(--panel2) !important;
+  color:var(--muted) !important;
+  box-shadow:none !important;
+  font-size:.55rem !important;
+  font-weight:900 !important;
+  line-height:1 !important;
+  text-transform:none !important;
+}
+.alliance-pick-list-taken.active,
+.alliance-pick-list-taken:disabled.active{
+  border-color:color-mix(in srgb,var(--bad) 72%,var(--line)) !important;
+  background:color-mix(in srgb,var(--bad) 17%,var(--panel2)) !important;
+  color:color-mix(in srgb,var(--bad) 60%,white) !important;
+  opacity:1 !important;
+}
+.alliance-pick-list-taken:not(:disabled):hover{
+  border-color:var(--bad) !important;
+}
+.alliance-pick-list-clear{
+  flex:0 0 30px;
+}
+.alliance-pick-team-choice.taken{
+  border-color:color-mix(in srgb,var(--bad) 60%,var(--line)) !important;
+  background:color-mix(in srgb,var(--bad) 10%,var(--panel2)) !important;
+}
+
+/* Do not rely on the browser's native <dialog> implementation here. The
+   chooser is a Neptune-owned fixed overlay so a tap on an empty slot behaves
+   consistently on Chrome/Safari tablets and phones. */
+.alliance-pick-team-dialog{
+  position:fixed !important;
+  inset:0 !important;
+  z-index:1400 !important;
+  width:auto !important;
+  max-width:none !important;
+  max-height:none !important;
+  margin:0 !important;
+  padding:14px !important;
+  border:0 !important;
+  border-radius:0 !important;
+  display:grid;
+  place-items:center;
+  background:var(--overlay-strong) !important;
+  color:var(--text);
+  backdrop-filter:blur(4px);
+  box-shadow:none !important;
+}
+.alliance-pick-team-dialog[hidden]{
+  display:none !important;
+}
+.alliance-pick-team-dialog-shell{
+  width:min(720px,calc(100vw - 28px));
+  max-width:100%;
+  max-height:min(760px,calc(100dvh - 28px));
+  min-height:420px;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--panel);
+  box-shadow:0 28px 90px var(--overlay-strong);
+}
+body.alliance-pick-team-chooser-open{
+  overflow:hidden;
+}
+
+@media (max-width:700px){
+  .alliance-pick-tier-jump{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:5px;
+    padding:7px 10px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel2);
+  }
+  .alliance-pick-tier-jump button{
+    min-height:34px;
+    padding:5px 8px !important;
+    border:1px solid var(--line) !important;
+    border-radius:7px !important;
+    background:var(--panel) !important;
+    color:var(--text) !important;
+    box-shadow:none !important;
+    font-size:.66rem !important;
+    font-weight:900 !important;
+    text-transform:none !important;
+  }
+  .alliance-pick-team-dialog{
+    place-items:end center;
+    padding:0 !important;
+  }
+  .alliance-pick-team-dialog-shell{
+    width:100%;
+    max-width:none;
+    min-height:min(78dvh,720px);
+    max-height:92dvh;
+    border-left:0;
+    border-right:0;
+    border-bottom:0;
+    border-radius:16px 16px 0 0;
+  }
+  .alliance-pick-team-dialog-head{
+    padding:13px 14px;
+  }
+  .alliance-pick-team-search{
+    margin:10px 10px 8px;
+  }
+  .alliance-pick-team-list{
+    padding:0 10px 14px;
+    gap:7px;
+  }
+  .alliance-pick-team-choice{
+    min-height:58px;
+    grid-template-columns:64px minmax(0,1fr) 62px 14px !important;
+    gap:7px !important;
+    padding:9px 10px !important;
+  }
+}
+
+@media (max-width:520px){
+  .alliance-pick-drawer{
+    height:min(80dvh,760px) !important;
+  }
+  .alliance-pick-drawer.expanded{
+    height:100dvh !important;
+  }
+  .alliance-pick-drawer-head{
+    position:sticky;
+    top:0;
+    z-index:6;
+    padding:10px 11px 8px;
+  }
+  .alliance-pick-drawer-head h2{
+    font-size:1.05rem;
+  }
+  .alliance-pick-drawer-help{
+    padding:8px 10px;
+    font-size:.64rem;
+  }
+  .alliance-pick-lists,
+  .alliance-pick-drawer.expanded .alliance-pick-lists{
+    display:block !important;
+    min-height:0;
+    overflow-y:auto !important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    padding:8px 9px 18px !important;
+  }
+  .alliance-pick-list-tier,
+  .alliance-pick-drawer.expanded .alliance-pick-list-tier{
+    min-height:auto !important;
+    margin:0 0 9px;
+    overflow:visible;
+    scroll-margin-top:108px;
+  }
+  .alliance-pick-list-tier-head{
+    position:sticky;
+    top:0;
+    z-index:2;
+    padding:8px 9px;
+    background:var(--panel2);
+  }
+  .alliance-pick-list-slots,
+  .alliance-pick-drawer.expanded .alliance-pick-list-slots{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    overflow:visible !important;
+    gap:5px !important;
+    padding:6px !important;
+  }
+  .alliance-pick-list-slot,
+  .alliance-pick-drawer.expanded .alliance-pick-list-slot{
+    grid-template-columns:28px minmax(0,1fr) auto !important;
+    min-height:58px !important;
+    padding:6px 7px !important;
+    gap:7px !important;
+  }
+  .alliance-pick-list-position{
+    width:27px;
+    height:27px;
+    font-size:.68rem;
+  }
+  .alliance-pick-list-team{
+    grid-template-columns:auto minmax(0,1fr);
+    column-gap:8px;
+  }
+  .alliance-pick-list-team b{
+    font-size:.88rem;
+  }
+  .alliance-pick-list-team span{
+    font-size:.72rem;
+  }
+  .alliance-pick-list-team small{
+    font-size:.61rem;
+  }
+  .alliance-pick-list-choose{
+    min-height:44px !important;
+  }
+  .alliance-pick-list-choose b{
+    font-size:.76rem;
+  }
+  .alliance-pick-list-choose small{
+    display:block !important;
+    font-size:.59rem;
+  }
+  .alliance-pick-list-taken{
+    width:31px !important;
+    height:31px !important;
+    padding:0 !important;
+  }
+  .alliance-pick-list-taken span{
+    display:none;
+  }
+  .alliance-pick-list-clear{
+    width:31px !important;
+    height:31px !important;
+  }
+  .alliance-pick-list-actions{
+    gap:2px;
+  }
+  .alliance-pick-drawer-actions #alliancePickDrawerExpandBtn{
+    min-width:38px;
+  }
+  .alliance-pick-team-choice{
+    grid-template-columns:58px minmax(0,1fr) 50px 12px !important;
+    min-height:62px;
+  }
+  .alliance-pick-team-choice-number{
+    font-size:.80rem;
+  }
+  .alliance-pick-team-choice-name b{
+    font-size:.74rem;
+  }
+  .alliance-pick-team-choice-name small{
+    font-size:.58rem;
+  }
+  .alliance-pick-team-choice-epa{
+    font-size:.70rem;
+  }
+}
+
+/* ========================================================================
+   Pick Lists · direct assignment + real drag/drop targets
+   Robot cards can be dropped into any pick slot. Phones use one readable
+   pick tier at a time and rely on the tap/click team chooser.
+   ======================================================================== */
+.alliance-pick-list-slot[draggable="true"]{cursor:grab}
+.alliance-pick-list-slot[draggable="true"]:active{cursor:grabbing}
+body.alliance-team-dragging .alliance-pick-list-slot{
+  border-color:color-mix(in srgb,var(--accent) 42%,var(--line));
+  background:color-mix(in srgb,var(--accent) 5%,var(--panel));
+}
+.alliance-pick-list-slot.drag-over{
+  border-style:solid !important;
+  border-color:var(--accent) !important;
+  background:color-mix(in srgb,var(--accent) 18%,var(--panel)) !important;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent), inset 0 0 0 1px color-mix(in srgb,var(--accent) 36%,transparent);
+  transform:translateY(-1px) scale(1.01);
+}
+.alliance-pick-list-slot.drag-over::after{
+  content:'Drop robot here';
+  position:absolute;
+  inset:auto 8px 4px 34px;
+  color:var(--accent);
+  font-size:.52rem;
+  font-weight:900;
+  letter-spacing:.02em;
+  pointer-events:none;
+}
+.alliance-pick-list-slot{position:relative}
+.alliance-pick-tier-jump button.active{
+  border-color:var(--accent) !important;
+  background:color-mix(in srgb,var(--accent) 15%,var(--panel)) !important;
+  color:var(--accent) !important;
+}
+
+@media (max-width:520px){
+  .alliance-pick-tier-jump{
+    position:sticky;
+    top:0;
+    z-index:5;
+  }
+  .alliance-pick-list-tier,
+  .alliance-pick-drawer.expanded .alliance-pick-list-tier{
+    display:none !important;
+    margin-bottom:0 !important;
+  }
+  .alliance-pick-list-tier.mobile-active,
+  .alliance-pick-drawer.expanded .alliance-pick-list-tier.mobile-active{
+    display:block !important;
+  }
+  .alliance-pick-lists,
+  .alliance-pick-drawer.expanded .alliance-pick-lists{
+    padding-top:8px !important;
+  }
+  .alliance-pick-list-slot,
+  .alliance-pick-drawer.expanded .alliance-pick-list-slot{
+    min-height:68px !important;
+  }
+  .alliance-pick-list-choose{
+    min-height:52px !important;
+  }
+  .alliance-pick-list-choose b{font-size:.82rem !important}
+  .alliance-pick-list-choose small{font-size:.63rem !important}
+  .alliance-pick-list-taken{
+    width:32px !important;
+    min-width:32px !important;
+    height:32px !important;
+    padding:0 !important;
+    border-radius:8px !important;
+  }
+  .alliance-pick-list-taken span{display:none !important}
+  .alliance-pick-list-clear{
+    width:32px !important;
+    min-width:32px !important;
+    height:32px !important;
+  }
+  .alliance-pick-list-actions{
+    display:grid !important;
+    grid-template-columns:32px 32px;
+    gap:4px !important;
+  }
+  .alliance-pick-team-dialog-shell{
+    min-height:86dvh !important;
+    max-height:96dvh !important;
+  }
+  .alliance-pick-team-choice{
+    grid-template-columns:58px minmax(0,1fr) 54px 12px !important;
+  }
+}
+
+/* Pick List recovery controls: make accidental Taken/Selected states visibly reversible. */
+.alliance-pick-list-board-undo,
+.alliance-pick-list-taken[aria-pressed="true"]{
+  white-space:nowrap;
+}
+@media (max-width:520px){
+  .alliance-pick-list-board-undo span,
+  .alliance-pick-list-taken[aria-pressed="true"] span{
+    font-size:.52rem;
+  }
+}
+
+
+/* ========================================================================
+   Pick Lists · tablet density + picker ranking + readable strategy tags
+   2026-09-24: compact expanded tablet grid, rank chooser by qualification
+   points then Neptune EPA, and cap Team Pool strategy chips at 2 + remainder.
+   ======================================================================== */
+.alliance-pick-team-sort-note{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:.58rem;
+  font-weight:700;
+  line-height:1.25;
+}
+.alliance-pick-team-choice{
+  grid-template-columns:76px minmax(0,1fr) minmax(142px,auto) 16px !important;
+  align-items:center;
+}
+.alliance-pick-team-choice-number{
+  display:grid;
+  gap:2px;
+}
+.alliance-pick-team-choice-number>small{
+  color:var(--muted);
+  font-size:.50rem;
+  font-weight:750;
+  white-space:nowrap;
+}
+.alliance-pick-team-choice-name{
+  align-content:center;
+}
+.alliance-pick-team-choice-tags{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:3px;
+  min-height:0;
+  margin-top:4px;
+}
+.alliance-pick-team-choice-tags:empty{display:none}
+.alliance-pick-team-choice-tags .alliance-strategy-tag.compact{
+  flex:0 0 auto;
+  max-width:145px;
+}
+.alliance-pick-team-choice-tags .alliance-strategy-tag.compact span{
+  display:inline;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.alliance-pick-team-choice-metrics{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(64px,1fr));
+  gap:6px;
+  min-width:142px;
+}
+.alliance-pick-team-choice-metrics>span{
+  display:grid;
+  gap:2px;
+  min-width:0;
+  padding:5px 7px;
+  border:1px solid var(--line);
+  border-radius:7px;
+  background:color-mix(in srgb,var(--panel) 62%,var(--panel2));
+  text-align:right;
+}
+.alliance-pick-team-choice-metrics small{
+  color:var(--muted);
+  font-size:.48rem;
+  font-weight:800;
+  line-height:1.05;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.alliance-pick-team-choice-metrics b{
+  font-size:.75rem;
+  line-height:1;
+  white-space:nowrap;
+}
+
+/* Pool cards: show at most two strategy chips plus +N, and guarantee that
+   those chips remain inside the robot card instead of being crushed. */
+.alliance-team-copy>.alliance-team-strategy-tags{
+  overflow:visible !important;
+  flex-wrap:nowrap !important;
+}
+.alliance-team-copy>.alliance-team-strategy-tags .alliance-strategy-tag.compact{
+  min-width:0;
+  max-width:108px;
+}
+.alliance-team-copy>.alliance-team-strategy-tags .alliance-strategy-tag.compact span{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.alliance-team-copy>.alliance-team-strategy-tags .alliance-strategy-tag.compact.more{
+  max-width:none;
+}
+
+/* Expanded tablet view: do not stretch each tier to half the viewport height.
+   Keep the useful 2x2 tier layout but let each card size to its six slots. */
+@media (min-width:521px) and (max-width:900px){
+  .alliance-pick-drawer.expanded .alliance-pick-lists{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    grid-template-rows:none !important;
+    grid-auto-rows:auto !important;
+    align-content:start !important;
+    overflow-y:auto !important;
+    gap:10px !important;
+    padding:10px !important;
+  }
+  .alliance-pick-drawer.expanded .alliance-pick-list-tier{
+    min-height:0 !important;
+    height:auto !important;
+    align-self:start !important;
+  }
+  .alliance-pick-drawer.expanded .alliance-pick-list-slots{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    overflow:visible !important;
+    gap:5px !important;
+    padding:6px !important;
+  }
+  .alliance-pick-drawer.expanded .alliance-pick-list-slot{
+    min-height:54px !important;
+    height:auto !important;
+    padding:5px 6px !important;
+  }
+  .alliance-pick-list-taken{
+    max-width:94px;
+  }
+}
+
+@media (max-width:700px){
+  .alliance-pick-team-choice{
+    grid-template-columns:58px minmax(0,1fr) 112px 12px !important;
+  }
+  .alliance-pick-team-choice-metrics{
+    min-width:112px;
+    grid-template-columns:1fr 1fr;
+    gap:4px;
+  }
+  .alliance-pick-team-choice-metrics>span{padding:4px 5px}
+  .alliance-pick-team-choice-tags .alliance-strategy-tag.compact{
+    max-width:92px;
+  }
+}
+
+@media (max-width:520px){
+  .alliance-pick-team-choice{
+    grid-template-columns:54px minmax(0,1fr) 72px 10px !important;
+    gap:6px !important;
+  }
+  .alliance-pick-team-choice-metrics{
+    min-width:72px;
+    grid-template-columns:1fr;
+    gap:3px;
+  }
+  .alliance-pick-team-choice-metrics>span{
+    padding:3px 5px;
+  }
+  .alliance-pick-team-choice-metrics small{font-size:.43rem}
+  .alliance-pick-team-choice-metrics b{font-size:.68rem}
+  .alliance-pick-team-choice-tags .alliance-strategy-tag.compact{
+    width:24px !important;
+    height:24px !important;
+    padding:0 !important;
+    justify-content:center !important;
+    border-radius:7px !important;
+  }
+  .alliance-pick-team-choice-tags .alliance-strategy-tag.compact span{
+    display:none !important;
+  }
+  .alliance-pick-team-choice-tags .alliance-strategy-tag.compact.more{
+    width:auto !important;
+    padding:0 5px !important;
+  }
+}
+
+/* ========================================================================
+   Pick Lists · tablet readability correction
+   Tablet portrait keeps the useful 2x2 tier board, but each tier uses one
+   full-width slot per row.  The previous nested two-column slot grid made
+   robot names, EPA and controls unreadable around 700-900px wide.
+   ======================================================================== */
+@media (min-width:521px) and (max-width:900px){
+  .alliance-pick-list-slots,
+  .alliance-pick-drawer.expanded .alliance-pick-list-slots{
+    grid-template-columns:1fr !important;
+    gap:5px !important;
+  }
+
+  .alliance-pick-drawer.expanded .alliance-pick-lists{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    grid-template-rows:none !important;
+    grid-auto-rows:auto !important;
+    align-content:start !important;
+    gap:10px !important;
+    padding:10px !important;
+  }
+
+  .alliance-pick-drawer.expanded .alliance-pick-list-tier{
+    min-height:0 !important;
+    height:auto !important;
+    align-self:start !important;
+  }
+
+  .alliance-pick-list-slot,
+  .alliance-pick-drawer.expanded .alliance-pick-list-slot{
+    grid-template-columns:28px minmax(0,1fr) auto !important;
+    min-height:50px !important;
+    padding:5px 7px !important;
+    gap:7px !important;
+  }
+
+  .alliance-pick-list-team b{font-size:.82rem !important}
+  .alliance-pick-list-team span{font-size:.68rem !important}
+  .alliance-pick-list-team small{font-size:.58rem !important}
+
+  .alliance-pick-list-choose{
+    min-height:40px !important;
+    justify-content:flex-start !important;
+  }
+  .alliance-pick-list-choose b{font-size:.72rem !important}
+  .alliance-pick-list-choose small{font-size:.58rem !important}
+}
+
+/* ========================================================================
+   Pick Lists · tablet portrait one-tier correction
+   2026-09-24
+   Real tablets around 521-900 CSS px now show one pick tier at a time,
+   matching the readable phone interaction while preserving tablet spacing.
+   Desktop widths above 900px retain the multi-tier board.
+   ======================================================================== */
+@media (min-width:521px) and (max-width:900px){
+  .alliance-pick-tier-jump{
+    display:grid !important;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:7px;
+    padding:8px 10px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel2);
+    position:sticky;
+    top:0;
+    z-index:5;
+  }
+  .alliance-pick-tier-jump button{
+    min-height:40px;
+    padding:7px 8px !important;
+    border:1px solid var(--line) !important;
+    border-radius:8px !important;
+    background:var(--panel) !important;
+    color:var(--text) !important;
+    box-shadow:none !important;
+    font-size:.76rem !important;
+    font-weight:900 !important;
+    text-transform:none !important;
+  }
+  .alliance-pick-tier-jump button.active{
+    border-color:var(--accent) !important;
+    background:color-mix(in srgb,var(--accent) 15%,var(--panel)) !important;
+    color:var(--accent) !important;
+  }
+
+  .alliance-pick-lists,
+  .alliance-pick-drawer.expanded .alliance-pick-lists{
+    display:block !important;
+    grid-template-columns:none !important;
+    grid-template-rows:none !important;
+    min-height:0 !important;
+    overflow-y:auto !important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    padding:10px 11px 18px !important;
+  }
+  .alliance-pick-list-tier,
+  .alliance-pick-drawer.expanded .alliance-pick-list-tier{
+    display:none !important;
+    width:100% !important;
+    min-height:auto !important;
+    height:auto !important;
+    margin:0 !important;
+    overflow:visible !important;
+  }
+  .alliance-pick-list-tier.mobile-active,
+  .alliance-pick-drawer.expanded .alliance-pick-list-tier.mobile-active{
+    display:block !important;
+  }
+  .alliance-pick-list-slots,
+  .alliance-pick-drawer.expanded .alliance-pick-list-slots{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    grid-template-rows:none !important;
+    gap:7px !important;
+    padding:8px !important;
+    overflow:visible !important;
+    max-height:none !important;
+  }
+  .alliance-pick-list-slot,
+  .alliance-pick-drawer.expanded .alliance-pick-list-slot{
+    grid-template-columns:32px minmax(0,1fr) auto !important;
+    min-height:62px !important;
+    padding:7px 9px !important;
+    gap:9px !important;
+  }
+  .alliance-pick-list-position{
+    width:30px !important;
+    height:30px !important;
+    font-size:.72rem !important;
+  }
+  .alliance-pick-list-team b{font-size:.92rem !important}
+  .alliance-pick-list-team span{font-size:.76rem !important}
+  .alliance-pick-list-team small{font-size:.64rem !important}
+  .alliance-pick-list-choose{min-height:48px !important}
+  .alliance-pick-list-choose b{font-size:.82rem !important}
+  .alliance-pick-list-choose small{font-size:.64rem !important}
+}
+
+
+/* Live draft status: Already Picked is separate from Pick List Unavailable. */
+.alliance-already-picked.active{
+  border-color:color-mix(in srgb,var(--accent) 70%,var(--line)) !important;
+  background:color-mix(in srgb,var(--accent) 14%,var(--panel2)) !important;
+  color:var(--accent) !important;
+}
+.alliance-pick-list-slot.already-picked{
+  border-color:color-mix(in srgb,var(--accent) 68%,var(--line)) !important;
+  background:color-mix(in srgb,var(--accent) 9%,var(--panel)) !important;
+}
+.alliance-pick-list-picked-badge{
+  display:inline-flex;align-items:center;gap:4px;min-height:26px;padding:0 7px;
+  border:1px solid color-mix(in srgb,var(--accent) 60%,var(--line));border-radius:999px;
+  background:color-mix(in srgb,var(--accent) 12%,var(--panel2));color:var(--accent);
+  font-size:.55rem;font-weight:900;white-space:nowrap;
+}
+@media (max-width:760px){
+  .alliance-pick-list-picked-badge{font-size:0;width:30px;padding:0;justify-content:center;}
+  .alliance-pick-list-picked-badge i{font-size:.72rem;}
+}
+
+
+/* ========================================================================
+   2026-09-29 desktop Pick Lists overlay correction v2
+   Pick Lists covers the Alliance Board exactly; Team Pool never moves.
+   JavaScript supplies the Alliance Board viewport rectangle.
+   ======================================================================== */
+@media (min-width:901px){
+  /* Older behavior shifted the whole workspace right when Pick Lists opened.
+     Never reflow or resize the Alliance Board / Team Pool grid. */
+  .alliance-page.pick-drawer-open:not(.pick-drawer-expanded) .alliance-workspace-shell{
+    margin-left:0 !important;
+  }
+  .alliance-workspace-shell{
+    margin-left:0 !important;
+  }
+
+  /* The normal desktop drawer is positioned over the Alliance Board card. */
+  .alliance-pick-drawer:not(.expanded){
+    left:var(--pick-drawer-left, 0px) !important;
+    top:var(--pick-drawer-top, 0px) !important;
+    right:auto !important;
+    bottom:auto !important;
+    width:var(--pick-drawer-width, min(390px,32vw)) !important;
+    min-width:0 !important;
+    max-width:none !important;
+    height:var(--pick-drawer-height, 560px) !important;
+    border:1px solid var(--line) !important;
+    border-radius:10px !important;
+    box-shadow:12px 16px 44px var(--overlay-strong) !important;
+    overflow:visible !important;
+  }
+
+  /* Closed: keep the pull tab attached to the Alliance Board's left edge. */
+  .alliance-pick-drawer:not(.open):not(.expanded){
+    transform:translateX(-100%) !important;
+  }
+
+  /* Open: replace the Alliance Board visually without affecting Team Pool. */
+  .alliance-pick-drawer.open:not(.expanded){
+    transform:none !important;
+  }
+
+  /* The drawer has its own X button. Do not let the pull tab overlap Team Pool. */
+  .alliance-pick-drawer.open:not(.expanded) .alliance-pick-drawer-pull{
+    display:none !important;
+  }
+
+  .alliance-pick-drawer.open:not(.expanded) .alliance-pick-lists{
+    padding-bottom:12px;
   }
 }

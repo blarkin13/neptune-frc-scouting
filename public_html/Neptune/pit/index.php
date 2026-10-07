@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_event_selection.php';
 $u=require_login();$org=(int)$u['organization_id'];
 $eventId=(int)($_GET['event_id']??0);
 
@@ -8,8 +9,7 @@ if(!$eventId){
     $s->execute([$org]);$eventId=(int)$s->fetchColumn();
 }
 
-$s=$pdo->prepare("SELECT e.*,g.name game_name,g.season_year FROM events e JOIN games g ON g.id=e.game_id WHERE e.organization_id=? AND e.active=1 ORDER BY is_current DESC,COALESCE(e.start_date,'9999-12-31'),e.name");
-$s->execute([$org]);$events=$s->fetchAll();
+$events=neptune_event_selector_rows($pdo,$org,$eventId,neptune_selector_show_history());
 $event=null;$teams=[];$complete=0;$progress=0;
 if($eventId){
     $s=$pdo->prepare("SELECT e.*,g.name game_name,g.season_year FROM events e JOIN games g ON g.id=e.game_id WHERE e.id=? AND e.organization_id=?");$s->execute([$eventId,$org]);$event=$s->fetch()?:null;
@@ -28,7 +28,7 @@ $pageTitle='Pit Scouting';$moduleName='TRIDENT';include dirname(__DIR__).'/parti
 </div>
 
 <?php if($events):?>
-<div class="card"><form method="get" class="analytics-toolbar"><div style="min-width:320px"><label style="margin-top:0">Event</label><select name="event_id" onchange="this.form.submit()"><?php foreach($events as $ev):?><option value="<?=$ev['id']?>" <?=$eventId===(int)$ev['id']?'selected':''?>><?=e(($ev['is_current']?'★ ':'').$ev['name'].' · '.$ev['game_name'])?></option><?php endforeach;?></select></div></form></div>
+<div class="card"><form method="get" class="analytics-toolbar"><div style="min-width:320px"><label style="margin-top:0">Event</label><select name="event_id" onchange="this.form.submit()"><?=neptune_event_options_html($events,$eventId)?></select></div><div style="align-self:end"><?=neptune_history_toggle_html(neptune_selector_show_history(),'events')?></div></form></div>
 <?php endif;?>
 
 <?php if(!$event):?>

@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+CONFIG_FILE=/etc/neptune/github-backup.env
+KEY_FILE=/etc/neptune/backup.key
+DB_ENV=/etc/scout/db.env
+APP_ROOT=/var/www/neptune/public_html/Neptune
+STATUS_DIR=/var/lib/neptune-backup
+STATUS_FILE="$STATUS_DIR/status.json"
+API_ROOT=https://api.github.com
+SCHEDULE_UTC=08:15
+RELEASE_ID=""
+RELEASE_TAG=""
+TMP=""
+
+require_root() {
+  if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+    echo "Run as root." >&2
+    exit 1
+  fi
+}
+
+status_write() {
+  local state="$1" error="${2:-}" tag="${3:-}" size="${4:-0}"
+  install -d -m 0750 -o root -g www-data "$STATUS_DIR"
+  python3 - "$STATUS_FILE" "$state" "$error" "$tag" "$size" "${GITHUB_OWNER:-}" "${GITHUB_REPO:-}" "$SCHEDULE_UTC" <<'PY'
+import json, os, sys, tempfile
+from datetime import datetime, timedelta, timezone
+
+path,state,error,tag,size,owner,repo,schedule = sys.argv[1:]
+old={}
+try:
+    with open(path,encoding="utf-8") as f:
+        old=json.load(f)
+except Exception:
+    pass
+
+now=datetime.now(timezone.utc)
+hh,mm=map(int,schedule.split(":"))
+nxt=now.replace(hour=hh,minute=mm,second=0,microsecond=0)
+if nxt <= now:
+    nxt += timedelta(days=1)
+
+data=dict(old)
+data.update({
+    "status": state,
+    "last_attempt_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "repository": f"{owner}/{repo}" if owner and repo else old.get("repository",""),
+    "schedule_utc": schedule,
+    "next_scheduled_at": nxt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+})
+if state == "success":
+    data.update({
+        "last_success_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "last_success_tag": tag,
+        "last_success_size_bytes": int(size or 0),
+        "last_error": "",
+    })
+elif state == "failure":
+    data["last_error"] = error[:2000]
+
+tmp=path+".tmp"
+with open(tmp,"w",encoding="utf-8") as f:
+    json.dump(data,f,indent=2,sort_keys=True)
+    f.write("\n")
+os.replace(tmp,path)
+PY
+  chown root:www-data "$STATUS_FILE"
+  chmod 0640 "$STATUS_FILE"
+}
+
+cleanup_partial_release() {
+  [[ -n "$RELEASE_ID" ]] || return 0
+  curl -fsS -X DELETE \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/$RELEASE_ID" >/dev/null 2>&1 || true
+  if [[ -n "$RELEASE_TAG" ]]; then
+    curl -fsS -X DELETE \
+      -H "Authorization: Bearer $GITHUB_TOKEN" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/git/refs/tags/$RELEASE_TAG" >/dev/null 2>&1 || true
+  fi
+}
+
+on_error() {
+  local rc="$1" line="$2"
+  set +e
+  local msg="Production backup failed (exit $rc, line $line). Check: journalctl -u neptune-production-backup.service"
+  cleanup_partial_release
+  status_write failure "$msg"
+  echo "$msg" >&2
+  exit "$rc"
+}
+trap 'on_error $? $LINENO' ERR
+
+require_root
+
+for f in "$CONFIG_FILE" "$KEY_FILE" "$DB_ENV"; do
+  [[ -r "$f" ]] || { echo "Required file is not readable: $f" >&2; exit 1; }
+done
+
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+# shellcheck disable=SC1090
+source "$DB_ENV"
+
+: "${GITHUB_OWNER:?Missing GITHUB_OWNER}"
+: "${GITHUB_REPO:?Missing GITHUB_REPO}"
+: "${GITHUB_TOKEN:?Missing GITHUB_TOKEN}"
+: "${DB_NAME:?Missing DB_NAME}"
+: "${DB_USER:?Missing DB_USER}"
+: "${DB_PASSWORD:?Missing DB_PASSWORD}"
+
+for tool in mysqldump curl openssl tar gzip sha256sum python3; do
+  command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 1; }
+done
+
+# Read access preflight.
+curl -fsS \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO" >/dev/null
+
+TMP="$(mktemp -d /var/tmp/neptune-production-backup.XXXXXX)"
+trap 'rm -rf "$TMP"' EXIT
+PAYLOAD="$TMP/payload"
+mkdir -p "$PAYLOAD"
+
+STAMP="$(date -u +%Y%m%d-%H%M%SZ)"
+CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+RELEASE_TAG="neptune-backup-$STAMP"
+ARCHIVE="$TMP/Neptune_Production_Backup_${STAMP}.tar"
+ENCRYPTED="${ARCHIVE}.enc"
+CHECKSUM="${ENCRYPTED}.sha256"
+
+echo "Dumping database $DB_NAME..."
+MYSQL_PWD="$DB_PASSWORD" mysqldump \
+  --single-transaction --quick --triggers --no-tablespaces \
+  -h "${DB_HOST:-127.0.0.1}" \
+  -P "${DB_PORT:-3306}" \
+  -u "$DB_USER" \
+  "$DB_NAME" | gzip -9 > "$PAYLOAD/database.sql.gz"
+
+if [[ -d "$APP_ROOT/uploads" ]]; then
+  tar -C "$APP_ROOT" -czf "$PAYLOAD/uploads.tar.gz" uploads
+else
+  tar -czf "$PAYLOAD/uploads.tar.gz" --files-from /dev/null
+fi
+
+# Game JSON is small and is useful when rebuilding a host even though current game
+# configuration is primarily database-backed.
+if [[ -d "$APP_ROOT/games" ]]; then
+  tar -C "$APP_ROOT" -czf "$PAYLOAD/games.tar.gz" games
+else
+  tar -czf "$PAYLOAD/games.tar.gz" --files-from /dev/null
+fi
+
+DB_SHA="$(sha256sum "$PAYLOAD/database.sql.gz" | awk '{print $1}')"
+UPLOAD_SHA="$(sha256sum "$PAYLOAD/uploads.tar.gz" | awk '{print $1}')"
+GAMES_SHA="$(sha256sum "$PAYLOAD/games.tar.gz" | awk '{print $1}')"
+UPLOAD_BYTES="$(stat -c %s "$PAYLOAD/uploads.tar.gz")"
+
+python3 - "$PAYLOAD/manifest.json" "$CREATED" "$(hostname)" "$DB_NAME" "$DB_SHA" "$UPLOAD_SHA" "$GAMES_SHA" "$UPLOAD_BYTES" <<'PY'
+import json,sys
+path,created,host,db,dbsha,upsha,gamesha,upbytes=sys.argv[1:]
+data={
+  "format":"neptune-production-backup-v1",
+  "created_utc":created,
+  "host":host,
+  "database":db,
+  "contents":{
+    "database.sql.gz":{"sha256":dbsha},
+    "uploads.tar.gz":{"sha256":upsha,"bytes":int(upbytes)},
+    "games.tar.gz":{"sha256":gamesha},
+  },
+  "secrets_included":False,
+  "restore_tool":"/opt/neptune/bin/neptune-restore-github",
+}
+with open(path,"w",encoding="utf-8") as f:
+    json.dump(data,f,indent=2,sort_keys=True)
+    f.write("\n")
+PY
+
+(
+  cd "$PAYLOAD"
+  sha256sum database.sql.gz uploads.tar.gz games.tar.gz manifest.json > SHA256SUMS
+)
+
+tar -C "$PAYLOAD" -cf "$ARCHIVE" database.sql.gz uploads.tar.gz games.tar.gz manifest.json SHA256SUMS
+
+openssl enc -aes-256-cbc -salt -pbkdf2 -iter 250000 -md sha256 \
+  -in "$ARCHIVE" -out "$ENCRYPTED" -pass file:"$KEY_FILE"
+
+ENC_BYTES="$(stat -c %s "$ENCRYPTED")"
+MAX_BYTES=$((1900 * 1024 * 1024))
+if (( ENC_BYTES > MAX_BYTES )); then
+  echo "Encrypted backup is too large for the configured GitHub Release asset safety limit: $ENC_BYTES bytes" >&2
+  exit 1
+fi
+
+(
+  cd "$TMP"
+  sha256sum "$(basename "$ENCRYPTED")" > "$(basename "$CHECKSUM")"
+)
+
+echo "Creating private GitHub release $RELEASE_TAG..."
+RELEASE_PAYLOAD="$TMP/release.json"
+python3 - "$RELEASE_PAYLOAD" "$RELEASE_TAG" "$CREATED" "$ENC_BYTES" <<'PY'
+import json,sys
+path,tag,created,size=sys.argv[1:]
+body=(
+    "Automated encrypted Neptune production backup.\n\n"
+    f"Created UTC: {created}\n"
+    f"Encrypted size: {int(size)} bytes\n\n"
+    "Contains database dump, Neptune uploads, game JSON, manifest, and internal SHA-256 checksums. "
+    "Secrets from /etc/scout and /etc/neptune are not included."
+)
+with open(path,"w",encoding="utf-8") as f:
+    json.dump({
+        "tag_name":tag,
+        "target_commitish":"main",
+        "name":tag,
+        "body":body,
+        "draft":False,
+        "prerelease":False,
+    },f)
+PY
+
+RELEASE_RESPONSE="$TMP/release-response.json"
+curl -fsS -X POST \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -H "Content-Type: application/json" \
+  --data-binary @"$RELEASE_PAYLOAD" \
+  "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/releases" > "$RELEASE_RESPONSE"
+
+read -r RELEASE_ID UPLOAD_URL < <(python3 - "$RELEASE_RESPONSE" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1],encoding="utf-8"))
+print(d["id"], d["upload_url"].split("{",1)[0])
+PY
+)
+
+upload_asset() {
+  local path="$1" name
+  name="$(basename "$path")"
+  local encoded
+  encoded="$(python3 - "$name" <<'PY'
+import sys,urllib.parse
+print(urllib.parse.quote(sys.argv[1],safe=""))
+PY
+)"
+  curl -fsS -X POST \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    -H "Content-Type: application/octet-stream" \
+    --data-binary @"$path" \
+    "${UPLOAD_URL}?name=${encoded}" >/dev/null
+}
+
+echo "Uploading encrypted backup..."
+upload_asset "$ENCRYPTED"
+upload_asset "$CHECKSUM"
+
+# Verify the release now has both assets.
+ASSET_COUNT="$(curl -fsS \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/$RELEASE_ID/assets?per_page=100" \
+  | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+[[ "$ASSET_COUNT" -ge 2 ]] || { echo "GitHub release asset verification failed." >&2; exit 1; }
+
+# Release/tag is now considered complete; do not remove it on a later retention error.
+RELEASE_ID_COMPLETE="$RELEASE_ID"
+RELEASE_ID=""
+status_write success "" "$RELEASE_TAG" "$ENC_BYTES"
+
+echo "Applying retention policy..."
+RELEASES_JSON="$TMP/releases.json"
+GITHUB_OWNER="$GITHUB_OWNER" GITHUB_REPO="$GITHUB_REPO" GITHUB_TOKEN="$GITHUB_TOKEN" \
+python3 - "$RELEASES_JSON" <<'PY'
+import json,os,sys,urllib.request
+out=sys.argv[1]
+owner=os.environ["GITHUB_OWNER"]
+repo=os.environ["GITHUB_REPO"]
+token=os.environ["GITHUB_TOKEN"]
+all_rows=[]
+for page in range(1,6):
+    req=urllib.request.Request(
+        f"https://api.github.com/repos/{owner}/{repo}/releases?per_page=100&page={page}",
+        headers={
+            "Authorization":f"Bearer {token}",
+            "Accept":"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+            "User-Agent":"Neptune-Backup",
+        },
+    )
+    with urllib.request.urlopen(req,timeout=30) as r:
+        rows=json.load(r)
+    all_rows.extend(rows)
+    if len(rows)<100:
+        break
+with open(out,"w",encoding="utf-8") as f:
+    json.dump(all_rows,f)
+PY
+
+python3 - "$RELEASES_JSON" > "$TMP/delete-releases.tsv" <<'PY'
+import json,sys
+from datetime import datetime,timezone
+
+rows=json.load(open(sys.argv[1],encoding="utf-8"))
+rows=[r for r in rows if str(r.get("tag_name","")).startswith("neptune-backup-")]
+rows.sort(key=lambda r:r.get("created_at",""), reverse=True)
+now=datetime.now(timezone.utc)
+keep=set()
+weeks=set()
+months=set()
+
+for r in rows:
+    created=datetime.fromisoformat(r["created_at"].replace("Z","+00:00"))
+    age=(now-created).total_seconds()/86400
+    tag=r["tag_name"]
+    if age <= 14:
+        keep.add(tag)
+        continue
+    if age <= 70:
+        key=created.strftime("%G-W%V")
+        if key not in weeks and len(weeks)<8:
+            weeks.add(key); keep.add(tag)
+        continue
+    if age <= 400:
+        key=created.strftime("%Y-%m")
+        if key not in months and len(months)<12:
+            months.add(key); keep.add(tag)
+        continue
+
+for r in rows:
+    if r["tag_name"] not in keep:
+        print(f'{r["id"]}\t{r["tag_name"]}')
+PY
+
+while IFS=$'\t' read -r old_id old_tag; do
+  [[ -n "${old_id:-}" ]] || continue
+  echo "Deleting expired backup release $old_tag"
+  curl -fsS -X DELETE \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/$old_id" >/dev/null
+  curl -fsS -X DELETE \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/git/refs/tags/$old_tag" >/dev/null 2>&1 || true
+done < "$TMP/delete-releases.tsv"
+
+status_write success "" "$RELEASE_TAG" "$ENC_BYTES"
+echo "Backup complete: $RELEASE_TAG"
+echo "Encrypted size: $ENC_BYTES bytes"
+echo "Repository: $GITHUB_OWNER/$GITHUB_REPO"

@@ -146,9 +146,11 @@ $pageTitle='Home';$moduleName='NEPTUNE';include dirname(__DIR__).'/partials_head
             <li>Use a server with PHP 8+, MySQL/MariaDB, HTTPS, and a normal PHP web root.</li>
             <li>Place the public application in <code>public_html/Neptune/</code>.</li>
             <li>Place <code>neptune_secure/</code> beside <code>public_html</code>, never inside it.</li>
-            <li>Create the Neptune database and import <code>sql/neptune_schema.sql</code>. New installations do not run separate migration scripts.</li>
-            <li>Copy <code>config.example.php</code> to <code>config.php</code> and enter the database credentials and TBA API key.</li>
-            <li>Open <code>/Neptune/admin/install.php</code> once to create the first organization/owner, then remove or rename the installer.</li>
+            <li>Create the Neptune database and import <code>sql/neptune_schema.sql</code> as the baseline schema.</li>
+            <li>Copy <code>neptune_secure/config.example.php</code> to <code>neptune_secure/config.php</code> and enter the database credentials and TBA API key.</li>
+            <li>Open <code>/Neptune/register.php</code> (or use <b>Register an organization</b> on the sign-in page) to create the first organization and owner. Neptune does not use <code>admin/install.php</code>.</li>
+            <li>Sign in as the first owner and run <b>System Check</b>. The first organization is the platform organization and receives platform-only administration/maintenance tools.</li>
+            <li>Future schema-changing Neptune packages self-apply tracked migrations. Review them in <b>Maintenance Console → DB migration history</b>; do not manually replay old migration files.</li>
           </ol>
         </section>
         <section>
@@ -159,6 +161,7 @@ $pageTitle='Home';$moduleName='NEPTUNE';include dirname(__DIR__).'/partials_head
             <li>Create a local Neptune database and import <code>sql/neptune_schema.sql</code>.</li>
             <li>Create a local <code>neptune_secure/config.php</code> with local database credentials.</li>
             <li>If using PHP's built-in server from the project root, run <code>php -S localhost:8080 -t public_html</code> and open <code>http://localhost:8080/Neptune/</code>.</li>
+            <li>Create the first organization through <code>/Neptune/register.php</code>. There is no browser installer under <code>admin/</code>.</li>
           </ol>
         </section>
       </div>

@@ -1,4 +1,5 @@
 <?php
+require_once dirname(__DIR__).'/_event_selection.php';
 function neptune_event_robot_stats(PDO $pdo,int $org,int $eventId): array {
     $stats=[];
     $s=$pdo->prepare('SELECT frc_team_number,nickname FROM event_teams WHERE event_id=? ORDER BY frc_team_number');$s->execute([$eventId]);
@@ -18,4 +19,4 @@ function neptune_event_robot_stats(PDO $pdo,int $org,int $eventId): array {
     $s=$pdo->prepare('SELECT frc_team_number,status,data_json FROM pit_scouting WHERE organization_id=? AND event_id=?');$s->execute([$org,$eventId]);foreach($s->fetchAll() as $p){$n=(int)$p['frc_team_number'];if(!isset($stats[$n]))continue;$stats[$n]['pit_status']=$p['status'];$d=json_decode($p['data_json'],true);$stats[$n]['pit_data']=is_array($d)?$d:[];}
     ksort($stats);return $stats;
 }
-function neptune_event_list(PDO $pdo,int $org): array {$s=$pdo->prepare("SELECT e.*,g.name game_name FROM events e JOIN games g ON g.id=e.game_id WHERE e.organization_id=? ORDER BY e.is_current DESC,COALESCE(e.start_date,'1900-01-01') DESC,e.id DESC");$s->execute([$org]);return $s->fetchAll();}
+function neptune_event_list(PDO $pdo,int $org): array {return neptune_event_selector_rows($pdo,$org,(int)($_GET['event_id']??0),neptune_selector_show_history());}

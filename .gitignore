@@ -1,0 +1,20 @@
+# Neptune runtime / tenant data
+public_html/Neptune/uploads/
+public_html/Neptune/cache/
+public_html/Neptune/logs/
+public_html/Neptune/games/org-*/
+neptune_secure/spot_media/
+
+# Production-only configuration / secrets
+neptune_secure/config.php
+neptune_secure/config.php.*
+neptune_secure/*.env
+
+# Deployment leftovers / backup copies
+**/*.bak
+**/*.bak-*
+**/*.before-*
+**/*.zip
+public_html/Neptune/Neptune_MultiOrg_DatabaseLab/
+public_html/Neptune/admin/maintenanceold.php
+public_html/Neptune/admin/match-control-old.php

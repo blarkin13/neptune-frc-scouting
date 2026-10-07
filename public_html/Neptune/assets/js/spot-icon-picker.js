@@ -102,7 +102,7 @@
       if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
       setTimeout(()=>search.focus(),20);
     }catch(err){
-      console.error(err);alert('Neptune could not load the local icon library.');
+      console.error(err);window.NeptuneUI?.toast?.('Neptune could not load the local icon library.','bad',{title:'Icon library'});
     }
   }
   function closePicker(){if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open')}

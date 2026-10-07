@@ -35,11 +35,10 @@ include dirname(__DIR__).'/partials_header.php';
         <label for="allianceEvent">Event</label>
         <select id="allianceEvent" name="event_id" onchange="this.form.submit()">
           <?php if(!$events):?><option value="">No events available</option><?php endif;?>
-          <?php foreach($events as $row):?>
-            <option value="<?=e($row['id'])?>" <?=$eventId===(int)$row['id']?'selected':''?>><?=e(($row['game_name']??'').' · '.$row['name'])?></option>
-          <?php endforeach;?>
+          <?=neptune_event_options_html($events,$eventId)?>
         </select>
       </div>
+      <div><?=neptune_history_toggle_html(neptune_selector_show_history(),'events')?></div>
       <?php if($event):?>
       <div class="alliance-event-meta">
         <span><i class="fa-solid fa-calendar"></i> <?=e($event['season_year'])?></span>
@@ -71,7 +70,6 @@ include dirname(__DIR__).'/partials_header.php';
       <button type="button" class="secondary compact" id="undoDraftBtn" title="Undo"><i class="fa-solid fa-rotate-left"></i></button>
       <button type="button" class="secondary compact" id="redoDraftBtn" title="Redo"><i class="fa-solid fa-rotate-right"></i></button>
       <?php endif;?>
-      <button type="button" class="secondary compact" id="alliancePickDrawerBtn" aria-controls="alliancePickDrawer" aria-expanded="false" title="Open alliance pick lists"><i class="fa-solid fa-list-ol"></i> Pick Lists</button>
       <button type="button" class="secondary compact alliance-offline-button" id="prepareOfflineBtn" title="Download this event's Alliance Selection data for offline use"><i class="fa-solid fa-download"></i> Prepare Offline</button>
       <button type="button" class="secondary compact alliance-fullscreen-button" id="allianceFullscreenBtn" title="Open the Alliance Board and Team Pool in full screen"><i class="fa-solid fa-expand"></i> <span id="allianceFullscreenLabel">Full Screen</span></button>
       <span class="alliance-offline-status" id="allianceOfflineStatus" hidden></span>
@@ -122,13 +120,46 @@ include dirname(__DIR__).'/partials_header.php';
 
 
   <aside class="alliance-pick-drawer" id="alliancePickDrawer" aria-hidden="true" aria-label="Alliance pick lists">
+    <button type="button" class="alliance-pick-drawer-pull" id="alliancePickDrawerPull" aria-controls="alliancePickDrawer" aria-expanded="false" title="Open pick lists">
+      <i class="fa-solid fa-list-ol"></i>
+      <span>Pick Lists</span>
+      <i class="fa-solid fa-chevron-right alliance-pick-drawer-pull-arrow"></i>
+    </button>
     <div class="alliance-pick-drawer-head">
       <div><small>Strategy board</small><h2>Pick Lists</h2></div>
-      <button type="button" class="secondary compact" id="alliancePickDrawerCloseBtn" aria-label="Close pick lists"><i class="fa-solid fa-xmark"></i></button>
+      <div class="alliance-pick-drawer-actions">
+        <button type="button" class="secondary compact" id="alliancePickDrawerExpandBtn" aria-pressed="false" title="Show all pick-list slots full screen">
+          <i class="fa-solid fa-expand"></i><span id="alliancePickDrawerExpandLabel">Full Screen</span>
+        </button>
+        <button type="button" class="secondary compact" id="alliancePickDrawerCloseBtn" aria-label="Close pick lists"><i class="fa-solid fa-xmark"></i></button>
+      </div>
     </div>
-    <p class="alliance-pick-drawer-help">Drag a robot from the Team Pool or Alliance Board into a slot. This only copies the robot into your pick list; it does not change the alliance board.</p>
+    <p class="alliance-pick-drawer-help">Drag a robot card from the Team Pool or Alliance Board onto any slot, or tap/click an empty slot to choose the robot. In <b>Live</b> mode, use <b>Unavailable</b> to mark a team unavailable on the fly without changing the Alliance Board.</p>
+    <nav class="alliance-pick-tier-jump" aria-label="Jump to pick tier">
+      <button type="button" data-pick-tier-jump="1">1st</button>
+      <button type="button" data-pick-tier-jump="2">2nd</button>
+      <button type="button" data-pick-tier-jump="3">3rd</button>
+      <button type="button" data-pick-tier-jump="4">4th</button>
+    </nav>
     <div class="alliance-pick-lists" id="alliancePickLists"></div>
   </aside>
+
+  <section class="alliance-pick-team-dialog" id="alliancePickTeamDialog" aria-labelledby="alliancePickTeamDialogTitle" aria-hidden="true" hidden>
+    <div class="alliance-pick-team-dialog-shell" role="dialog" aria-modal="true">
+      <div class="alliance-pick-team-dialog-head">
+        <div>
+          <small id="alliancePickTeamDialogTier">Pick List</small>
+          <h2 id="alliancePickTeamDialogTitle">Choose a Team</h2><span class="alliance-pick-team-sort-note">Sorted by qualification points, then Neptune EPA</span>
+        </div>
+        <button type="button" class="secondary compact" id="alliancePickTeamDialogClose" aria-label="Close team chooser"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <label class="alliance-pick-team-search" for="alliancePickTeamSearch">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" id="alliancePickTeamSearch" placeholder="Search team number or name…" autocomplete="off">
+      </label>
+      <div class="alliance-pick-team-list" id="alliancePickTeamList"></div>
+    </div>
+  </section>
 
   <dialog class="alliance-team-dialog alliance-team-intelligence-dialog" id="teamActionBar" aria-labelledby="selectedTeamLabel">
     <div class="alliance-team-dialog-shell alliance-team-intelligence-shell">
@@ -154,7 +185,7 @@ include dirname(__DIR__).'/partials_header.php';
         <button type="button" role="tab" aria-selected="false" data-selected-modal-tab="defense">Defense</button>
         <button type="button" role="tab" aria-selected="false" data-selected-modal-tab="game">Game Data</button>
         <button type="button" role="tab" aria-selected="false" data-selected-modal-tab="pit">Pit Scouting</button>
-        <button type="button" role="tab" aria-selected="false" data-selected-modal-tab="spot">Spot Scouting</button>
+        <button type="button" role="tab" aria-selected="false" data-selected-modal-tab="spot">Tag Scouting</button>
         <button type="button" role="tab" aria-selected="false" data-selected-modal-tab="photos">Robot Photos</button>
         <button type="button" role="tab" aria-selected="false" data-selected-modal-tab="history">Alliance History</button>
       </div>
@@ -182,6 +213,7 @@ include dirname(__DIR__).'/partials_header.php';
           <button type="button" class="good" id="makeSelectionBtn"><i class="fa-solid fa-user-plus"></i> Make Selection</button>
           <div class="alliance-status-actions">
             <button type="button" class="secondary compact" id="favoriteBtn"><i class="fa-regular fa-star"></i> Favorite</button>
+            <button type="button" class="secondary compact alliance-already-picked" id="alreadyPickedBtn"><i class="fa-solid fa-handshake"></i> Already Picked</button>
             <button type="button" class="secondary compact alliance-decline" id="declineBtn"><i class="fa-solid fa-circle-xmark"></i> Decline</button>
             <button type="button" class="secondary compact alliance-dnp" id="dnpBtn"><i class="fa-solid fa-ban"></i> Do Not Pick</button>
             <button type="button" class="secondary compact alliance-broken" id="brokenBtn"><i class="fa-solid fa-screwdriver-wrench"></i> Broken</button>
@@ -277,7 +309,7 @@ include dirname(__DIR__).'/partials_header.php';
         <button type="button" class="secondary compact" id="allianceOfflineCloseBtn" aria-label="Close offline download"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="alliance-offline-body">
-        <p>Download the current event roster, TBA team information, Public EPA, Neptune EPA, scouting intelligence, pit and pre-scouting data, Spot Scouting, alliance history, scenarios, and the Alliance Selection page shell to this device.</p>
+        <p>Download the current event roster, TBA team information, Public EPA, Neptune EPA, scouting intelligence, pit and pre-scouting data, Tag Scouting, alliance history, scenarios, and the Alliance Selection page shell to this device.</p>
         <div class="alliance-offline-size-card">
           <div>
             <small>Estimated download</small>
@@ -288,7 +320,7 @@ include dirname(__DIR__).'/partials_header.php';
         </div>
         <label class="alliance-offline-option">
           <input type="checkbox" id="allianceOfflinePhotos">
-          <span><b>Include robot and Spot Scouting media</b><small>Photos and videos can make the offline copy much larger.</small></span>
+          <span><b>Include robot and Tag Scouting media</b><small>Photos and videos can make the offline copy much larger.</small></span>
         </label>
         <div class="alliance-offline-progress" id="allianceOfflineProgress" hidden>
           <div><span id="allianceOfflineProgressLabel">Preparing…</span><b id="allianceOfflineProgressCount">0%</b></div>
@@ -312,7 +344,7 @@ include dirname(__DIR__).'/partials_header.php';
       'stateEndpoint'=>base_url('api/alliance-selection.php'),
       'detailEndpoint'=>base_url('api/alliance-team-detail.php'),
       'matchupEndpoint'=>base_url('api/alliance-matchup.php'),
-      'spotPage'=>base_url('spot/index.php'),
+      'spotPage'=>base_url('scout/tag.php?tab=team'),
       'offlineWorker'=>base_url('analytics/alliance-selection-sw.js'),
       'csrf'=>csrf_token(),
   ],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?>;

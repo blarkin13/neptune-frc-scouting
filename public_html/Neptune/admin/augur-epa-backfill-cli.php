@@ -5,6 +5,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__).'/analytics/_augur_epa.php';
 require_once dirname(__DIR__).'/analytics/_augur_opr.php';
 require_once dirname(__DIR__).'/analytics/_augur_team_directory.php';
+require_once dirname(__DIR__).'/analytics/_augur_depa.php';
 
 if(!augur_epa_tables_ready($pdo)){
     fwrite(STDERR,"EPA Archive tables are not installed. Run sql/2026-09-21_augur-epa-archive-v3.sql first.\n");
@@ -18,11 +19,12 @@ $start=isset($argv[1])?(int)$argv[1]:max(1992,$current-19);
 $end=isset($argv[2])?(int)$argv[2]:$current;
 if($start>$end)[$start,$end]=[$end,$start];
 
-$mode='full';$forceSource=false;
+$mode='full';$forceSource=false;$withDepa=false;
 foreach(array_slice($argv,3) as $arg){
     if($arg==='--fetch-only')$mode='fetch';
     if($arg==='--recalc-only')$mode='recalc';
     if($arg==='--force-source')$forceSource=true;
+    if($arg==='--with-depa')$withDepa=true;
 }
 
 $lockPath=sys_get_temp_dir().'/neptune_augur_epa_backfill.lock';
@@ -57,7 +59,7 @@ function cli_event_source_needs_fetch(array $event): bool {
 
 $allStart=microtime(true);
 echo "Neptune AUGUR EPA Archive optimized backfill {$start}-{$end}\n";
-echo "Mode: {$mode}".($forceSource?" + force-source":"")."\n";
+echo "Mode: {$mode}".($forceSource?" + force-source":"").($withDepa?" + D-EPA":"")."\n";
 echo "PID: ".getmypid()."\n";
 echo "Important: source ingestion happens first; EPA is recalculated ONCE per year.\n\n";
 
@@ -71,6 +73,7 @@ $summary=[
     'source'=>['checked'=>0,'changed'=>0,'cached'=>0,'skipped'=>0,'errors'=>0],
     'epa'=>['events'=>0,'teams'=>0,'matches'=>0],
     'opr'=>['events'=>0,'team_rows'=>0],
+    'depa'=>['events'=>0,'team_rows'=>0,'match_samples'=>0,'canonical_evidence_rows'=>0,'event_rating_rows'=>0,'season_rating_rows'=>0,'contributing_orgs'=>0],
     'errors'=>0,
 ];
 
@@ -183,6 +186,36 @@ for($year=$start;$year<=$end;$year++){
             $summary['opr']['team_rows']+=(int)($opr['team_rows']??0);
             echo "[{$year}] OPR complete: {$opr['events']} events, {$opr['team_rows']} team/event ratings"
                 ." (".cli_elapsed($opr0).").\n";
+
+
+            if($withDepa){
+                echo "[{$year}] Rebuilding public + Neptune D-EPA from LOCAL archived samples and scouting evidence...\n";
+                $depa0=microtime(true);
+                try{
+                    // Keep the maintenance console self-contained: installing/upgrading
+                    // D-EPA tables is idempotent and does not modify raw Match Scouting data.
+                    augur_depa_install_tables($pdo);
+                    $depa=augur_depa_rebuild_year($pdo,$year);
+                    $summary['depa']['events']+=(int)($depa['public']['events']??0);
+                    $summary['depa']['team_rows']+=(int)($depa['public']['team_rows']??0);
+                    $summary['depa']['match_samples']+=(int)($depa['public']['match_samples']??0);
+                    $summary['depa']['canonical_evidence_rows']+=(int)($depa['network']['canonical_evidence_rows']??0);
+                    $summary['depa']['event_rating_rows']+=(int)($depa['network']['event_rating_rows']??0);
+                    $summary['depa']['season_rating_rows']+=(int)($depa['network']['season_rating_rows']??0);
+                    $summary['depa']['contributing_orgs']=max(
+                        (int)$summary['depa']['contributing_orgs'],
+                        (int)($depa['network']['contributing_orgs']??0)
+                    );
+                    echo "[{$year}] D-EPA complete: ".(int)($depa['public']['events']??0)." public events, "
+                        .(int)($depa['network']['canonical_evidence_rows']??0)." canonical observations, "
+                        .(int)($depa['network']['season_rating_rows']??0)." season ratings"
+                        ." (".cli_elapsed($depa0).").\n";
+                }catch(Throwable $e){
+                    $summary['errors']++;
+                    $summary['status']='partial';
+                    fwrite(STDERR,"[{$year}] D-EPA ERROR: {$e->getMessage()}\n");
+                }
+            }
         }
 
         echo "[{$year}] Finished in ".cli_elapsed($yearStart).".\n\n";

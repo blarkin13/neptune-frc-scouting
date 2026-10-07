@@ -120,7 +120,7 @@ if($year<1)$year=(int)$pdo->query('SELECT MAX(season_year) FROM augur_epa_season
 if($year<1){
     json_response(['ok'=>true,'api'=>'AUGUR Public EPA Archive API v3','model_version'=>AUGUR_EPA_MODEL_VERSION,'read_only'=>true,'usage'=>[
         'events'=>'?events=1&year=2026','season'=>'?year=2026','event'=>'?event=2026txama',
-        'team_season'=>'?year=2026&team=6369','team_history'=>'?history=1&year=2026&team=6369'
+        'team_season'=>'?year=2026&team=TEAM_NUMBER','team_history'=>'?history=1&year=2026&team=TEAM_NUMBER'
     ]]);
 }
 

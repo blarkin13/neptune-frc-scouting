@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 
+Allow: /analytics/augur-ratings.php
 Disallow: /admin/
 Disallow: /api/
 Disallow: /analytics/

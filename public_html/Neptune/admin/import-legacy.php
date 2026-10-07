@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_event_selection.php';
 $u=require_role(['owner','admin']);
 $org=(int)$u['organization_id'];
 $msg='';
@@ -14,7 +15,7 @@ try{
     $legacyError=$e->getMessage();
 }
 
-$s=$pdo->prepare("SELECT g.id,g.name,g.season_year,g.current_revision_id,gr.revision_number FROM games g JOIN game_revisions gr ON gr.id=g.current_revision_id AND gr.status='published' WHERE g.organization_id=? ORDER BY g.season_year DESC,g.name");
+$s=$pdo->prepare("SELECT g.id,g.name,g.season_year,g.current_revision_id,gr.revision_number FROM games g JOIN game_revisions gr ON gr.id=g.current_revision_id AND gr.status='published' WHERE g.organization_id=? AND g.is_archived=0 ORDER BY g.season_year DESC,g.name");
 $s->execute([$org]);
 $games=$s->fetchAll();
 
@@ -31,7 +32,6 @@ if($_SERVER['REQUEST_METHOD']==='POST'&&$legacyOk){
         $game=(int)($_POST['game_id']??0);
         $ownerTeam=!empty($_POST['owner_team_id'])?(int)$_POST['owner_team_id']:null;
         $eventFilter=trim((string)($_POST['event_filter']??''));
-        $year=(int)($_POST['year']??date('Y'));
 
         $gs=$pdo->prepare(
             "SELECT g.current_revision_id,gr.match_config_json
@@ -135,7 +135,7 @@ include dirname(__DIR__).'/partials_header.php';
     <select name="source"><option>scouting_submissions</option><option>scouting_submissions_hist</option></select>
     <label>Map these records to game</label>
     <select name="game_id" <?=$games?'':'disabled'?>>
-      <?php foreach($games as $g):?><option value="<?=$g['id']?>"><?=e($g['season_year'].' '.$g['name'])?></option><?php endforeach;?>
+      <?=neptune_game_options_html($games,0,false)?>
     </select>
     <label>Data owner team (optional)</label>
     <select name="owner_team_id">
@@ -144,8 +144,6 @@ include dirname(__DIR__).'/partials_header.php';
     </select>
     <label>Only legacy event name (optional; blank imports whole selected table)</label>
     <input name="event_filter">
-    <label>Legacy season/year reference</label>
-    <input type="number" name="year" value="2025">
     <div class="toolbar"><button <?=($legacyOk&&$games)?'':'disabled'?>>Import</button></div>
   </form>
 </div>

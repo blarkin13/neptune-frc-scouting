@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_event_selection.php';
 
 $u=require_role(['owner','admin','strategy']);
 $org=(int)$u['organization_id'];
@@ -15,7 +16,7 @@ $s=$pdo->prepare('SELECT id,name FROM organizations WHERE id<>? ORDER BY name');
 $s->execute([$org]);
 $otherOrgs=$s->fetchAll();
 
-$s=$pdo->prepare("SELECT g.id,g.name,g.season_year,gr.revision_number FROM games g JOIN game_revisions gr ON gr.id=g.current_revision_id AND gr.status='published' WHERE g.organization_id=? ORDER BY g.season_year DESC,g.name");
+$s=$pdo->prepare("SELECT g.id,g.name,g.season_year,gr.revision_number FROM games g JOIN game_revisions gr ON gr.id=g.current_revision_id AND gr.status='published' WHERE g.organization_id=? AND g.is_archived=0 ORDER BY g.season_year DESC,g.name");
 $s->execute([$org]);
 $ownedGames=$s->fetchAll();
 
@@ -193,7 +194,7 @@ include dirname(__DIR__).'/partials_header.php';
         <input type="hidden" name="kind" value="game_config_share">
         <label>Our game configuration</label>
         <select name="game_id" required>
-          <?php foreach($ownedGames as $g):?><option value="<?=$g['id']?>"><?=e($g['season_year'].' · '.$g['name'].' · Rev '.$g['revision_number'])?></option><?php endforeach;?>
+          <?php $gy=null;foreach($ownedGames as $g):$y=(int)$g['season_year'];if($gy!==$y){if($gy!==null)echo '</optgroup>';echo '<optgroup label="'.e($y).'">';$gy=$y;}?><option value="<?=$g['id']?>"><?=e($g['name'].' · Rev '.$g['revision_number'])?></option><?php endforeach;if($gy!==null)echo '</optgroup>';?>
         </select>
         <label>Recipient organization</label>
         <select name="recipient_organization_id" required>

@@ -5,8 +5,8 @@
  * Included by /Neptune/index.php after authentication/login processing.
  * Available variables:
  *   $error
- *   $organizations
- *   $selectedOrganizationId
+ *   $hasOrganizations
+ *   $organizationValue
  *
  * Available helpers from bootstrap:
  *   e()
@@ -1837,61 +1837,75 @@ html[data-theme="light"] .nlp .nlp-hero-tagline {
                     <div class="nlp-login-head">
                         <div>
                             <h2>Sign in to Neptune</h2>
-                            <p>Select your organization and continue to your dashboard.</p>
+                            <p>Google users can continue directly. Password sign-in uses the organization name or Neptune slug plus the username and password.</p>
                         </div>
                         <div class="nlp-login-icon">
                             <i class="fa-solid fa-user-astronaut"></i>
                         </div>
                     </div>
 
+                    <?php if ($notice): ?>
+                        <div class="notice good"><?= e($notice) ?></div>
+                    <?php endif; ?>
                     <?php if ($error): ?>
                         <div class="notice"><?= e($error) ?></div>
                     <?php endif; ?>
 
-                    <?php if (!$organizations): ?>
+                    <?php if (!$hasOrganizations): ?>
                         <div class="notice">
                             Neptune has not been initialized yet.
-                            <a href="<?= e(base_url('admin/install.php')) ?>">Run first-time setup</a>.
+                            <a href="<?= e(base_url('register.php')) ?>">Create the first organization</a>.
                         </div>
                     <?php else: ?>
-                        <form method="post" autocomplete="on">
-                            <label for="organization_id">Organization</label>
-                            <select id="organization_id" name="organization_id" required>
-                                <option value="">Select organization…</option>
-                                <?php foreach ($organizations as $organization): ?>
-                                    <option
-                                        value="<?= (int)$organization['id'] ?>"
-                                        <?= $selectedOrganizationId === (int)$organization['id'] ? 'selected' : '' ?>
-                                    ><?= e($organization['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+                        <?php if (!empty($googleOAuthEnabled)): ?>
+                            <form method="post" action="<?= e(base_url('auth/google-start.php')) ?>" id="neptune-google-login">
+                                <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="intent" value="login">
+                                <button type="submit" id="google-signin-button" style="width:100%">
+                                    <i class="fa-brands fa-google"></i>
+                                    Continue with Google
+                                </button>
+                                <div class="muted" style="margin-top:8px;font-size:.82rem;line-height:1.45">No organization selection required. Neptune routes only to organizations already tied to your verified Google identity, an approved Workspace domain, or a direct invitation.</div>
+                            </form>
+                            <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--nlp-muted);font-size:.76rem;font-weight:850;text-transform:uppercase;letter-spacing:.12em"><span style="height:1px;background:var(--nlp-border);flex:1"></span><span>or use a password</span><span style="height:1px;background:var(--nlp-border);flex:1"></span></div>
+                        <?php endif; ?>
+
+                        <form method="post" autocomplete="on" id="neptune-password-login">
+                            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+
+                            <label for="organization">Organization</label>
+                            <input
+                                id="organization"
+                                name="organization"
+                                required
+                                maxlength="160"
+                                autocomplete="organization"
+                                autocapitalize="none"
+                                spellcheck="false"
+                                value="<?= e($organizationValue) ?>"
+                                placeholder="Organization name or slug"
+                            >
+                            <div class="muted" style="margin-top:6px;font-size:.8rem;line-height:1.4">Enter the organization name or Neptune slug your administrator gave you. Neptune no longer exposes the organization directory on the public login page.</div>
 
                             <label for="username">Username</label>
-                            <input
-                                id="username"
-                                name="username"
-                                required
-                                autocomplete="username"
-                            >
+                            <input id="username" name="username" required maxlength="80" autocomplete="username">
 
                             <label for="password">Password</label>
-                            <input
-                                id="password"
-                                type="password"
-                                name="password"
-                                required
-                                autocomplete="current-password"
-                            >
+                            <input id="password" type="password" name="password" required autocomplete="current-password">
 
-                            <div class="toolbar">
-                                <button type="submit">
+                            <div class="toolbar" style="gap:8px;flex-wrap:wrap">
+                                <button type="submit" id="password-signin-button">
                                     <i class="fa-solid fa-right-to-bracket"></i>
                                     Sign in
                                 </button>
                             </div>
                         </form>
 
-                        <div class="nlp-login-links">
+                        <div class="nlp-login-links" style="gap:12px;flex-wrap:wrap">
+                            <a href="<?= e(base_url('forgot-password.php')) ?>">
+                                <i class="fa-solid fa-key"></i>
+                                Forgot password?
+                            </a>
                             <a href="<?= e(base_url('register.php')) ?>">
                                 <i class="fa-solid fa-building-circle-check"></i>
                                 Register an organization
@@ -2679,11 +2693,11 @@ neptune_secure/config.php</span>
 <span class="comment"># 6) Point Apache at the public Neptune application</span>
 <span class="comment"># Keep neptune_secure OUTSIDE the public web root.</span>
 
-<span class="comment"># 7) Initialize Neptune once in your browser</span>
-/Neptune/admin/install.php
+<span class="comment"># 7) Create the first organization + owner</span>
+/Neptune/register.php
 
-<span class="comment"># 8) Create the first organization + owner, then</span>
-<span class="comment"># remove/disable the installer on production.</span></pre>
+<span class="comment"># Neptune has no admin/install.php browser installer.</span>
+<span class="comment"># After sign-in, run System Check and review Maintenance Console.</span></pre>
                 </div>
 
             </div>

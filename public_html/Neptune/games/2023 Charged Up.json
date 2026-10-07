@@ -1,0 +1,149 @@
+{
+  "game": "2023 CHARGED UP",
+  "buttons": [
+    {
+      "name": "Leave Community",
+      "code": "leave_community",
+      "type": "offense",
+      "location": "community",
+      "layout": "rect-1",
+      "autonPoints": 3,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Score Cone Hybrid",
+      "code": "score_cone_hyb",
+      "type": "offense",
+      "location": "Grid Hybrid",
+      "layout": "rect-1",
+      "autonPoints": 3,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Score Cone Mid",
+      "code": "score_cone_mid",
+      "type": "offense",
+      "location": "Grid Mid",
+      "layout": "rect-1",
+      "autonPoints": 4,
+      "teleopPoints": 3
+    },
+    {
+      "name": "Score Cone Top",
+      "code": "score_cone_top",
+      "type": "offense",
+      "location": "Grid Top",
+      "layout": "rect-1",
+      "autonPoints": 6,
+      "teleopPoints": 5
+    },
+    {
+      "name": "Score Cube Hybrid",
+      "code": "score_cube_hyb",
+      "type": "offense",
+      "location": "Grid Hybrid",
+      "layout": "rect-1",
+      "autonPoints": 3,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Score Cube Mid",
+      "code": "score_cube_mid",
+      "type": "offense",
+      "location": "Grid Mid",
+      "layout": "rect-1",
+      "autonPoints": 4,
+      "teleopPoints": 3
+    },
+    {
+      "name": "Score Cube Top",
+      "code": "score_cube_top",
+      "type": "offense",
+      "location": "Grid Top",
+      "layout": "rect-1",
+      "autonPoints": 6,
+      "teleopPoints": 5
+    },
+    {
+      "name": "Pickup Cone",
+      "code": "pickup_cone",
+      "type": "offense",
+      "location": "Loading Zone",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Pickup Cube",
+      "code": "pickup_cube",
+      "type": "offense",
+      "location": "Loading Zone",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Dock (Auto)",
+      "code": "dock_auto",
+      "type": "offense",
+      "location": "Charge Station",
+      "layout": "rect-1",
+      "autonPoints": 8,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Engage (Auto)",
+      "code": "engage_auto",
+      "type": "offense",
+      "location": "Charge Station",
+      "layout": "rect-1",
+      "autonPoints": 12,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Park (End)",
+      "code": "park_end",
+      "type": "offense",
+      "location": "Charge Station",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 2
+    },
+    {
+      "name": "Dock (End)",
+      "code": "dock_end",
+      "type": "offense",
+      "location": "Charge Station",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 6
+    },
+    {
+      "name": "Engage (End)",
+      "code": "engage_end",
+      "type": "offense",
+      "location": "Charge Station",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 10
+    },
+    {
+      "name": "Plays Defense",
+      "code": "plays_defense",
+      "type": "defense",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    },
+    {
+      "name": "Disabled/Broken",
+      "code": "disabled",
+      "type": "offense",
+      "location": "anywhere",
+      "layout": "rect-1",
+      "autonPoints": 0,
+      "teleopPoints": 0
+    }
+  ]
+}

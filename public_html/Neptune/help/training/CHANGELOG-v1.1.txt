@@ -1,0 +1,10 @@
+Neptune CBT Training Center v1.1 — Content Accuracy Audit
+
+- Audited all 68 CBT bank questions (34 Admin, 34 Scouter).
+- Removed obsolete Spot Scouting product terminology. Spot use cases are now taught under Tag Scouting Match/Pit/Team contexts.
+- Corrected Tag/AUGUR boundary: Tag data is collected separately and does not currently populate AUGUR analytics, EPA, predictions, or Traditional action metrics.
+- Reworked questions sct14, sct15, sct18, sct21, sct22, sct26, sct34 and admin questions adm01, adm21, adm27, adm33.
+- Strengthened manual-schedule verification to a second-person full cross-check.
+- Updated the web training manual to match the current Tag workflow.
+- No database migration. Existing grades and completed attempts are preserved. New attempts record course version 1.1.
+- cbt.php is intentionally not included, so the v1.0.1 radio-button display hotfix remains in place.

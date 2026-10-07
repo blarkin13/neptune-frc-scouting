@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+CONFIG_FILE=/etc/neptune/github-backup.env
+KEY_FILE=/etc/neptune/backup.key
+DB_ENV=/etc/scout/db.env
+APP_ROOT=/var/www/neptune/public_html/Neptune
+API_ROOT=https://api.github.com
+SAFETY_ROOT=/var/backups/neptune-pre-restore
+
+usage() {
+  cat <<'EOF'
+Usage:
+  sudo /opt/neptune/bin/neptune-restore-github latest --yes
+  sudo /opt/neptune/bin/neptune-restore-github neptune-backup-YYYYMMDD-HHMMSSZ --yes
+
+The restore:
+  1. downloads the encrypted GitHub Release backup,
+  2. verifies the encrypted SHA-256 checksum,
+  3. decrypts and verifies the internal payload checksums,
+  4. creates a local pre-restore safety backup,
+  5. restores the Neptune database, uploads, and games.
+
+The encryption key must exist at /etc/neptune/backup.key.
+EOF
+}
+
+[[ ${EUID:-$(id -u)} -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
+[[ $# -ge 2 ]] || { usage; exit 2; }
+REQUESTED="$1"
+CONFIRM="$2"
+[[ "$CONFIRM" == "--yes" ]] || { echo "Restore requires --yes." >&2; usage; exit 2; }
+
+for f in "$CONFIG_FILE" "$KEY_FILE" "$DB_ENV"; do
+  [[ -r "$f" ]] || { echo "Required file is not readable: $f" >&2; exit 1; }
+done
+
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+# shellcheck disable=SC1090
+source "$DB_ENV"
+
+: "${GITHUB_OWNER:?Missing GITHUB_OWNER}"
+: "${GITHUB_REPO:?Missing GITHUB_REPO}"
+: "${GITHUB_TOKEN:?Missing GITHUB_TOKEN}"
+: "${DB_NAME:?Missing DB_NAME}"
+: "${DB_USER:?Missing DB_USER}"
+: "${DB_PASSWORD:?Missing DB_PASSWORD}"
+
+for tool in mysql mysqldump curl openssl tar gzip sha256sum python3 systemctl; do
+  command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 1; }
+done
+
+TMP="$(mktemp -d /var/tmp/neptune-restore.XXXXXX)"
+APACHE_WAS_ACTIVE=0
+cleanup() {
+  local rc=$?
+  if [[ "$APACHE_WAS_ACTIVE" -eq 1 ]]; then
+    systemctl start apache2 >/dev/null 2>&1 || true
+  fi
+  rm -rf "$TMP"
+  exit "$rc"
+}
+trap cleanup EXIT
+
+api_get() {
+  curl -fsS \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$1"
+}
+
+if [[ "$REQUESTED" == "latest" ]]; then
+  TAG="$(api_get "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/releases?per_page=100" | python3 -c '
+import json,sys
+for r in json.load(sys.stdin):
+    t=str(r.get("tag_name",""))
+    if t.startswith("neptune-backup-"):
+        print(t); break
+')"
+  [[ -n "$TAG" ]] || { echo "No Neptune production backup release found." >&2; exit 1; }
+else
+  TAG="$REQUESTED"
+fi
+
+ENCODED_TAG="$(python3 - "$TAG" <<'PY'
+import sys,urllib.parse
+print(urllib.parse.quote(sys.argv[1],safe=""))
+PY
+)"
+RELEASE_JSON="$TMP/release.json"
+api_get "$API_ROOT/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/tags/$ENCODED_TAG" > "$RELEASE_JSON"
+
+python3 - "$RELEASE_JSON" "$TMP/assets.tsv" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1],encoding="utf-8"))
+rows=[]
+for a in d.get("assets",[]):
+    name=a.get("name","")
+    if name.endswith(".tar.enc") or name.endswith(".tar.enc.sha256"):
+        rows.append((name,a["url"]))
+with open(sys.argv[2],"w",encoding="utf-8") as f:
+    for name,url in rows:
+        f.write(name+"\t"+url+"\n")
+PY
+
+download_asset() {
+  local name="$1" url="$2"
+  curl -fsSL \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Accept: application/octet-stream" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$url" -o "$TMP/$name"
+}
+
+ENC_NAME=""
+SUM_NAME=""
+while IFS=$'\t' read -r name url; do
+  [[ -n "$name" ]] || continue
+  download_asset "$name" "$url"
+  if [[ "$name" == *.sha256 ]]; then SUM_NAME="$name"; else ENC_NAME="$name"; fi
+done < "$TMP/assets.tsv"
+
+[[ -n "$ENC_NAME" && -n "$SUM_NAME" ]] || { echo "Backup release does not contain both encrypted archive and checksum assets." >&2; exit 1; }
+
+(
+  cd "$TMP"
+  sha256sum -c "$SUM_NAME"
+)
+
+ARCHIVE="$TMP/backup.tar"
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 250000 -md sha256 \
+  -in "$TMP/$ENC_NAME" -out "$ARCHIVE" -pass file:"$KEY_FILE"
+
+mkdir -p "$TMP/payload"
+tar -C "$TMP/payload" -xf "$ARCHIVE"
+
+for required in database.sql.gz uploads.tar.gz games.tar.gz manifest.json SHA256SUMS; do
+  [[ -f "$TMP/payload/$required" ]] || { echo "Missing payload file: $required" >&2; exit 1; }
+done
+(
+  cd "$TMP/payload"
+  sha256sum -c SHA256SUMS
+)
+
+echo "Backup verified: $TAG"
+python3 - "$TMP/payload/manifest.json" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1],encoding="utf-8"))
+print("Created UTC:",d.get("created_utc","unknown"))
+print("Backup host:",d.get("host","unknown"))
+print("Database:",d.get("database","unknown"))
+PY
+
+SAFETY="$SAFETY_ROOT/$(date -u +%Y%m%d-%H%M%SZ)"
+install -d -m 0700 "$SAFETY"
+
+echo "Creating local pre-restore safety backup..."
+MYSQL_PWD="$DB_PASSWORD" mysqldump \
+  --single-transaction --quick --triggers --no-tablespaces \
+  -h "${DB_HOST:-127.0.0.1}" \
+  -P "${DB_PORT:-3306}" \
+  -u "$DB_USER" \
+  "$DB_NAME" | gzip -9 > "$SAFETY/database-before-restore.sql.gz"
+
+if [[ -d "$APP_ROOT/uploads" ]]; then
+  tar -C "$APP_ROOT" -czf "$SAFETY/uploads-before-restore.tar.gz" uploads
+fi
+if [[ -d "$APP_ROOT/games" ]]; then
+  tar -C "$APP_ROOT" -czf "$SAFETY/games-before-restore.tar.gz" games
+fi
+
+if systemctl is-active --quiet apache2; then
+  APACHE_WAS_ACTIVE=1
+  echo "Stopping Apache during restore..."
+  systemctl stop apache2
+fi
+
+echo "Restoring database..."
+gzip -dc "$TMP/payload/database.sql.gz" | MYSQL_PWD="$DB_PASSWORD" mysql \
+  -h "${DB_HOST:-127.0.0.1}" \
+  -P "${DB_PORT:-3306}" \
+  -u "$DB_USER" \
+  "$DB_NAME"
+
+echo "Restoring uploads..."
+tar -tzf "$TMP/payload/uploads.tar.gz" > "$TMP/uploads.list"
+rm -rf "$APP_ROOT/uploads"
+mkdir -p "$APP_ROOT/uploads"
+if grep -q '^uploads/' "$TMP/uploads.list"; then
+  rm -rf "$APP_ROOT/uploads"
+  tar -C "$APP_ROOT" -xzf "$TMP/payload/uploads.tar.gz"
+fi
+
+echo "Restoring game JSON..."
+tar -tzf "$TMP/payload/games.tar.gz" > "$TMP/games.list"
+rm -rf "$APP_ROOT/games"
+mkdir -p "$APP_ROOT/games"
+if grep -q '^games/' "$TMP/games.list"; then
+  rm -rf "$APP_ROOT/games"
+  tar -C "$APP_ROOT" -xzf "$TMP/payload/games.tar.gz"
+fi
+
+# Restored persistent content must remain writable by the web application.
+chown -R www-data:www-data "$APP_ROOT/uploads" "$APP_ROOT/games" 2>/dev/null || true
+find "$APP_ROOT/uploads" "$APP_ROOT/games" -type d -exec chmod 0775 {} + 2>/dev/null || true
+find "$APP_ROOT/uploads" "$APP_ROOT/games" -type f -exec chmod 0664 {} + 2>/dev/null || true
+
+if [[ "$APACHE_WAS_ACTIVE" -eq 1 ]]; then
+  systemctl start apache2
+  APACHE_WAS_ACTIVE=0
+fi
+
+echo
+echo "Restore complete."
+echo "Restored release: $TAG"
+echo "Pre-restore safety backup: $SAFETY"

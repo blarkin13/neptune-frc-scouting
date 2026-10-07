@@ -1,0 +1,18 @@
+[Unit]
+Description=Neptune production backup to private GitHub Releases
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/neptune/bin/neptune-backup-github
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

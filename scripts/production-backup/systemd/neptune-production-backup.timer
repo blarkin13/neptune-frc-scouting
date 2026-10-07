@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Neptune production backup nightly
+
+[Timer]
+OnCalendar=*-*-* 08:15:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+Unit=neptune-production-backup.service
+
+[Install]
+WantedBy=timers.target

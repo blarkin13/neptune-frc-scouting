@@ -1,0 +1,54 @@
+/* Robot Recall v4.9 — visible realtime transport diagnostics. */
+.rr-realtime-status{
+  --rr-rt-color:#9aa9b8;
+  display:inline-flex!important;
+  align-items:center!important;
+  gap:8px!important;
+  min-height:34px;
+  padding:6px 10px!important;
+  border:1px solid color-mix(in srgb,var(--rr-rt-color) 42%,transparent)!important;
+  border-radius:999px!important;
+  background:color-mix(in srgb,var(--rr-rt-color) 10%,rgba(7,12,18,.92))!important;
+  color:#f7fbff!important;
+  line-height:1!important;
+  white-space:nowrap;
+  box-sizing:border-box;
+  box-shadow:none!important;
+  font-family:inherit;
+}
+.rr-realtime-status[hidden]{display:none!important}
+.rr-realtime-status[data-state="connecting"]{--rr-rt-color:#8aa4bd}
+.rr-realtime-status[data-state="socket"]{--rr-rt-color:#50d890}
+.rr-realtime-status[data-state="polling"]{--rr-rt-color:#f0b44d}
+.rr-realtime-status .rr-realtime-dot{
+  width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:var(--rr-rt-color);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--rr-rt-color) 16%,transparent);
+}
+.rr-realtime-status[data-state="connecting"] .rr-realtime-dot{animation:rrRealtimePulse 1s ease-in-out infinite}
+.rr-realtime-status.is-traffic .rr-realtime-dot{animation:rrRealtimeTraffic .58s ease-out}
+.rr-realtime-status .rr-realtime-copy{display:grid!important;gap:1px!important;text-align:left!important;line-height:1!important}
+.rr-realtime-status small{
+  display:block!important;margin:0!important;padding:0!important;color:color-mix(in srgb,var(--rr-rt-color) 84%,white)!important;
+  font-size:.52rem!important;font-weight:900!important;letter-spacing:.11em!important;text-transform:uppercase!important;line-height:1!important
+}
+.rr-realtime-status b{
+  display:block!important;margin:0!important;padding:0!important;color:#fff!important;
+  font-size:.69rem!important;font-weight:950!important;letter-spacing:.055em!important;line-height:1.05!important
+}
+.rr-host-connectivity{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.rr-player-top{justify-content:flex-start}
+.rr-player-top>.rr-realtime-status{margin-left:auto}
+.rr-public-brand>.rr-realtime-status{margin-left:auto}
+.rr-screen-shell>.rr-realtime-status{
+  position:fixed;z-index:80;right:14px;bottom:14px;opacity:.9;pointer-events:none;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)
+}
+@keyframes rrRealtimePulse{50%{opacity:.35;transform:scale(.78)}}
+@keyframes rrRealtimeTraffic{0%{box-shadow:0 0 0 3px color-mix(in srgb,var(--rr-rt-color) 18%,transparent)}45%{box-shadow:0 0 0 9px color-mix(in srgb,var(--rr-rt-color) 20%,transparent)}100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--rr-rt-color) 16%,transparent)}}
+@media(max-width:620px){
+  .rr-realtime-status{min-height:31px;padding:5px 8px!important;gap:6px!important}
+  .rr-realtime-status small{font-size:.47rem!important}.rr-realtime-status b{font-size:.62rem!important}
+  .rr-screen-shell>.rr-realtime-status{right:8px;bottom:8px;opacity:.82}
+  .rr-public-brand{flex-wrap:wrap}.rr-public-brand>.rr-realtime-status{order:3;margin-left:57px}
+}
+@media(prefers-reduced-motion:reduce){.rr-realtime-status .rr-realtime-dot{animation:none!important}}

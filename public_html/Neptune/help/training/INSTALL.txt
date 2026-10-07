@@ -1,0 +1,37 @@
+NEPTUNE TRAINING CENTER / CBT
+================================
+
+Installed URLs:
+  /help/training/                  Training Center
+  /help/training/cbt.php?course=admin
+  /help/training/cbt.php?course=scouter
+  /help/training/records.php       Owner/Admin organization training records
+  /help/e/                         Redirect to Training Center
+  /help/event-training.php         Event Operations & Scouting manual
+
+CBT rules:
+  - 20 randomized questions per attempt from a larger question pool
+  - answer order randomized
+  - 85% passing score
+  - retakes allowed
+  - every completed attempt and grade retained
+  - Admin CBT: owner/admin roles
+  - Scouter CBT: all logged-in roles
+  - Records: owner/admin, organization-scoped
+
+Database:
+  The Training Center creates training_attempts automatically with CREATE TABLE IF NOT EXISTS.
+  sql/Neptune_Training_CBT.sql is also included as a manual/clean-install migration.
+  The Maintenance Console copies SQL files but does not execute them; normally no manual SQL step is needed because the Training Center self-initializes.
+
+Navigation changes:
+  - Command Center receives a Training & Certification card.
+  - Match Scouting receives a Training Center card.
+  - Match Control/Match Scouting wording recognizes TBA OR verified manual schedules.
+
+After installation:
+  1. Open /help/training/
+  2. Confirm the page loads and the database table initializes.
+  3. Take one Scouter CBT and submit it.
+  4. As Owner/Admin open /help/training/records.php and verify the grade is listed.
+  5. Open Command Center and Match Scouting and verify the new Training cards.

@@ -1,0 +1,10 @@
+.neptune-realtime-pill{display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--muted);font-size:.66rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.neptune-realtime-pill .neptune-realtime-dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 13%,transparent)}
+.neptune-realtime-pill[data-state="socket"]{color:var(--good);border-color:color-mix(in srgb,var(--good) 42%,var(--line));background:color-mix(in srgb,var(--good) 8%,var(--panel2))}
+.neptune-realtime-pill[data-state="polling"]{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 44%,var(--line));background:color-mix(in srgb,var(--warn) 8%,var(--panel2))}
+.neptune-realtime-pill[data-state="offline"]{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 44%,var(--line));background:color-mix(in srgb,var(--bad) 8%,var(--panel2))}
+.neptune-realtime-pill[data-state="connecting"] .neptune-realtime-dot{animation:neptuneRealtimePulse 1s ease-in-out infinite}
+.neptune-realtime-pill.is-traffic .neptune-realtime-dot{animation:neptuneRealtimeTraffic .55s ease-out}
+@keyframes neptuneRealtimePulse{50%{opacity:.35;transform:scale(.72)}}
+@keyframes neptuneRealtimeTraffic{0%{box-shadow:0 0 0 4px color-mix(in srgb,currentColor 13%,transparent)}35%{box-shadow:0 0 0 10px color-mix(in srgb,currentColor 5%,transparent);transform:scale(1.25)}100%{box-shadow:0 0 0 4px color-mix(in srgb,currentColor 13%,transparent);transform:scale(1)}}
+@media(max-width:620px){.neptune-realtime-pill{min-height:27px;padding:4px 8px;font-size:.58rem}}

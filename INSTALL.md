@@ -1,132 +1,138 @@
-# Neptune installation
+Neptune - Current Installation and Update Guide
+================================================
 
-This repository is intended to be installable on a clean Ubuntu/Debian server.
-The installer sets up Apache, PHP, MariaDB, the Neptune application tree, the
-protected configuration directory, and the complete Neptune database schema.
+This file describes the current application. Neptune does NOT use
+/Neptune/admin/install.php.
 
-## Supported clean-install target
+FRESH INSTALLATION
+------------------
 
-- Ubuntu 22.04/24.04 LTS or current Debian
-- x86_64 or ARM64
-- root/sudo access
-- Internet access during installation for `apt`
-- Apache 2.4
-- PHP 8.x
-- MariaDB 10.6+
+1. Requirements
+   - PHP 8.x
+   - PDO MySQL
+   - cURL
+   - PHP sessions
+   - MySQL 8.x or compatible MariaDB
+   - Apache/Nginx or another PHP-capable web server
+   - HTTPS for production
+   - The Blue Alliance API key
+   - GD or Imagick recommended for pit-photo optimization
 
-The runtime can operate without Internet for local scouting features, subject
-to the separate Neptune offline-readiness work and cached external data.
+2. Directory layout
 
-## One-command install
+   public_html/Neptune/     Public web application
+   neptune_secure/          Private PHP configuration/helpers; keep outside web root
+   sql/                     Baseline database schema
+   scripts/                 Host/support scripts
 
-```bash
-git clone https://github.com/blarkin13/neptune-frc-scouting.git
-cd neptune-frc-scouting
-sudo ./install.sh
-```
+3. Database
 
-By default Neptune is installed to:
+   Create a database and import:
 
-```text
-/var/www/neptune/public_html/Neptune
-/var/www/neptune/neptune_secure
-```
+     sql/neptune_schema.sql
 
-The installer creates a MariaDB database named `neptune`, creates a random
-local-only database password, imports `sql/install_schema.sql`, configures an
-Apache vhost, validates every PHP file, verifies all required tables, and runs
-a health check.
+   This is the baseline schema for a fresh installation.
 
-After installation, browse to:
+4. Private configuration
 
-```text
-http://neptune.local/register.php
-```
+   Copy:
 
-and create the first organization/owner account.
+     neptune_secure/config.example.php
 
-## Optional installer settings
+   to:
 
-Set environment variables before `sudo` when a different deployment is needed:
+     neptune_secure/config.php
 
-```bash
-sudo env \
-  NEPTUNE_SERVER_NAME=neptune.example.org \
-  NEPTUNE_TIMEZONE=America/Chicago \
-  NEPTUNE_TBA_KEY='YOUR_TBA_KEY' \
-  ./install.sh
-```
+   Enter the database settings, base URL/timezone as needed, and TBA API key.
+   Never commit live credentials.
 
-Available variables:
+5. First organization
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `NEPTUNE_ROOT` | `/var/www/neptune` | Deployment root |
-| `NEPTUNE_DB_NAME` | `neptune` | MariaDB database |
-| `NEPTUNE_DB_USER` | `neptune_app` | MariaDB application user |
-| `NEPTUNE_SERVER_NAME` | `neptune.local` | Apache `ServerName` |
-| `NEPTUNE_BASE_URL` | empty | URL prefix; leave empty when Neptune is the site root |
-| `NEPTUNE_TIMEZONE` | `UTC` | PHP/application timezone |
-| `NEPTUNE_TBA_KEY` | empty | Optional Blue Alliance API key |
+   Open:
 
-## What the installer installs
+     /Neptune/register.php
 
-Packages:
+   or open Neptune's public sign-in page and choose "Register an organization".
 
-```text
-apache2
-mariadb-server
-php
-libapache2-mod-php
-php-mysql
-php-curl
-php-mbstring
-php-xml
-php-gd
-php-zip
-curl
-unzip
-rsync
-openssl
-ca-certificates
-```
+   Create the first organization and owner there. The first organization is the
+   platform organization and its owners receive the platform-only administration
+   and maintenance tools.
 
-It also enables Apache `rewrite`, `headers`, and `expires` modules.
+   There is no admin/install.php step and no installer file to remove afterward.
 
-## Database
+6. Optional Google sign-in
 
-The authoritative clean-install schema is:
+   Current Google/OIDC support reads these values from:
 
-```text
-sql/install_schema.sql
-```
+     /etc/scout/neptune.env
 
-`sql/EXPECTED_TABLES.txt` contains the required table manifest used by the
-installer and verification script. The current schema includes the core
-multi-organization scouting tables plus Game Configuration revisions/sharing,
-Alliance Selection state, Offline Sync tracking, AUGUR EPA/OPR tables, Match
-Strategy, Connection Guard request receipts, and Spot Scouting.
+   GOOGLE_OAUTH_CLIENT_ID="..."
+   GOOGLE_OAUTH_CLIENT_SECRET="..."
+   GOOGLE_OAUTH_REDIRECT_URI="https://your-host/Neptune/auth/google-callback.php"
 
-## Verify an installed server
+   If these settings are absent, password sign-in remains available.
 
-```bash
-sudo /var/www/neptune/scripts/verify-install.sh
-```
+7. Validate the installation
 
-## Existing production servers
+   Sign in as the first owner and check:
+   - Command Center -> System Check
+   - Command Center -> Platform Administration
+   - Command Center -> Maintenance Console
+   - Teams & Users
 
-Do **not** run `install.sh` over an existing Neptune deployment. It intentionally
-stops if `/var/www/neptune` is already populated. Existing systems should be
-updated with reviewed maintenance patches/migrations instead.
+PASSWORD / GOOGLE LOGIN
+-----------------------
 
-## HTTPS
+Password sign-in uses:
+  organization name or Neptune slug + username + password
 
-The installer creates an HTTP Apache vhost only. Internet-facing production
-systems should add TLS (for example with an AWS load balancer/reverse proxy or
-Certbot) and then set `trust_proxy` appropriately if HTTPS terminates upstream.
+The public login page does not expose a global organization dropdown.
 
-## Secrets
+Google sign-in does not ask the user to select an organization first. Neptune
+routes only to memberships tied to that verified identity, an approved Workspace
+domain, or a valid invitation.
 
-`neptune_secure/config.php` is generated during installation and is ignored by
-Git. Database credentials are also stored at `/etc/scout/db.env` with mode 600.
-Never commit either file.
+Forgot Password uses Google verification before allowing a new local Neptune
+password. Owners/admins can also issue temporary passwords in Teams & Users.
+
+UPDATES AND DATABASE MIGRATIONS
+-------------------------------
+
+Neptune intentionally keeps updates self-contained rather than using a large
+migration framework.
+
+Schema-changing updates use the shared migration helper and record:
+
+  neptune_migrations
+  ------------------
+  migration_key
+  applied_at
+  package
+
+Maintenance Console shows:
+  - Files updated
+  - DB migrations applied
+  - Installed update history
+  - DB migration history
+
+A Maintenance Console file rollback restores files only. It does NOT automatically
+reverse database migrations. Schema migrations should therefore remain idempotent
+and forward-safe.
+
+Do not manually replay old migration SQL unless a package specifically instructs
+you to do so.
+
+PRODUCTION HANDOFF
+------------------
+
+The platform owner should know how to:
+  - manage tenant organizations in Platform Administration
+  - recover an organization owner
+  - suspend/reactivate a tenant
+  - export tenant data
+  - manage files through the platform-owner File Manager
+  - install/rollback patch files through Maintenance Console
+  - review neptune_migrations
+  - manage users/roles/temporary passwords/invitations through Teams & Users
+
+For normal account recovery, direct MySQL edits should not be necessary.
