@@ -438,4 +438,4 @@ FIRST®, FIRST Robotics Competition®, FRC®, and related marks belong to their 
 
 ## License
 
-A project license has not yet been selected for this temporary repository.
+Neptune is released under the **MIT License**. See `LICENSE` for the full license text.
