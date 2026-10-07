@@ -148,8 +148,12 @@ A large-screen display intended for pit TVs can show past and upcoming matches, 
 - Organizations may contain multiple FRC teams
 - Password sign-in uses organization name/slug + username + password; Neptune does not expose a public organization dropdown
 - Google sign-in routes only to verified memberships, approved Workspace auto-provisioning, or direct invitations
-- Teams & Users supports editing accounts, primary-team assignment, deactivate/reactivate, invitations, Google linking, and temporary-password reset. User administration follows a role ceiling: Strategy can manage Scouts and assign up to Strategy; Admin can manage Scouts/Strategy and assign up to Admin; Owner can manage lower roles and assign up to Owner. Users cannot change their own role/status.
+- Teams & Users supports editing accounts, primary-team assignment, deactivate/reactivate, invitations, Google linking, temporary-password reset, organization sign-in slug display, and Admin/Owner editing of organization FRC teams. User administration follows a role ceiling: Strategy can manage Scouts and assign up to Strategy; Admin can manage Scouts/Strategy and assign up to Admin; Owner can manage lower roles and assign up to Owner. Users cannot change their own role/status.
+- Approved Google Workspace users can be auto-provisioned as Scouts on first sign-in and are identified in Teams & Users; verified-email matches link to existing Neptune users instead of creating duplicates
+- Public password sign-in includes an organization lookup modal so users who do not know their organization slug can find the active organization and select the correct sign-in slug
 - Forgot Password uses Google identity verification before allowing a new local Neptune password
+- Interface Styling is organization-scoped and Admin+. Admins/Owners can create, edit, duplicate, delete, and select reusable dark/light themes without affecting another organization
+- Database Lab is Strategy+ and keeps tenant-owned operational data scoped to the signed-in organization while installation-wide AUGUR reference/rating data remains global
 - The designated platform organization receives **Platform Administration** for tenant status, owner recovery, suspension/reactivation, organization details, and tenant data export
 - Temporary passwords require a password change after first login
 - Scouting data retains an owning team
@@ -314,6 +318,20 @@ GOOGLE_OAUTH_REDIRECT_URI="https://your-host/Neptune/auth/google-callback.php"
 The Google OAuth client should use the exact callback URI for the deployment. Google authenticates identity; Neptune remains the source of truth for organization membership, role, team assignment, and active/suspended status.
 
 Workspace domain configuration is organization-specific and is only required for safe automatic Scout provisioning. Existing users can use Google through an exact verified-email match even when their organization does not configure a Workspace domain.
+
+## Organization interface themes
+
+Each organization can maintain its own interface theme library from **Command Center → Organization → Interface Styling**.
+
+- Access is limited to **Admin and Owner**
+- Built-in Neptune themes can be applied directly or used as a starting point
+- New themes are created in Neptune through the Theme Editor modal; no ZIP/theme-pack workflow is required
+- Custom organization themes can be edited, duplicated, deleted, and switched at any time
+- Clicking/tapping a theme card applies it; compact icon controls handle customization/editing without making the card layout button-heavy
+- Night/Day mode remains a per-user display toggle inside the selected organization theme
+- Theme records and the active-theme selection are scoped by `organization_id`
+
+Theme schema changes self-apply through Neptune's tracked migration system.
 
 ## Updates and database migrations
 

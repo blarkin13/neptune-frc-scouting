@@ -1,14 +1,101 @@
 <?php
 require_once dirname(__DIR__, 3) . '/neptune_secure/bootstrap.php';
-$u = require_login();
+$u = require_role(['owner', 'admin', 'strategy']);
 $org = (int)($u['organization_id'] ?? 0);
-$isDatabaseOwner = in_array(($u['role'] ?? ''), ['owner', 'admin', 'strategy'], true);
 
 function data_lab_json(array $payload, int $status = 200): never {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
+}
+
+function data_lab_table_modes(PDO $pdo): array {
+    $stmt = $pdo->query(
+        "SELECT t.TABLE_NAME,
+                MAX(CASE WHEN c.COLUMN_NAME='organization_id' THEN 1 ELSE 0 END) AS has_org
+         FROM information_schema.TABLES t
+         LEFT JOIN information_schema.COLUMNS c
+           ON c.TABLE_SCHEMA=t.TABLE_SCHEMA
+          AND c.TABLE_NAME=t.TABLE_NAME
+         WHERE t.TABLE_SCHEMA=DATABASE()
+           AND t.TABLE_TYPE='BASE TABLE'
+         GROUP BY t.TABLE_NAME
+         ORDER BY t.TABLE_NAME"
+    );
+
+    $modes = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $name = (string)$row['TABLE_NAME'];
+        if ((int)$row['has_org'] === 1) {
+            $modes[$name] = 'organization';
+            continue;
+        }
+
+        // AUGUR archive/rating/model tables are installation-wide public/system
+        // reference data. Tenant-owned operational tables must carry organization_id.
+        if (str_starts_with($name, 'augur_')) {
+            $modes[$name] = 'global';
+        }
+    }
+    return $modes;
+}
+
+function data_lab_scope_select(PDO $pdo, string $sql, int $organizationId): array {
+    $trimmed = trim($sql);
+    $explainPrefix = '';
+
+    if (preg_match('/^(EXPLAIN(?:\s+FORMAT\s*=\s*(?:JSON|TREE|TRADITIONAL))?\s+)(SELECT\b.*)$/is', $trimmed, $m)) {
+        $explainPrefix = $m[1];
+        $trimmed = $m[2];
+    } elseif (!preg_match('/^SELECT\b/i', $trimmed)) {
+        return [true, $sql];
+    }
+
+    if (preg_match('/\bUNION\b/i', $trimmed)) {
+        return [false, 'UNION is disabled in the organization-scoped Database Lab.'];
+    }
+    if (preg_match('/\(\s*SELECT\b/i', $trimmed)) {
+        return [false, 'Subqueries are disabled in the organization-scoped Database Lab.'];
+    }
+    if (preg_match('/\b(?:FROM|JOIN)\s+`?[A-Za-z0-9_]+`?\s*\./i', $trimmed)) {
+        return [false, 'Schema-qualified table names are disabled in Database Lab.'];
+    }
+
+    $modes = data_lab_table_modes($pdo);
+    $pattern = '/\b(FROM|JOIN)\s+(`?[A-Za-z0-9_]+`?)(?:\s+(?:AS\s+)?(`?(?!(?:WHERE|LEFT|RIGHT|INNER|OUTER|JOIN|ON|GROUP|ORDER|LIMIT|HAVING|OFFSET)\b)[A-Za-z_][A-Za-z0-9_]*`?))?/i';
+    $found = 0;
+    $error = '';
+
+    $rewritten = preg_replace_callback($pattern, function(array $m) use ($modes, $organizationId, &$found, &$error): string {
+        $found++;
+        $table = trim((string)$m[2], '`');
+        $aliasRaw = isset($m[3]) ? trim((string)$m[3], '`') : '';
+        $alias = $aliasRaw !== '' ? $aliasRaw : $table;
+
+        if (!isset($modes[$table])) {
+            $error = 'Table "' . $table . '" is not available in the organization-scoped Database Lab.';
+            return $m[0];
+        }
+
+        if ($modes[$table] === 'global') {
+            return $m[0];
+        }
+
+        return $m[1]
+            . ' (SELECT * FROM `' . $table . '` WHERE `organization_id`=' . (int)$organizationId . ') AS `'
+            . $alias . '`';
+    }, $trimmed);
+
+    if ($rewritten === null) {
+        return [false, 'Database Lab could not parse that query.'];
+    }
+    if ($error !== '') {
+        return [false, $error];
+    }
+
+    // SELECTs without a FROM clause (for example SELECT 1) contain no tenant data.
+    return [true, $explainPrefix . $rewritten];
 }
 
 function data_lab_query_is_safe(string $sql): array {
@@ -65,7 +152,7 @@ function data_lab_query_is_safe(string $sql): array {
     return [true, $sql];
 }
 
-if ($isDatabaseOwner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'run_query') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'run_query') {
     if (!hash_equals($_SESSION['csrf'] ?? '', (string)($_POST['csrf'] ?? ''))) {
         data_lab_json(['ok' => false, 'error' => 'Invalid CSRF token. Refresh the page and try again.'], 419);
     }
@@ -75,6 +162,11 @@ if ($isDatabaseOwner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action
         data_lab_json(['ok' => false, 'error' => $value], 400);
     }
     $sql = $value;
+    [$scopeOk, $scopedSql] = data_lab_scope_select($pdo, $sql, $org);
+    if (!$scopeOk) {
+        data_lab_json(['ok' => false, 'error' => $scopedSql], 400);
+    }
+    $sql = $scopedSql;
 
     try {
         $pdo->exec('SET SESSION MAX_EXECUTION_TIME=5000');
@@ -122,70 +214,19 @@ if ($isDatabaseOwner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action
     }
 }
 
-// Keep the existing safe raw-scouting view for users below Strategy+.
-if (!$isDatabaseOwner) {
-    $q = "SELECT a.*,e.name event_name,m.comp_level,m.set_number,m.match_number
-          FROM scouting_actions a
-          JOIN events e ON e.id=a.event_id
-          JOIN matches m ON m.id=a.match_id
-          WHERE a.deleted_at IS NULL
-            AND (
-                a.organization_id=?
-                OR a.owner_team_id IN (
-                    SELECT sr.owner_team_id
-                    FROM sharing_relationships sr
-                    JOIN teams rt ON rt.id=sr.recipient_team_id
-                    WHERE rt.organization_id=?
-                      AND sr.status='active'
-                      AND sr.share_raw_actions=1
-                      AND (sr.starts_at IS NULL OR sr.starts_at<=UTC_TIMESTAMP())
-                      AND (sr.expires_at IS NULL OR sr.expires_at>=UTC_TIMESTAMP())
-                )
-            )
-          ORDER BY a.id DESC
-          LIMIT 500";
-    $s = $pdo->prepare($q);
-    $s->execute([$org, $org]);
-    $rows = $s->fetchAll();
-    $pageTitle = 'Scouting Data';
-    $moduleName = 'SALT';
-    include dirname(__DIR__) . '/partials_header.php';
-    ?>
-    <div class="toolbar" style="justify-content:space-between">
-        <div>
-            <div class="module-eyebrow"><span>SALT</span><small>Data Storage</small></div>
-            <h1 style="margin-bottom:4px">Raw Scouting Data</h1>
-            <div class="muted">Most recent 500 actions, including permitted shared raw data.</div>
-        </div>
-        <a class="btn secondary" href="<?=e(base_url('analytics/index.php'))?>"><i class="fa-solid fa-chart-column"></i> Augur</a>
-    </div>
-    <div class="card"><div class="table-wrap"><table class="table">
-        <tr><th>Event</th><th>Match</th><th>Run</th><th>Robot</th><th>Time</th><th>Action</th><th>Result</th><th>Pts</th><th>Source</th></tr>
-        <?php foreach ($rows as $r): ?>
-            <tr>
-                <td><?=e($r['event_name'])?></td>
-                <td><?=e(neptune_match_label($r))?></td>
-                <td><?=e($r['match_run_number'] ?? 1)?></td>
-                <td>#<?=e($r['frc_team_number'])?></td>
-                <td><?=e($r['match_time_sec'])?></td>
-                <td><?=e($r['action_name'] ?: $r['action_code'])?></td>
-                <td><?=e($r['result'])?></td>
-                <td><?=e($r['points'])?></td>
-                <td><?=e($r['source'])?></td>
-            </tr>
-        <?php endforeach; ?>
-    </table></div></div>
-    <?php
-    include dirname(__DIR__) . '/partials_footer.php';
-    exit;
-}
+// Strategy+ organization-scoped schema explorer.
+$tableModes = data_lab_table_modes($pdo);
+$visibleTableNames = array_keys($tableModes);
+$visibleLookup = array_fill_keys($visibleTableNames, true);
 
-// Strategy+ schema explorer.
 $schemaStmt = $pdo->query("SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS
                            FROM information_schema.TABLES
                            WHERE TABLE_SCHEMA = DATABASE()
                            ORDER BY TABLE_NAME");
-$tables = $schemaStmt->fetchAll();
+$tables = array_values(array_filter(
+    $schemaStmt->fetchAll(),
+    static fn($row) => isset($visibleLookup[(string)$row['TABLE_NAME']])
+));
 
 $columnStmt = $pdo->query("SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA, ORDINAL_POSITION
                            FROM information_schema.COLUMNS
@@ -193,6 +234,7 @@ $columnStmt = $pdo->query("SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLA
                            ORDER BY TABLE_NAME, ORDINAL_POSITION");
 $columnsByTable = [];
 foreach ($columnStmt->fetchAll() as $column) {
+    if (!isset($visibleLookup[(string)$column['TABLE_NAME']])) continue;
     $columnsByTable[$column['TABLE_NAME']][] = $column;
 }
 
@@ -201,16 +243,19 @@ $fkStmt = $pdo->query("SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, RE
                        WHERE TABLE_SCHEMA = DATABASE()
                          AND REFERENCED_TABLE_NAME IS NOT NULL
                        ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION");
-$foreignKeysForJs = array_map(static fn($fk) => [
-    'table' => (string)$fk['TABLE_NAME'],
-    'column' => (string)$fk['COLUMN_NAME'],
-    'refTable' => (string)$fk['REFERENCED_TABLE_NAME'],
-    'refColumn' => (string)$fk['REFERENCED_COLUMN_NAME'],
-    'constraint' => (string)$fk['CONSTRAINT_NAME'],
-], $fkStmt->fetchAll());
+$foreignKeysForJs = [];
+foreach ($fkStmt->fetchAll() as $fk) {
+    if (!isset($visibleLookup[(string)$fk['TABLE_NAME']]) || !isset($visibleLookup[(string)$fk['REFERENCED_TABLE_NAME']])) continue;
+    $foreignKeysForJs[] = [
+        'table' => (string)$fk['TABLE_NAME'],
+        'column' => (string)$fk['COLUMN_NAME'],
+        'refTable' => (string)$fk['REFERENCED_TABLE_NAME'],
+        'refColumn' => (string)$fk['REFERENCED_COLUMN_NAME'],
+        'constraint' => (string)$fk['CONSTRAINT_NAME'],
+    ];
+}
 
 $databaseName = (string)$pdo->query('SELECT DATABASE()')->fetchColumn();
-$organizationCount = (int)$pdo->query('SELECT COUNT(*) FROM organizations')->fetchColumn();
 $schemaForJs = [];
 foreach ($tables as $table) {
     $name = (string)$table['TABLE_NAME'];
@@ -244,17 +289,10 @@ include dirname(__DIR__) . '/partials_header.php';
     </div>
 </div>
 
-<?php if ($organizationCount > 1): ?>
-<div class="lab-banner warn" style="margin-bottom:14px">
-    <i class="fa-solid fa-triangle-exclamation"></i>
-    <div><b>Multi-organization database.</b> Database Lab shows the physical database and does not apply Neptune's normal organization filters. It is therefore restricted to Strategy+ users.</div>
-</div>
-<?php else: ?>
 <div class="lab-banner" style="margin-bottom:14px">
     <i class="fa-solid fa-shield-halved"></i>
-    <div><b>Read-only by design.</b> This page runs SELECT/SHOW/DESCRIBE/EXPLAIN only. INSERT, UPDATE, DELETE, DROP and other changes are blocked.</div>
+    <div><b>Strategy+ · organization scoped.</b> Tenant-owned tables are transparently filtered to <b><?=e($u['organization_name'] ?? ('Organization '.$org))?></b>. Installation-wide AUGUR reference/rating tables remain global. Database Lab is read-only: INSERT, UPDATE, DELETE, DROP and other changes are blocked.</div>
 </div>
-<?php endif; ?>
 
 <div class="data-lab-shell">
     <aside class="card schema-panel">

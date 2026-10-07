@@ -1746,6 +1746,30 @@ html[data-theme="light"] .nlp .nlp-hero-tagline {
     color: #26324a;
 }
 
+
+/* Public organization lookup */
+.nlp-org-field-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:stretch}
+.nlp-org-field-row input{min-width:0}
+.nlp-org-find{white-space:nowrap;min-height:44px;padding:0 13px;border:1px solid var(--nlp-border);border-radius:10px;background:var(--nlp-panel-2);color:var(--nlp-text);font-weight:850;cursor:pointer}
+.nlp-org-find:hover,.nlp-org-find:focus-visible{border-color:var(--nlp-accent);color:var(--nlp-accent)}
+.nlp-org-dialog{width:min(650px,calc(100vw - 28px));max-height:82vh;border:1px solid var(--nlp-border);border-radius:20px;padding:0;background:var(--nlp-panel)!important;color:var(--nlp-text);box-shadow:0 30px 90px rgba(0,0,0,.5);overflow:hidden}
+.nlp-org-dialog::backdrop{background:rgba(5,10,20,.72);backdrop-filter:blur(6px)}
+.nlp-org-dialog-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:20px 22px;border-bottom:1px solid var(--nlp-border);background:var(--nlp-panel)!important}
+.nlp-org-dialog-head h2{margin:0 0 4px;font-size:1.35rem}.nlp-org-dialog-head p{margin:0;color:var(--nlp-muted);font-size:.9rem}
+.nlp-org-dialog-close{border:0;background:transparent;color:var(--nlp-muted);font-size:1.2rem;padding:7px 9px;cursor:pointer;border-radius:10px}
+.nlp-org-dialog-close:hover{background:var(--nlp-panel-2);color:var(--nlp-text)}
+.nlp-org-dialog-body{padding:20px 22px;background:var(--nlp-panel)!important}
+.nlp-org-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+.nlp-org-search-row input{width:100%}.nlp-org-search-row button{white-space:nowrap}
+.nlp-org-results{display:grid;gap:8px;margin-top:14px;max-height:42vh;overflow:auto}
+.nlp-org-result{display:flex;justify-content:space-between;gap:12px;align-items:center;width:100%;text-align:left;padding:12px 14px;border:1px solid var(--nlp-border);border-radius:12px;background:var(--nlp-panel-2);color:var(--nlp-text);cursor:pointer}
+.nlp-org-result:hover,.nlp-org-result:focus-visible{border-color:var(--nlp-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--nlp-accent) 18%,transparent)}
+.nlp-org-result strong{display:block}.nlp-org-result code{color:var(--nlp-accent);font-weight:850}
+.nlp-org-result i{color:var(--nlp-muted)}
+.nlp-org-lookup-status{margin-top:12px;color:var(--nlp-muted);font-size:.86rem;line-height:1.45}
+html[data-theme="light"] .nlp-org-dialog,html[data-theme="light"] .nlp-org-dialog-head,html[data-theme="light"] .nlp-org-dialog-body{background:#fff!important}
+@media(max-width:560px){.nlp-org-field-row,.nlp-org-search-row{grid-template-columns:1fr}.nlp-org-find{width:100%}}
+
 </style>
 
 <div class="nlp">
@@ -1874,18 +1898,23 @@ html[data-theme="light"] .nlp .nlp-hero-tagline {
                             <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
 
                             <label for="organization">Organization</label>
-                            <input
-                                id="organization"
-                                name="organization"
-                                required
-                                maxlength="160"
-                                autocomplete="organization"
-                                autocapitalize="none"
-                                spellcheck="false"
-                                value="<?= e($organizationValue) ?>"
-                                placeholder="Organization name or slug"
-                            >
-                            <div class="muted" style="margin-top:6px;font-size:.8rem;line-height:1.4">Enter the organization name or Neptune slug your administrator gave you. Neptune no longer exposes the organization directory on the public login page.</div>
+                            <div class="nlp-org-field-row">
+                                <input
+                                    id="organization"
+                                    name="organization"
+                                    required
+                                    maxlength="160"
+                                    autocomplete="organization"
+                                    autocapitalize="none"
+                                    spellcheck="false"
+                                    value="<?= e($organizationValue) ?>"
+                                    placeholder="Organization name or slug"
+                                >
+                                <button class="nlp-org-find" type="button" id="organizationLookupOpen">
+                                    <i class="fa-solid fa-magnifying-glass"></i> Find Organization
+                                </button>
+                            </div>
+                            <div class="muted" style="margin-top:6px;font-size:.8rem;line-height:1.4">Enter the organization name or Neptune slug your administrator gave you. If you do not know it, use <b>Find Organization</b> to search active Neptune organizations by name.</div>
 
                             <label for="username">Username</label>
                             <input id="username" name="username" required maxlength="80" autocomplete="username">
@@ -1911,6 +1940,27 @@ html[data-theme="light"] .nlp .nlp-hero-tagline {
                                 Register an organization
                             </a>
                         </div>
+
+                        <dialog class="nlp-org-dialog" id="organizationLookupDialog">
+                            <div class="nlp-org-dialog-head">
+                                <div>
+                                    <h2><i class="fa-solid fa-building-magnifying-glass"></i> Find Your Organization</h2>
+                                    <p>Search by school, team organization name, or part of the Neptune slug.</p>
+                                </div>
+                                <button class="nlp-org-dialog-close" type="button" id="organizationLookupClose" aria-label="Close organization lookup"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <div class="nlp-org-dialog-body">
+                                <form id="organizationLookupForm">
+                                    <label for="organizationLookupQuery" style="margin-top:0">Organization name</label>
+                                    <div class="nlp-org-search-row">
+                                        <input id="organizationLookupQuery" type="search" maxlength="100" autocomplete="off" placeholder="e.g. McKinney STEAM Academy">
+                                        <button type="submit"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+                                    </div>
+                                </form>
+                                <div class="nlp-org-lookup-status" id="organizationLookupStatus">Enter at least 2 characters. Search results show only active organizations and their sign-in slug.</div>
+                                <div class="nlp-org-results" id="organizationLookupResults"></div>
+                            </div>
+                        </dialog>
                     <?php endif; ?>
                 </aside>
 
@@ -2091,7 +2141,7 @@ html[data-theme="light"] .nlp .nlp-hero-tagline {
                     <div class="nlp-module-icon"><i class="fa-solid fa-database"></i></div>
                     <h3>Database Lab</h3>
                     <p>
-                        Authorized organization owners can explore their scoped scouting data
+                        Strategy, Admin, and Owner users can explore their organization's scoped scouting data
                         with read-only SQL, aggregates, joins, grouping and analysis while
                         platform-level administration remains isolated.
                     </p>
@@ -3014,6 +3064,102 @@ neptune_secure/config.php</span>
             event.preventDefault();
             goToLogin();
         });
+    });
+})();
+</script>
+
+
+<script>
+(function () {
+    const openButton = document.getElementById('organizationLookupOpen');
+    const dialog = document.getElementById('organizationLookupDialog');
+    const closeButton = document.getElementById('organizationLookupClose');
+    const form = document.getElementById('organizationLookupForm');
+    const query = document.getElementById('organizationLookupQuery');
+    const results = document.getElementById('organizationLookupResults');
+    const status = document.getElementById('organizationLookupStatus');
+    const organization = document.getElementById('organization');
+    if (!openButton || !dialog || !form || !query || !results || !status || !organization) return;
+
+    const endpoint = <?= json_encode(base_url('auth/organization-lookup.php')) ?>;
+
+    function openLookup() {
+        query.value = organization.value || '';
+        results.innerHTML = '';
+        status.textContent = 'Enter at least 2 characters. Search results show only active organizations and their sign-in slug.';
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', 'open');
+        window.setTimeout(() => {
+            query.focus();
+            if (query.value.length >= 2) form.requestSubmit();
+        }, 20);
+    }
+
+    function closeLookup() {
+        if (typeof dialog.close === 'function') dialog.close();
+        else dialog.removeAttribute('open');
+    }
+
+    openButton.addEventListener('click', openLookup);
+    closeButton?.addEventListener('click', closeLookup);
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) closeLookup();
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const value = query.value.trim();
+        results.innerHTML = '';
+        if (value.length < 2) {
+            status.textContent = 'Enter at least 2 characters.';
+            return;
+        }
+
+        status.textContent = 'Searching organizations…';
+        try {
+            const response = await fetch(endpoint + '?q=' + encodeURIComponent(value), {
+                headers: {'Accept': 'application/json'},
+                credentials: 'same-origin'
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data || !data.ok) {
+                status.textContent = data?.error || 'Organization lookup is temporarily unavailable.';
+                return;
+            }
+
+            const rows = Array.isArray(data.results) ? data.results : [];
+            if (!rows.length) {
+                status.textContent = 'No active organizations matched that search. Try a school name, team organization name, or known part of the slug.';
+                return;
+            }
+
+            status.textContent = rows.length === 1 ? '1 organization found.' : `${rows.length} organizations found.`;
+            rows.forEach((row) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'nlp-org-result';
+
+                const text = document.createElement('span');
+                const name = document.createElement('strong');
+                name.textContent = row.name || row.slug || 'Organization';
+                const slug = document.createElement('code');
+                slug.textContent = row.slug || '';
+                text.append(name, slug);
+
+                const icon = document.createElement('i');
+                icon.className = 'fa-solid fa-arrow-right';
+
+                button.append(text, icon);
+                button.addEventListener('click', () => {
+                    organization.value = row.slug || row.name || '';
+                    closeLookup();
+                    document.getElementById('username')?.focus();
+                });
+                results.appendChild(button);
+            });
+        } catch (error) {
+            status.textContent = 'Organization lookup is temporarily unavailable.';
+        }
     });
 })();
 </script>

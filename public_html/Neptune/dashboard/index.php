@@ -1,6 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
-$u=require_login();$org=(int)$u['organization_id'];
+$u=require_login();$org=(int)$u['organization_id'];$canDatabaseLab=in_array(($u['role']??''),['strategy','admin','owner'],true);
 
 // Public Neptune GitHub repository.
 $githubRepoUrl = 'https://github.com/blarkin13/neptune-frc-scouting';
@@ -50,7 +50,7 @@ $pageTitle='Home';$moduleName='NEPTUNE';include dirname(__DIR__).'/partials_head
     <a class="module-card" href="<?=e(base_url('analytics/index.php'))?>"><span class="module-card-access"><i class="fa-solid fa-user-group"></i> All users</span><span class="module-card-icon"><i class="fa-solid fa-chart-line"></i></span><span><b>ANALYTICS &amp; STRATEGY</b><small>AUGUR</small><em>Robot Intelligence · Match Board · Match Strategy</em></span></a>
     <a class="module-card" href="<?=e(base_url('admin/index.php#mercury'))?>"><span class="module-card-access"><i class="fa-solid fa-lock"></i> Role-gated</span><span class="module-card-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span><span><b>SYSTEM MAINTENANCE</b><small>MERCURY</small><em>Health · Styling · Files · Updates · Diagnostics</em></span></a>
     <a class="module-card" href="<?=e(base_url('admin/index.php#vulcan'))?>"><span class="module-card-access"><i class="fa-solid fa-user-shield"></i> Admin+</span><span class="module-card-icon"><i class="fa-solid fa-hammer"></i></span><span><b>BUILDERS &amp; CONFIGURATION</b><small>VULCAN</small><em>Game Builder · Pit Form · Pre-Scout Form</em></span></a>
-    <a class="module-card" href="<?=e(base_url('dashboard/data.php'))?>"><span class="module-card-access"><i class="fa-solid fa-user-group"></i> All users</span><span class="module-card-icon"><i class="fa-solid fa-database"></i></span><span><b>DATA LAYER</b><small>SALT</small><em>Raw Data · Strategy+ Database Lab</em></span></a>
+    <?php if($canDatabaseLab):?><a class="module-card" href="<?=e(base_url('dashboard/data.php'))?>"><span class="module-card-access"><i class="fa-solid fa-chart-line"></i> Strategy+</span><span class="module-card-icon"><i class="fa-solid fa-database"></i></span><span><b>DATA LAYER</b><small>SALT</small><em>Organization Data · Database Lab</em></span></a><?php endif;?>
   </div>
 </section>
 

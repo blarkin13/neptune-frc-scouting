@@ -4,40 +4,40 @@
 */
 :root{
   /* Core brand + status */
-  --c1-blue:#004977;
+  --c1-blue:#526D82;
   --c1-red:#D03027;
-  --c1-green:#27814e;
-  --accent:#0b79b7;
-  --good:#3da66e;
-  --bad:#e04a43;
-  --warn:#7db7dc;
-  --ready:#2c91cf;
+  --c1-green:#45A77D;
+  --accent:#6E91AA;
+  --good:#67D6A3;
+  --bad:#E05A5A;
+  --warn:#F0C05A;
+  --ready:#7FB3D5;
   --solid-text:#ffffff;
 
   /* Dark mode foundation */
-  --bg:#05080b;
-  --bg2:#080d12;
-  --panel:#0b1118;
-  --panel2:#101923;
-  --line:#24323f;
-  --text:#f4f7fa;
-  --muted:#91a1b1;
-  --bg-glow:#0b2336;
+  --bg:#0B1117;
+  --bg2:#101820;
+  --panel:#151F28;
+  --panel2:#1B2934;
+  --line:#344A59;
+  --text:#EDF3F6;
+  --muted:#9AABB5;
+  --bg-glow:#183041;
   --shadow:#00000088;
 
   /* Competition colors */
-  --alliance-blue:#1d6c9f;
-  --alliance-blue-deep:#1f6fa5;
+  --alliance-blue:#526D82;
+  --alliance-blue-deep:#405A6F;
 
   /* Game Builder action palette */
-  --game-primary:#004977;
-  --game-secondary:#0b79b7;
-  --game-intake:#3f7a67;
+  --game-primary:#526D82;
+  --game-secondary:#6E91AA;
+  --game-intake:#58796F;
   --game-defense:#e04a43;
   --game-coop:#3da66e;
-  --game-endgame:#6d62aa;
-  --game-special:#8d6b32;
-  --game-utility:#657482;
+  --game-endgame:#737699;
+  --game-special:#8D7551;
+  --game-utility:#71828F;
 
   /* Shared neutral/utility colors */
   --c1-border:#d1d5db;
@@ -50,36 +50,36 @@
   --action-text:var(--solid-text);
 
   /* Neptune subsystem accents */
-  --module-trident:#0b79b7;
-  --module-augur:#6d62aa;
-  --module-saturn:#8d6b32;
-  --module-vulcan:#a2523f;
-  --module-system:#657482;
-  --module-org:#3f7a67;
-  --module-ops:#0b79b7;
+  --module-trident:#6E91AA;
+  --module-augur:#737699;
+  --module-saturn:#8D7551;
+  --module-vulcan:#956456;
+  --module-system:#71828F;
+  --module-org:#58796F;
+  --module-ops:#6E91AA;
 
   /* Access-level accents */
-  --access-strategy:#7289a7;
-  --access-admin:#a27f47;
-  --access-owner:#9aaabd;
+  --access-strategy:#718DB3;
+  --access-admin:#B79548;
+  --access-owner:#AEB8C8;
 }
 html[data-theme="light"]{
   /* Light mode foundation */
-  --bg:#f7f3eb;
-  --bg2:#eef1f3;
-  --panel:#ffffff;
-  --panel2:#f1f3f5;
-  --line:#d1d5db;
-  --text:#17212a;
-  --muted:#5e6b76;
-  --c1-blue:#004977;
-  --solid-text:#ffffff;
-  --accent:#004977;
-  --good:#27814e;
-  --bad:#D03027;
-  --warn:#286b94;
-  --bg-glow:#eef1f3;
-  --shadow:#22222233;
+  --bg:#F5F7F8;
+  --bg2:#EDEFF1;
+  --panel:#FFFFFF;
+  --panel2:#F1F3F4;
+  --line:#CDD5DA;
+  --text:#1B252C;
+  --muted:#65717A;
+  --c1-blue:#405A6F;
+  --solid-text:#FFFFFF;
+  --accent:#526D82;
+  --good:#2F7B58;
+  --bad:#B84640;
+  --warn:#846420;
+  --bg-glow:#E3E9ED;
+  --shadow:#17222A1A;
 }
 /* NEPTUNE THEME PALETTE:END */
 

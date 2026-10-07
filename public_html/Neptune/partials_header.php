@@ -2,6 +2,13 @@
 if(!isset($pageTitle)) $pageTitle='Neptune';
 
 $u=current_user();
+$organizationThemeCss='';
+if($u && (int)($u['organization_id']??0)>0){
+    try{
+        require_once dirname(__DIR__,2).'/neptune_secure/themes.php';
+        $organizationThemeCss=neptune_theme_active_css($pdo,(int)$u['organization_id']);
+    }catch(Throwable $themeError){ error_log('[Neptune themes] '.$themeError->getMessage()); }
+}
 $tbaLiveAvailable=false;$tbaLiveEnabled=false;$tbaLiveInterval=2;
 if($u&&in_array((string)($u['role']??''),['owner','admin','strategy'],true)){
     require_once __DIR__.'/_tba_scheduler.php';
@@ -194,6 +201,9 @@ $homeStructuredData=[
 <link rel="stylesheet" href="<?=e(base_url('assets/css/fontawesome-v7-compat.css'))?>?v=<?=$fontAwesomeCompatVersion?>">
 <link rel="stylesheet" href="/assets/css/app.css?v=<?=$appCssVersion?>">
 <link rel="stylesheet" href="/assets/css/neptune-ui.css?v=<?=$neptuneCssVersion?>">
+<?php if($organizationThemeCss!==''):?>
+<style id="neptune-organization-theme"><?=$organizationThemeCss?></style>
+<?php endif;?>
 <?php foreach($pageStyles as $pageStyle): $pageStyle=(string)$pageStyle; $pageStyleVersion=@filemtime(__DIR__.'/'.ltrim($pageStyle,'/'))?:1; ?>
 <link rel="stylesheet" href="<?=e(base_url($pageStyle))?>?v=<?=$pageStyleVersion?>">
 <?php endforeach;?>

@@ -1122,13 +1122,23 @@ body:not(.tv-mode) main.wrap:not(.wrap-wide) :is(
   .vgb,
   .ar-public-wrap,
   .dr-public-wrap,
+  .ar-page,
+  .dr-page,
   .asb-page,
-  .alliance-page
+  .alliance-page,
+  .match-scout-shell,
+  .impact-shell,
+  .tag-context-shell,
+  .ntp-hub
 ){
   width:100%!important;
   max-width:none!important;
+  margin-top:0!important;
   margin-left:0!important;
   margin-right:0!important;
+  padding-top:0!important;
+  padding-left:0!important;
+  padding-right:0!important;
 }
 
 /* Breadcrumbs follow the same rails rather than retaining the old 1260px cap. */
@@ -1149,6 +1159,24 @@ body:not(.tv-mode) main.wrap:not(.wrap-wide) :is(
   max-width:none!important;
   border-radius:var(--neptune-hero-radius)!important;
 }
+
+/* Canonical hero rails ------------------------------------------------------
+   Every normal Neptune page uses exactly the same hero placement inside the
+   shared .wrap shell.  Page-specific wrappers must not nudge a hero by a few
+   pixels with their own padding/margins.  This also keeps the breadcrumb-to-
+   hero gap and the hero-to-content gap identical across modules. */
+body:not(.tv-mode) main.wrap:not(.wrap-wide) .neptune-breadcrumbs{
+  margin-top:0!important;
+  margin-bottom:14px!important;
+}
+body:not(.tv-mode) main.wrap:not(.wrap-wide) .neptune-page-hero{
+  box-sizing:border-box!important;
+  margin-top:0!important;
+  margin-left:0!important;
+  margin-right:0!important;
+  margin-bottom:20px!important;
+}
+
 
 /* Older responsive hero rules used 18px/16px corners. Keep the Home radius
    unchanged on tablet and phone as well so pages do not visibly change shape

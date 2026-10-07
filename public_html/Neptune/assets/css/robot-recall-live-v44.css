@@ -18,9 +18,15 @@
 .rr-mc-grass{background:#4c9b45;color:#fff;border-bottom-color:#6a4426}.rr-mc-diamond{background:#43cad2;color:#09282b}.rr-mc-gold{background:#efb92f;color:#2e2205}
 .rr-mc-punchline{display:inline-flex;align-items:center;gap:9px;margin-top:18px;padding:10px 13px;border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--line));border-radius:7px;font-weight:800;color:var(--text)}
 .rr-mc-lobby-meta{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:20px}.rr-mc-lobby-meta .rr-lobby-code{margin:0}.rr-mc-qr-card{align-self:center}.rr-mc-qr-card small{display:block;margin-top:8px;color:var(--muted);text-align:center}
-.rr-mc-phone-lobby .rr-mc-phone-rules{display:grid;gap:8px;margin:18px 0 12px}.rr-mc-phone-rules>div{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}
-.rr-mc-phone-rules>div>b{width:34px;height:34px;display:grid;place-items:center;border-radius:3px;background:color-mix(in srgb,var(--accent) 70%,#243d2a);color:#fff;box-shadow:inset -4px -4px 0 rgba(0,0,0,.16)}
-.rr-mc-phone-rules>div>span{font-size:.9rem;line-height:1.25}.rr-mc-phone-note{font-size:.78rem;color:var(--muted);font-weight:700}
+.rr-mc-phone-lobby .rr-mc-phone-rules{display:grid;gap:8px;margin:18px 0 12px}
+.robot-recall-player .rr-mc-phone-rules>div{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:center;padding:10px;border:1px solid var(--rr-line);border-radius:7px;background:var(--rr-panel2);color:#f7f9fc}
+.robot-recall-player .rr-mc-phone-rules>div>b{width:34px;height:34px;display:grid;place-items:center;border-radius:3px;background:color-mix(in srgb,var(--rr-cyan) 62%,#10384f);color:#fff;box-shadow:inset -4px -4px 0 rgba(0,0,0,.16)}
+.robot-recall-player .rr-mc-phone-rules>div>span{font-size:.9rem;line-height:1.25;color:#f7f9fc}
+.robot-recall-player .rr-mc-phone-note{font-size:.78rem;color:var(--rr-muted);font-weight:700}
+
+/* Keep the public player lobby visually self-contained even if the browser's
+   saved Neptune UI mode is light or an organization uses a custom theme. */
+.robot-recall-player .rr-mc-phone-lobby{--line:var(--rr-line);--panel2:var(--rr-panel2);--accent:var(--rr-cyan);--muted:var(--rr-muted)}
 
 /* Restore the mystery logo as a major visual element rather than its 40px source size. */
 .robot-recall-player .rr-player-logo-slot{

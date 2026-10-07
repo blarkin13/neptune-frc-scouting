@@ -3,7 +3,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 $u=require_login();
 $pageTitle='Analytics & Strategy';
 $moduleName='AUGUR';
-$isOwner=($u['role']??'')==='owner';
+$canDatabaseLab=in_array(($u['role']??''),['strategy','admin','owner'],true);
 include dirname(__DIR__).'/partials_header.php';
 ?>
 <section class="module-page neptune-hub">
@@ -15,11 +15,11 @@ include dirname(__DIR__).'/partials_header.php';
   </header>
 
   <div class="neptune-hub-grid">
-    <?php if($isOwner):?>
+    <?php if($canDatabaseLab):?>
     <a class="neptune-hub-card accent-augur" href="<?=e(base_url('dashboard/data.php'))?>">
       <div class="neptune-hub-card-top">
         <span class="neptune-hub-icon"><i class="fa-solid fa-database"></i></span>
-        <span class="neptune-hub-badge access-owner"><i class="fa-solid fa-lock"></i> Owner</span>
+        <span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-chart-line"></i> Strategy+</span>
       </div>
       <span class="neptune-hub-card-kicker">Explore the source data</span>
       <h3>Database Lab</h3>
