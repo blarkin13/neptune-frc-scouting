@@ -1,87 +1,176 @@
 # Neptune
 
-**FRC Scouting, Pit Scouting, Match Control, Analytics & Strategy Platform**
+**FRC Scouting, Pit Scouting, Event Operations, Analytics & Strategy Platform**
 
-Neptune is a web-based scouting platform for the **FIRST Robotics Competition (FRC)**. It combines live match scouting, pit scouting, match administration, robot analytics, team-controlled data sharing, and The Blue Alliance integration in one PHP/MySQL application.
+Neptune is a web-based scouting and strategy platform for the **FIRST Robotics Competition (FRC)**. It combines live match scouting, tag scouting, pit scouting, pre-scouting, event operations, robot intelligence, alliance strategy, organization management, controlled data sharing, and The Blue Alliance integration in one PHP/MySQL application.
 
-> **Release status:** Neptune Public 1.0 release candidate. The production-backed source, canonical schema, self-host first-run flow, tenant security, and Platform Owner strong authentication are being finalized for the 1.0 tag.
+> **Current release:** Neptune Public 1.0 (`v1.0.0`)
 
+## What Neptune includes
 
-## Neptune modules
+Neptune is organized into functional modules:
 
-Neptune is the umbrella FRC Scouting & Strategy Platform. The application is organized into named modules:
+- **TRIDENT** — Match Scouting, Tag Scouting, Pit Scouting, and Pre-Scouting
+- **SATURN** — Command Center, Event Operations, Match Control, and Administration
+- **AUGUR** — Analytics, Robot Intelligence, Ratings, and Strategy
+- **MERCURY** — System Maintenance, Diagnostics, Platform Administration, and File Operations
+- **VULCAN** — Game Builder, Pit Form Builder, and Pre-Scout Form Builder
+- **SALT** — Database access and organization-scoped data tools
 
-- **TRIDENT** — Match Scouting, Pit Scouting, and Pre-Scouting
-- **SATURN** — Command Center, Match Control, and Administration
-- **AUGUR** — Analytics, Strategy, and Robot Intelligence
-- **MERCURY** — System Maintenance, Diagnostics, and Platform Operations
-- **VULCAN** — Game Builder, Form Builder, and System Configuration
-- **SALT** — Database and Data Storage
+The module names are organizational labels inside one Neptune application; they do not require separate installations.
 
-The module names describe functional boundaries inside the same Neptune platform; they do not require separate installations.
+## Main navigation
 
+### Scouting · TRIDENT
 
-### Navigation
+The Scouting hub provides:
 
-The main menu uses functional names rather than module codenames:
+- **Match Scouting** — detailed live action scouting with success/failure tracking, scoring, timing, cycles, autonomous, teleop, and endgame context
+- **Tag Scouting** — fast Match, Pit, and Team observations using shared tags, notes, scoring contribution, photos, and video
+- **Pit Scouting** — robot capabilities, configuration, reliability, photos, and game-specific pit questions
+- **Pre-Scouting** — team research, outreach tracking, and reusable season knowledge before an event
 
-- **Scouting** opens **TRIDENT**, where users choose Match Scouting, Pit Scouting, or Pre-Scouting.
-- **Analytics & Strategy** opens **AUGUR**, where users choose Robot Intelligence or the Match Board.
-- **Command Center** opens **SATURN**, with Event Operations, VULCAN configuration tools, and organization administration grouped separately.
+### Analytics & Strategy · AUGUR
 
-Module names remain visible as secondary branding inside each application.
+The Analytics & Strategy hub includes:
 
-## Features
+- **Database Lab** — Strategy+ read-only query builder, SQL, and CSV export with tenant scoping
+- **Robot Lookup** — search by team number or name and combine TBA identity, pit scouting, pre-scouting, and event match data
+- **Robot Intelligence** — scouting-derived robot performance, cycles, scoring, autonomous, defense, pit data, notes, and photos
+- **Robot Stats Table** — event-wide sortable comparison of offense, defense, Neptune EPA, Neptune D-EPA, and scouting coverage
+- **Match Board** — six-robot matchup view for past and upcoming matches
+- **Pit Operations Board** — pit readiness, queue timing, checklists, alliance context, next-match briefing, and TV mode
+- **EPA Ratings** — public TBA-derived overall, Auto, Teleop, and Endgame EPA archive with REST API access
+- **D-EPA Ratings** — defensive suppression ratings, including scouting-confirmed Neptune D-EPA
+- **Match Strategy** — roles, autonomous assignments, opponent priorities, endgame responsibilities, and saved plans
+- **Alliance Selection** — pick-list workspace, robot comparisons, declines/broken-robot tracking, scenarios, and live draft support
 
-### TRIDENT · Live match scouting
+### Command Center · SATURN
 
-- Administrator-controlled match Ready / Start / End workflow
-- Official match and robot assignments imported from The Blue Alliance
-- Synchronized match timer with Autonomous, transition pause, Teleop, and Endgame phases
-- Configurable action buttons generated from game JSON
-- Swipe right for Success and left for Failure
-- Repeated swipes of the same action without reopening the action dialog
-- Real-time database writes
-- Current action count, scouting score, and last-action confirmation
-- Live administrative monitoring
-- Complete match action history with administrative soft-delete
-- Re-scout support for restarted FRC matches; superseded runs are excluded from analytics but retained for audit history
+The Command Center is the operational and administrative hub.
 
-### VULCAN · Game Builder
+#### Event Operations
 
-Game definitions are data-driven instead of hard-coded for a single season.
+Strategy+ tools include:
 
-Administrators can configure:
+- **Match Control** — Ready, Start, Pause, End, and re-scout match workflows
+- **Live Monitor** — connected scouts, assignments, current match state, and recorded actions
+- **Event Setup** — create events, select games, manage rosters, and set the current event
+- **Manual Match Schedule** — create schedules when an event is not available from TBA
+- **TBA Sync** — import/refresh official rosters, schedules, and event links
+- **Pit Games** — optional interactive pit activities such as Robot Recall, reaction challenges, and card-magic displays
+
+#### VULCAN Builders
+
+Admin+ tools include:
+
+- **Game Builder** — scoring actions, field layout, button configuration, points, and match timing
+- **Pit Form Builder** — game-specific pit capability questions
+- **Pre-Scout Form Builder** — pre-event research fields and reusable season templates
+
+#### Organization
+
+Neptune supports multiple organizations and multiple FRC teams within an organization.
+
+Organization tools include:
+
+- **Teams & Users** — accounts, roles, teams, invitations, temporary passwords, Google linking, deactivate/reactivate, and editable FRC teams
+- **Interface Styling** — organization-scoped reusable themes with dark/light presentation
+- organization-scoped sharing and access controls
+
+#### System / Platform
+
+Platform-owner and system tools include:
+
+- **System Check**
+- **File Manager**
+- **Maintenance Console**
+- **Platform Administration**
+- **AUGUR Operations**
+- production backup status and maintenance history
+
+Platform-only tools require strong authentication.
+
+## Live match scouting
+
+TRIDENT match scouting supports:
+
+- Administrator-controlled Ready / Start / Pause / End workflow
+- official field-station and robot assignments
+- Autonomous, transition, Teleop, and Endgame phases
+- game-defined action buttons generated from JSON
+- swipe right for Success and left for Failure
+- repeated action entry without reopening the action dialog
+- current score/action counts and last-action confirmation
+- live administrative monitoring
+- action history with auditable soft-delete
+- re-scout support for replayed/restarted FRC matches while retaining prior runs for audit history
+
+## Game Builder
+
+Neptune is game-driven rather than hard-coded to one FRC season.
+
+Game definitions can include:
 
 - Autonomous duration
 - Auto-to-Teleop transition pause
 - Teleop duration
 - Endgame timing
-- Action names and automatically generated unique codes
-- Points
-- Categories and locations
-- Button colors
-- Rectangular button sizes: 1x1, 1x2, 2x1, 1x4, 4x1
-- Circular button sizes: 1x1, 2x2, 4x4
-- Four-column snap-to-grid layout
+- scoring/action names and unique codes
+- point values
+- categories and locations
+- button colors
+- rectangular sizes: 1x1, 1x2, 2x1, 1x4, 4x1
+- circular sizes: 1x1, 2x2, 4x4
+- four-column snap-to-grid layouts
 
 Existing game definitions can be loaded, edited, previewed, and saved as JSON.
 
-### TRIDENT · Pre-Scouting
+## Pre-Scouting
 
-Neptune includes an event-based pre-scouting workflow for contacting/researching teams before an event. The event roster comes from The Blue Alliance whenever possible, and each team can be tracked as **Not Started**, **Contacted**, **Response Received**, **No Response**, or **Unavailable**.
+Pre-Scouting is event-based and can begin before teams arrive at competition.
 
-The event overview uses a spreadsheet-style table so a tablet/laptop can show team number, location, season record, EPA breakdown, cached prior-event OPR values, event/alliance history, assigned scout, and completion status. TBA supplies team/location/event information and prior-event OPR/alliance data when available. Statbotics is an optional public source for season record and EPA; Neptune continues working if Statbotics is unavailable.
+Neptune can track each team as:
 
-Pre-scout answers are stored twice: as an event-specific snapshot and as reusable season knowledge for the same robot/game. When a team appears at another event in the same FRC season, Neptune can pre-fill known robot answers from earlier pre-scouting and compatible pit scouting while still allowing the new event information to be corrected. The assigned **Scout** remains event-specific and is not carried forward as robot knowledge.
+- Not Started
+- Contacted
+- Response Received
+- No Response
+- Unavailable
 
-Questions are game-defined from **Command → Pre-Scout Form Builder**. The included 2026 REBUILT template mirrors the team's existing spreadsheet workflow: Auto, Trench, Hopper Size, Shooter, Climb, Throughput, Drive Notes, Defence / CounterDefence, and Archetype.
+The overview can combine team/location/event data from The Blue Alliance with optional public Statbotics EPA/season information.
 
-### TRIDENT · Current Event & Pit Scouting
+Pre-scout answers are stored as both:
 
-Neptune does not require a published match schedule before an event can be used.
+1. an event-specific snapshot, and
+2. reusable season knowledge for the same robot/game.
 
-An event can move through:
+This allows known robot information to carry forward while event-specific assignments and responses remain local to the event.
+
+## Pit Scouting
+
+Pit scouting can begin before an official qualification schedule exists.
+
+Features include:
+
+- searchable event roster
+- Draft / Complete status
+- drivetrain and robot basics
+- intake/scoring capabilities
+- autonomous and endgame information
+- preferred roles and defense information
+- reliability / known issues
+- alliance-partner notes
+- phone camera or desktop upload
+- automatic image resizing
+- AVIF preferred with WebP/JPEG fallback
+- game-specific questions from the Pit Form Builder
+
+## Event lifecycle
+
+Neptune can operate an event before TBA publishes a match schedule.
+
+A typical event progresses through:
 
 ```text
 Planned
@@ -91,224 +180,196 @@ Planned
   -> Complete
 ```
 
-Pit scouting can begin from an event roster before qualification schedules are released. When TBA publishes the schedule, Neptune adds matches to the existing event without replacing pit data.
+Roster sync and schedule sync are independent. Pit scouting data is retained when a schedule later arrives.
 
-Pit scouting includes:
+## The Blue Alliance integration
 
-- Searchable event team roster
-- Draft / Complete status
-- Drivetrain and robot basics
-- Intake and scoring capabilities
-- Autonomous information
-- Endgame information
-- Preferred roles and defense information
-- Reliability / known issues
-- Alliance-partner notes
-- Robot photographs from a phone camera or desktop file picker
-- Automatic photo resizing (1800 px max) with AVIF preferred, then WebP/JPEG fallback
-- Game-specific questions configured in the Pit Form Builder
+Neptune uses **The Blue Alliance API v3** for official FRC information such as:
 
-### The Blue Alliance integration
+- team events
+- event rosters
+- qualification and playoff schedules
+- red / blue alliances and field stations
+- match scores and results
+- event links and identity data
 
-Neptune uses **The Blue Alliance API v3** for official FRC information, including:
+Manual schedules remain available when an event is not yet available from TBA.
 
-- Team events
-- Event roster
-- Qualification and playoff schedules
-- Red / Blue alliances and field stations
-- Match scores and results
+## Multi-organization and role model
 
-Roster sync and schedule sync are independent, so pit scouting can be used before the match schedule is available.
+Neptune supports multiple organizations on one installation while keeping operational data scoped to the owning organization.
 
-### AUGUR · Analytics
+Roles:
 
-Neptune combines observed match data with pit scouting information.
+- **Scout**
+- **Strategy**
+- **Admin**
+- **Owner**
 
-Robot analytics include values such as:
+User administration follows a role ceiling:
 
-- Points per match
-- Average scoring cycle time
-- Offensive success percentage
-- Defensive actions per match
-- Matches scouted
-- Total scouting actions / points
-- Event match history
-- Pit scouting responses and robot photos
+- Strategy can manage Scouts and assign roles up to Strategy
+- Admin can manage Scouts/Strategy and assign roles up to Admin
+- Owner can manage lower roles and assign roles up to Owner
+- users cannot change their own role or status
 
-Robot Cards and the Pit Match Board open a shared **Robot Intelligence** modal with detailed robot information.
+Other multi-tenant behavior includes:
 
-### Pit Match Board
+- organization name/slug + username + password sign-in
+- optional Google sign-in
+- exact verified-email linking to existing users
+- optional approved Workspace auto-provisioning as Scout
+- one-time invitation links
+- organization lookup on the public password sign-in page
+- suspension/reactivation at the platform level
+- tenant data export from Platform Administration
+- organization-scoped Interface Styling
+- organization-scoped Database Lab operational data
+- team-controlled data sharing
 
-A large-screen display intended for pit TVs can show past and upcoming matches, the robots involved, and scouting statistics. Robot tiles are clickable for detailed Robot Intelligence.
+## Authentication and Platform Owner MFA
 
-### Multi-organization / multi-team support
+Google OAuth is optional for normal Neptune use.
 
-- Multiple organizations can use one Neptune installation
-- Users are scoped to their organization
-- Organizations may contain multiple FRC teams
-- Password sign-in uses organization name/slug + username + password; Neptune does not expose a public organization dropdown
-- Google sign-in routes only to verified memberships, approved Workspace auto-provisioning, or direct invitations
-- Teams & Users supports editing accounts, primary-team assignment, deactivate/reactivate, invitations, Google linking, temporary-password reset, organization sign-in slug display, and Admin/Owner editing of organization FRC teams. User administration follows a role ceiling: Strategy can manage Scouts and assign up to Strategy; Admin can manage Scouts/Strategy and assign up to Admin; Owner can manage lower roles and assign up to Owner. Users cannot change their own role/status.
-- Approved Google Workspace users can be auto-provisioned as Scouts on first sign-in and are identified in Teams & Users; verified-email matches link to existing Neptune users instead of creating duplicates
-- Public password sign-in includes an organization lookup modal so users who do not know their organization slug can find the active organization and select the correct sign-in slug
-- Forgot Password uses Google identity verification before allowing a new local Neptune password
-- Interface Styling is organization-scoped and Admin+. Admins/Owners can create, edit, duplicate, delete, and select reusable dark/light themes without affecting another organization
-- Database Lab is Strategy+ and keeps tenant-owned operational data scoped to the signed-in organization while installation-wide AUGUR reference/rating data remains global
-- The designated platform organization receives **Platform Administration** for tenant status, owner recovery, suspension/reactivation, organization details, and tenant data export
-- Temporary passwords require a password change after first login
-- Scouting data retains an owning team
-- Controlled team-to-team data sharing is supported by the database/application model
+Platform Owner accounts require stronger authentication for high-value tools such as File Manager, Maintenance Console, Platform Administration, and platform operations.
+
+Supported Platform Owner paths are:
+
+- **Google sign-in**, or
+- **Neptune password + TOTP authenticator code**
+
+Password-based Platform Owner access includes:
+
+- Google Authenticator QR enrollment
+- manual setup-key fallback
+- one-time recovery codes
+- encrypted TOTP seeds at rest
+- replay protection for previously used TOTP time steps
+- tracked migration: `security.platform-owner-mfa.v1`
+
+A self-hosted installation does **not** require Gmail or Google Workspace.
 
 ## Technology
 
 - PHP 8.x
 - MySQL 8.x / compatible MariaDB
+- PDO MySQL
 - JavaScript
 - HTML / CSS
 - JSON game definitions
 - Font Awesome
 - The Blue Alliance API v3
+- optional Statbotics public data for pre-scout context
 
-Neptune intentionally avoids requiring a large PHP framework so it can run on ordinary PHP/MySQL hosting.
+Neptune intentionally avoids requiring a large PHP framework.
 
 ## Repository layout
 
 ```text
 neptune-frc-scouting/
+├── .github/
+│   └── workflows/
+│       └── php-lint.yml
 ├── neptune_secure/
 │   ├── bootstrap.php
 │   ├── config.example.php
-│   ├── connection.php
-│   ├── legacy_connection.php
-│   ├── image.php
-│   └── tba.php
+│   ├── platform-mfa.php
+│   └── ...
 ├── public_html/
 │   └── Neptune/
 │       ├── admin/
 │       ├── analytics/
 │       ├── api/
 │       ├── assets/
+│       ├── auth/
 │       ├── dashboard/
+│       ├── docs/
 │       ├── games/
 │       ├── images/
 │       ├── pit/
 │       ├── prescout/
 │       ├── scout/
-│       ├── scouting.php          # TRIDENT scouting selector
+│       ├── scouting.php
 │       └── index.php
-└── sql/
-    └── neptune_schema.sql
+├── scripts/
+├── sql/
+│   └── neptune_schema.sql
+├── LICENSE
+└── README.md
 ```
 
-`neptune_secure` is intended to live **outside the public web root** in a hosted installation.
+`neptune_secure` belongs **outside the public web root** in a hosted installation.
 
 ## Requirements
 
 Recommended:
 
 - PHP 8.x
-- PDO MySQL extension
+- PDO MySQL
 - PHP sessions
-- cURL extension
+- cURL
 - MySQL 8.x or compatible MariaDB
-- Apache or another PHP-capable web server
-- HTTPS for a production deployment
-- A The Blue Alliance API key
-- Recommended for pit-photo optimization: Imagick/ImageMagick or PHP GD
+- Apache, Nginx, or another PHP-capable web server
+- HTTPS for production
+- The Blue Alliance API key
+- Imagick/ImageMagick or PHP GD recommended for pit-photo optimization
 
-## Fresh hosted installation
+## Fresh self-hosted installation
 
-Clone Neptune with:
-
-```bash
-git clone https://github.com/blarkin13/neptune-frc-scouting.git
-```
-
-Or download the repository ZIP from GitHub.
-
-1. Clone or download this repository.
-2. Create a MySQL database for Neptune.
+1. Clone or download the repository.
+2. Create an empty MySQL database.
 3. Import `sql/neptune_schema.sql`.
 4. Place `public_html/Neptune/` below your public web root.
-5. Place `neptune_secure/` beside `public_html`, **not inside it**.
-6. Copy:
-
-   ```text
-   neptune_secure/config.example.php
-   ```
-
-   to:
-
-   ```text
-   neptune_secure/config.php
-   ```
-
-7. Replace the `XXX` values in `config.php` with your database settings and TBA API key.
-8. Open `/Neptune/register.php` (or use **Register an organization** on the public sign-in page) to create the first organization and owner account.
-9. Sign in as the first owner and run **System Check**. The first organization is the platform organization and receives platform-only administration/maintenance tools.
+5. Place `neptune_secure/` beside `public_html`, outside the web root.
+6. Copy `neptune_secure/config.example.php` to `neptune_secure/config.php`.
+7. Configure database settings, base URL/timezone, TBA key, and application settings.
+8. Open `/Neptune/register.php`.
+9. On an empty database, Neptune displays **Set Up Neptune** and creates the first organization and Platform Owner.
+10. Sign in and run **System Check**.
 
 Neptune does **not** use `/Neptune/admin/install.php`.
 
-**New installations import `sql/neptune_schema.sql` as the baseline schema.** Current schema-changing application updates then self-apply idempotent migrations and record them in `neptune_migrations`.
+### Important application settings
 
-## Example configuration
-
-The repository contains `neptune_secure/config.example.php`:
+`config.example.php` includes:
 
 ```php
-<?php
-return [
-    'app' => [
-        'base_url' => '/Neptune',
-        'session_name' => 'NEPTUNESESSID',
-        'timezone' => 'UTC',
-    ],
-    'db' => [
-        'host' => 'localhost',
-        'port' => 3306,
-        'name' => 'XXX',
-        'user' => 'XXX',
-        'pass' => 'XXX',
-        'charset' => 'utf8mb4',
-    ],
-    'legacy_db' => [
-        'host' => 'localhost',
-        'port' => 3306,
-        'name' => 'XXX',
-        'user' => 'XXX',
-        'pass' => 'XXX',
-        'charset' => 'utf8mb4',
-    ],
-    'tba' => [
-        'auth_key' => 'XXX',
-        'base_url' => 'https://www.thebluealliance.com/api/v3',
-    ],
-    'statbotics' => [
-        'base_url' => 'https://api.statbotics.io/v3',
-    ],
-];
+'app' => [
+    'base_url' => '/Neptune',
+    'session_name' => 'NEPTUNESESSID',
+    'timezone' => 'UTC',
+
+    'platform_organization_id' => 1,
+    'allow_public_registration' => false,
+    'platform_owner_auth' => 'strong',
+    'mfa_encryption_key' => '',
+],
 ```
 
-**Do not commit your real `neptune_secure/config.php`.** It is excluded by `.gitignore`.
+For a private school/team installation, `allow_public_registration` should normally remain `false`.
 
-## Local installation
+The first organization can still be created on an empty database even when public registration is disabled.
 
-Neptune can run locally with environments such as XAMPP, MAMP, WAMP, Docker, or a native PHP/MySQL installation.
+For Platform Owner access:
 
-A typical local setup is:
+```php
+'platform_owner_auth' => 'strong',
+```
 
-1. Start PHP/Apache and MySQL.
-2. Create a database for Neptune.
-3. Import `sql/neptune_schema.sql`.
-4. Copy `config.example.php` to `config.php` and fill in the local credentials.
-5. Configure the web server so `/Neptune` maps to `public_html/Neptune` while `neptune_secure` remains outside the served directory.
-6. Visit `/Neptune/register.php` and create the initial organization/owner. There is no `admin/install.php` browser installer.
+means:
 
-On an empty database, `/register.php` becomes the first-run setup page and creates the platform organization plus its first Owner. Private/self-hosted installs normally keep `allow_public_registration=false` so later organizations cannot self-register unless the operator explicitly enables it.
+- Google sign-in, or
+- password + TOTP/recovery code.
 
-## Authentication and Platform Owner MFA
+Use `google` only when the installation intentionally requires Google-only Platform Owner access.
 
-Google/OIDC is optional for normal Neptune use and for self-hosted installations. When configured, Neptune reads these secrets from `/etc/scout/neptune.env`:
+A dedicated stable MFA encryption key is recommended for new installations. It can be stored in private config or supplied through `NEPTUNE_MFA_ENCRYPTION_KEY`.
+
+## Google sign-in
+
+Google OAuth/OIDC is optional.
+
+When configured through environment variables, Neptune can use:
 
 ```text
 GOOGLE_OAUTH_CLIENT_ID="..."
@@ -316,40 +377,13 @@ GOOGLE_OAUTH_CLIENT_SECRET="..."
 GOOGLE_OAUTH_REDIRECT_URI="https://your-host/Neptune/auth/google-callback.php"
 ```
 
-The Google OAuth client should use the exact callback URI for the deployment. Google authenticates identity; Neptune remains the source of truth for organization membership, role, team assignment, and active/suspended status.
-
-Workspace domain configuration is organization-specific and is only required for safe automatic Scout provisioning. Existing users can use Google through an exact verified-email match even when their organization does not configure a Workspace domain.
-
-Platform Owner accounts use stronger authentication for high-value tools such as File Manager, Maintenance Console, Platform Administration, and platform-level operations:
-
-- **Google sign-in**, or
-- **Neptune password + Google Authenticator TOTP**
-- One-time recovery codes are generated when TOTP is enrolled
-- TOTP secrets are encrypted at rest
-- A replayed TOTP step is rejected
-- Platform Owner MFA is recorded through the `security.platform-owner-mfa.v1` migration
-
-A self-hosted school does not need Gmail or Google Workspace. The first Platform Owner password login guides the owner through Google Authenticator enrollment using a QR code with a manual setup-key fallback.
-
-## Organization interface themes
-
-Each organization can maintain its own interface theme library from **Command Center → Organization → Interface Styling**.
-
-- Access is limited to **Admin and Owner**
-- Built-in Neptune themes can be applied directly or used as a starting point
-- New themes are created in Neptune through the Theme Editor modal; no ZIP/theme-pack workflow is required
-- Custom organization themes can be edited, duplicated, deleted, and switched at any time
-- Clicking/tapping a theme card applies it; compact icon controls handle customization/editing without making the card layout button-heavy
-- Night/Day mode remains a per-user display toggle inside the selected organization theme
-- Theme records and the active-theme selection are scoped by `organization_id`
-
-Theme schema changes self-apply through Neptune's tracked migration system.
+Google verifies identity; Neptune remains the source of truth for organization membership, roles, team assignments, and account status.
 
 ## Updates and database migrations
 
-Neptune intentionally keeps update packages self-contained.
+Neptune update packages are intended to be self-contained.
 
-Schema-changing code uses a small global migration ledger:
+Schema-changing updates use the migration ledger:
 
 ```text
 neptune_migrations
@@ -359,76 +393,85 @@ applied_at
 package
 ```
 
-Each migration checks whether its key has already been applied before changing the schema. **Maintenance Console** reports **Files updated** and **DB migrations applied**, and provides installed-update and DB-migration history.
+Maintenance Console reports installed update history and applied database migrations.
 
-Maintenance Console file rollback restores files only; it does **not** automatically reverse database migrations. Migrations should therefore remain idempotent and forward-safe.
+File rollback restores files only; it does **not** automatically reverse database migrations. Migrations should remain idempotent and forward-safe.
 
 ## Production backups
 
-The hosted production deployment includes an optional GitHub Releases backup workflow under `scripts/production-backup/`.
+The hosted production deployment includes optional encrypted GitHub-based backup tooling.
 
-The production job:
+The production backup workflow can:
 
-- creates a consistent MySQL/MariaDB logical dump
-- archives Neptune uploads and game JSON
-- writes manifests and SHA-256 checksums
-- encrypts the recovery archive before it leaves the server
-- uploads the encrypted archive to a private GitHub backup repository
-- retains approximately 14 daily, 8 weekly, and 12 monthly recovery points
-- records status for Maintenance Console
-- provides a documented restore command and a pre-restore safety backup
+- create a consistent MySQL/MariaDB logical dump
+- archive uploads and game JSON
+- write manifests and SHA-256 checksums
+- encrypt the recovery archive before it leaves the server
+- upload encrypted recovery archives to a private GitHub backup repository
+- keep daily/weekly/monthly recovery points
+- expose backup status to Maintenance Console
+- provide a documented restore command with a pre-restore safety backup
 
-Production secrets are intentionally **not** stored in the source repository or backup archive. The GitHub backup token, database credentials, and backup encryption key remain root-readable server secrets. The encryption key must also be retained somewhere off the production server.
+Production secrets are intentionally kept outside the source repository and outside the encrypted backup archive.
 
-See `docs/PRODUCTION_BACKUP_AND_RESTORE.md` for the current production restore procedure.
+See `public_html/Neptune/docs/PRODUCTION_BACKUP_AND_RESTORE.md` for the current restore procedure.
 
-## Pit photo camera and image optimization
+## Security
 
-Pit Scouting uses a single photo control that works across devices:
+Public 1.0 includes:
 
-- **Phone/tablet:** the browser can offer the rear camera or an existing photo.
-- **Desktop/laptop:** the same control opens the normal file picker.
-- Neptune validates the uploaded image, corrects phone orientation where supported, strips unnecessary metadata, and resizes it to a maximum dimension of 1800 px.
-- Output priority is **AVIF → WebP → JPEG**, based on the capabilities of the PHP host.
-- HEIC/HEIF files can be decoded when the host's ImageMagick build supports them. If not, the scout is asked to use a JPEG/Most Compatible phone format.
+- `password_hash()` / `password_verify()`
+- forced reset for temporary passwords
+- public login rate limiting
+- registration rate limiting
+- non-enumerating invalid-login responses
+- generic public error handling without raw PHP/SQL/filesystem details
+- CSRF protection
+- session regeneration after authentication
+- prepared SQL statements
+- organization-scoped operational queries
+- strong authentication for Platform Owner tools
+- organization-bound offline-sync credentials
+- secrets outside `public_html`
+- executable-script blocking in uploads
+- web blocking for backup/deployment artifacts such as `.bak*`, `.before*`, ZIPs, SQL dumps, logs, env files, and hidden files
+- auditable soft-delete for scouting actions
 
-Owners/admins can open **Command → System Check** to see whether AVIF, WebP, Imagick, GD, HEIC decoding, and the current PHP upload limits are available. AVIF is an optimization, not a hard requirement; Neptune automatically falls back when it is unavailable.
+## Continuous integration
+
+GitHub Actions runs a PHP syntax check on pushes and pull requests to `main`.
+
+The workflow lints every tracked PHP file with:
+
+```text
+php -l
+```
+
+Public 1.0 was tagged only after the PHP lint workflow passed.
 
 ## Event-day workflow
 
-A typical FRC event workflow is:
+A typical competition workflow is:
 
-1. Create/select the season's game in **Game Builder**.
-2. Create the event and make it the **Current Event**.
-3. Import or paste the event roster and begin **Pit Scouting**.
-4. When TBA publishes the schedule, use **TBA Sync** to import/refresh it.
-5. Use **Match Control** to make the next match Ready and start it.
-6. Scouts select their assigned field station and record actions.
-7. Use **Live Monitor** to watch activity and correct erroneous actions.
-8. Review **Robot Analytics**, **Robot Intelligence**, and the **Pit Match Board**.
+1. Build/select the current game in **Game Builder**.
+2. Create the event in **Event Setup** and make it current.
+3. Load/import the event roster.
+4. Begin **Pit Scouting** and **Pre-Scouting** as needed.
+5. Sync the official TBA schedule when available, or use **Manual Match Schedule**.
+6. Use **Match Control** to Ready and start matches.
+7. Scouts record observations in Match Scouting or Tag Scouting.
+8. Use **Live Monitor** during event operations.
+9. Review Robot Lookup, Robot Intelligence, Robot Stats Table, Match Board, Pit Operations Board, Match Strategy, and Alliance Selection.
 
-## Security notes
+## In-app training
 
-- Passwords use PHP `password_hash()` / `password_verify()`.
-- Admin-created temporary passwords require a first-login reset.
-- Public password login is rate-limited by source and attempted account/organization target.
-- Public organization registration is separately rate-limited. On a clean self-host install, the first organization may always be created; additional public registration is controlled by `allow_public_registration`.
-- Invalid password-login responses do not reveal whether the organization, username, account status, or password was wrong.
-- Public registration/login failures do not expose raw PHP, SQL, filesystem, or exception details; unexpected failures receive a generic error with a server-log reference.
-- Forms use CSRF protection.
-- Successful authentication regenerates the session.
-- SQL uses prepared statements.
-- Operational queries are organization-scoped.
-- File Manager, Maintenance Console, Platform Administration, and platform-level operations are restricted to the designated Platform Owner and require strong authentication.
-- API endpoints require authenticated sessions where appropriate.
-- Database, Google OAuth, TBA, offline-sync, and MFA-encryption credentials remain outside `public_html`.
-- Deleted scouting actions are retained as auditable soft-deletes and excluded from normal analytics.
+Neptune includes a Quick Walkthrough and role-oriented training/help so users can learn the event workflow from inside the application.
 
 ## Contributing
 
-Neptune is still evolving. Bug reports, scouting workflow ideas, UI improvements, and code contributions are welcome.
+Bug reports, scouting workflow ideas, UI improvements, and code contributions are welcome.
 
-Before deploying development updates to an event system, back up the Neptune database and test the update away from competition use.
+Before deploying development changes to an event system, back up the Neptune database and test away from live competition use.
 
 ## Disclaimer
 
