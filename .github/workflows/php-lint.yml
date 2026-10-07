@@ -36,8 +36,7 @@ jobs:
             exit 1
           fi
 
-          printf 'Linting %d PHP files...
-' "${#files[@]}"
+          printf 'Linting %d PHP files...\n' "${#files[@]}"
           for file in "${files[@]}"; do
             php -l "$file" >/dev/null
           done
