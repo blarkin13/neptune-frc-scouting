@@ -1,0 +1,37 @@
+NEPTUNE - MAC FIRST RUN
+
+If macOS says "Install Neptune.command Not Opened":
+
+Open Terminal and paste:
+
+  xattr -dr com.apple.quarantine ~/Downloads/Neptune_Portable_*
+
+Press Return, then double-click Install Neptune.command again.
+
+If the Neptune folder is not in Downloads:
+1. Type this in Terminal, including the trailing space:
+     xattr -dr com.apple.quarantine 
+2. Drag the Neptune folder from Finder into Terminal.
+3. Press Return.
+
+Apple Silicon installs Neptune at:
+  /opt/homebrew/var/www/Neptune
+
+Intel Homebrew installs Neptune at:
+  /usr/local/var/www/Neptune
+
+The installer prints the exact local and LAN URLs when it finishes.
+
+DATABASE NOTE
+
+If Homebrew MySQL is already installed, Neptune will use the existing MySQL
+binaries with its own private Neptune-only database directory. It will not ask
+for the MySQL root password and it will not unlink or replace MySQL.
+
+
+AFTER INSTALL
+The installer prints the exact Neptune install directory and these two URLs:
+- Local index (this Mac)
+- LAN index (tablets/other devices)
+
+It then opens the local index automatically in your default browser.
