@@ -11,7 +11,7 @@ on:
       - 'public_html/Neptune/api/portable-sync-media.php'
       - 'public_html/Neptune/assets/portable-server/**'
       - 'docs/PORTABLE_SERVER.md'
-      - 'docs/RELEASE_NOTES_v1.1.0-beta.1.md'
+      - 'docs/RELEASE_NOTES_v1.1.0-beta.2.md'
       - '.github/workflows/portable-beta-release.yml'
   workflow_dispatch:
 
@@ -24,14 +24,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           coverage: none
+
       - name: Validate PHP and shell scripts
         shell: bash
         run: |
           set -euo pipefail
+
           for file in \
             neptune_secure/portable.php \
             neptune_secure/portable-sync-client.php \
@@ -40,36 +43,47 @@ jobs:
             public_html/Neptune/api/portable-sync-media.php; do
             php -l "$file"
           done
+
           find public_html/Neptune/assets/portable-server -type f \
             \( -name '*.sh' -o -name '*.command' \) -print0 \
             | xargs -0 -r -n 1 bash -n
+
       - name: Build code-only Maintenance Console ZIP
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p dist
+
           zip -X -q -9 dist/Neptune_Portable_Windows_Sync_Status_Maintenance_Console.zip \
             neptune_secure/portable.php \
             public_html/Neptune/admin/portable.php
+
           unzip -t dist/Neptune_Portable_Windows_Sync_Status_Maintenance_Console.zip
+
           test "$(unzip -Z1 dist/Neptune_Portable_Windows_Sync_Status_Maintenance_Console.zip | wc -l)" -eq 2
+
           cd dist
           sha256sum Neptune_Portable_Windows_Sync_Status_Maintenance_Console.zip > SHA256SUMS.txt
+
       - name: Publish GitHub prerelease once
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          tag='v1.1.0-beta.1'
+
+          tag='v1.1.0-beta.2'
+
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag already exists; leaving it unchanged."
             exit 0
           fi
+
           gh release create "$tag" \
             dist/Neptune_Portable_Windows_Sync_Status_Maintenance_Console.zip \
             dist/SHA256SUMS.txt \
-            --title 'Neptune v1.1.0 beta 1 — Portable Server' \
-            --notes-file docs/RELEASE_NOTES_v1.1.0-beta.1.md \
+            --title 'Neptune v1.1.0 beta 2 — Current Production Sync + Portable Server' \
+            --notes-file docs/RELEASE_NOTES_v1.1.0-beta.2.md \
             --target "$GITHUB_SHA" \
             --prerelease
