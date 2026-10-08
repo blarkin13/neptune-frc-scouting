@@ -657,16 +657,55 @@ if($team>0){
     $s->execute([$team,$org,$org]);
     $pitRows=$s->fetchAll();
 
+    // Pit access and free-text note access are separate sharing permissions.
+    // Local rows always expose their notes. Shared rows expose notes only when
+    // the active relationship grants both pit data and notes.
+    $sharedPitOwnerIds=[];
+    foreach($pitRows as $idx=>$pit){
+        $isLocal=(int)($pit['organization_id']??0)===$org;
+        $pitRows[$idx]['can_view_notes']=$isLocal;
+        if(!$isLocal && (int)($pit['owner_team_id']??0)>0){
+            $sharedPitOwnerIds[(int)$pit['owner_team_id']]=true;
+        }
+    }
+
+    if($sharedPitOwnerIds){
+        $ownerIds=array_keys($sharedPitOwnerIds);
+        $oph=implode(',',array_fill(0,count($ownerIds),'?'));
+        $s=$pdo->prepare(
+            "SELECT DISTINCT sr.owner_team_id
+             FROM sharing_relationships sr
+             JOIN teams rt ON rt.id=sr.recipient_team_id
+             WHERE rt.organization_id=?
+               AND sr.owner_team_id IN ({$oph})
+               AND sr.status='active'
+               AND sr.share_pit_data=1
+               AND sr.share_notes=1
+               AND (sr.starts_at IS NULL OR sr.starts_at<=UTC_TIMESTAMP())
+               AND (sr.expires_at IS NULL OR sr.expires_at>=UTC_TIMESTAMP())"
+        );
+        $s->execute(array_merge([$org],$ownerIds));
+        $noteOwnerIds=array_fill_keys(array_map('intval',$s->fetchAll(PDO::FETCH_COLUMN)),true);
+
+        foreach($pitRows as $idx=>$pit){
+            if((int)($pit['organization_id']??0)===$org) continue;
+            $pitRows[$idx]['can_view_notes']=isset($noteOwnerIds[(int)($pit['owner_team_id']??0)]);
+        }
+    }
+
     if($pitRows){
+        // The pit rows above are already authorization-filtered. Fetch photos
+        // through those authorized pit_scouting IDs so shared source-org photos
+        // are visible when share_pit_data is enabled.
         $ids=array_map(static fn($r)=>(int)$r['id'],$pitRows);
         $ph=implode(',',array_fill(0,count($ids),'?'));
         $s=$pdo->prepare(
             "SELECT pit_scouting_id,category,file_path,caption
              FROM pit_scouting_photos
-             WHERE organization_id=? AND pit_scouting_id IN ({$ph})
+             WHERE pit_scouting_id IN ({$ph})
              ORDER BY pit_scouting_id,created_at"
         );
-        $s->execute(array_merge([$org],$ids));
+        $s->execute($ids);
         foreach($s->fetchAll() as $photo){
             $pitPhotosByScout[(int)$photo['pit_scouting_id']][]=$photo;
         }
@@ -1185,7 +1224,7 @@ include dirname(__DIR__).'/partials_header.php';
                     <div class="robot-lookup-field"><b><?=e(rl_label((string)$k))?></b><span><?=e(rl_value($v))?></span></div>
                   <?php endif;?>
                 <?php endforeach;?>
-                <?php if(trim((string)($pit['notes']??''))!==''):?><div class="robot-lookup-field"><b>Notes</b><span><?=nl2br(e($pit['notes']))?></span></div><?php endif;?>
+                <?php if(!empty($pit['can_view_notes']) && trim((string)($pit['notes']??''))!==''):?><div class="robot-lookup-field"><b>Notes</b><span><?=nl2br(e($pit['notes']))?></span></div><?php endif;?>
               </div>
               <?php if(!empty($pitPhotosByScout[(int)$pit['id']])):?>
                 <div class="robot-lookup-photo-grid">

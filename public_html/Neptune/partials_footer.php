@@ -1,4 +1,11 @@
 </main>
+<?php
+$neptunePortableMode=!empty($config['app']['portable_mode']);
+$neptuneShowPortableLink=$u && (
+    ($neptunePortableMode && in_array((string)($u['role']??''),['owner','admin'],true))
+    || (!$neptunePortableMode && (string)($u['role']??'')==='owner')
+);
+?>
 <?php if(!$hideChrome && ($u || ($isPublicHome??false))): ?>
 <footer class="neptune-site-footer" aria-label="Neptune footer">
   <div class="neptune-site-footer-inner">
@@ -13,6 +20,16 @@
           <span>Walkthrough</span>
         </button>
       <?php endif; ?>
+      <?php if($neptuneShowPortableLink): ?>
+        <a class="neptune-footer-pill" href="<?=e(base_url('admin/portable.php'))?>">
+          <i class="fa-solid fa-laptop" aria-hidden="true"></i>
+          <span><?=$neptunePortableMode?'Offline Server':'Portable Server'?></span>
+        </a>
+      <?php endif; ?>
+      <button type="button" class="neptune-footer-pill" id="neptuneIndexQrOpen" data-neptune-index-qr-open aria-haspopup="dialog" aria-controls="neptuneIndexQrModal">
+        <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+        <span>Open on Phone</span>
+      </button>
       <span class="neptune-site-footer-info"><span>McKinney STEM Academy</span><span class="neptune-site-footer-separator" aria-hidden="true">&middot;</span><span>&copy; <?=date('Y')?></span></span>
     </div>
   </div>
@@ -71,6 +88,38 @@
     </div>
   </section>
 </div>
+
+<div class="neptune-index-qr-modal" id="neptuneIndexQrModal" aria-hidden="true">
+  <div class="neptune-index-qr-backdrop" data-neptune-index-qr-close></div>
+  <section class="neptune-index-qr-dialog" role="dialog" aria-modal="true" aria-labelledby="neptuneIndexQrTitle" tabindex="-1">
+    <button type="button" class="neptune-index-qr-close" data-neptune-index-qr-close aria-label="Close QR code">
+      <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+    </button>
+    <div class="neptune-index-qr-head">
+      <div class="neptune-index-qr-mark" aria-hidden="true"><i class="fa-solid fa-qrcode"></i></div>
+      <div>
+        <div class="neptune-walkthrough-kicker">NEPTUNE · QUICK ACCESS</div>
+        <h2 id="neptuneIndexQrTitle">Open Neptune on your phone</h2>
+        <p>Scan this QR code to open the Neptune home page.</p>
+      </div>
+    </div>
+    <div class="neptune-index-qr-body">
+      <div class="neptune-index-qr-code" id="neptuneIndexQrCode" aria-label="QR code for Neptune home page"></div>
+      <a class="neptune-index-qr-url" id="neptuneIndexQrUrl" href="<?=e(base_url('index.php'))?>" target="_blank" rel="noopener">
+        <?=e(base_url('index.php'))?>
+      </a>
+    </div>
+    <div class="neptune-walkthrough-actions">
+      <a class="neptune-footer-pill" id="neptuneIndexQrOpenLink" href="<?=e(base_url('index.php'))?>" target="_blank" rel="noopener">
+        <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open Neptune
+      </a>
+      <button type="button" class="neptune-footer-pill" data-neptune-index-qr-close>
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Done
+      </button>
+    </div>
+  </section>
+</div>
+
 <style>
 /* Sticky footer: flush with the bottom on short pages, normal flow on long pages. */
 html{min-height:100%}
@@ -128,6 +177,27 @@ body>main.wrap{flex:1 0 auto;width:100%;margin-top:0;margin-bottom:0}
   }
 }
 
+
+.neptune-index-qr-modal{position:fixed;inset:0;z-index:10850;display:none;place-items:center;padding:18px}
+.neptune-index-qr-modal.is-open{display:grid}
+.neptune-index-qr-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(6px)}
+.neptune-index-qr-dialog{position:relative;z-index:1;width:min(92vw,460px);max-height:90vh;overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 28px 90px rgba(0,0,0,.62);padding:22px}
+.neptune-index-qr-close{position:absolute;top:12px;right:12px;z-index:3;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--text);cursor:pointer}
+.neptune-index-qr-head{display:grid;grid-template-columns:auto minmax(0,1fr);gap:13px;align-items:start;padding-right:42px}
+.neptune-index-qr-head h2{margin:2px 0 6px}
+.neptune-index-qr-head p{margin:0;color:var(--muted)}
+.neptune-index-qr-mark{display:grid;place-items:center;width:46px;height:46px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);font-size:1.25rem}
+.neptune-index-qr-body{display:grid;justify-items:center;gap:12px;margin:20px 0 4px}
+.neptune-index-qr-code{display:grid;place-items:center;width:264px;min-height:264px;padding:12px;border-radius:16px;background:#fff}
+.neptune-index-qr-code img,.neptune-index-qr-code canvas{display:block;max-width:240px!important;width:240px!important;height:240px!important}
+.neptune-index-qr-url{display:block;max-width:100%;overflow-wrap:anywhere;text-align:center;color:var(--accent);font-size:.82rem}
+.neptune-index-qr-error{color:#111;text-align:center;font-size:.82rem;line-height:1.4}
+@media(max-width:520px){
+  .neptune-index-qr-dialog{padding:18px}
+  .neptune-index-qr-code{width:232px;min-height:232px}
+  .neptune-index-qr-code img,.neptune-index-qr-code canvas{max-width:208px!important;width:208px!important;height:208px!important}
+}
+
 .neptune-walkthrough-steps-visual{grid-template-columns:1fr 1fr}.neptune-walkthrough-steps-visual>.neptune-walkthrough-step{align-items:start}.neptune-walkthrough-shot{display:block;width:100%;margin-top:10px;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#02070b;color:var(--text);text-align:left;cursor:zoom-in}.neptune-walkthrough-shot img{display:block;width:100%;height:120px;object-fit:cover;object-position:top center;background:#02070b}.neptune-walkthrough-shot-phone img{object-fit:contain}.neptune-walkthrough-shot small{display:flex;align-items:center;gap:6px;padding:7px 9px;background:var(--panel);color:var(--muted);font-weight:850}.neptune-walkthrough-shot:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}.neptune-walkthrough-image-viewer{position:fixed;inset:0;z-index:11000;display:none;place-items:center;padding:18px}
 .neptune-walkthrough-image-viewer.is-open{display:grid}
 .neptune-walkthrough-image-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.86);backdrop-filter:blur(6px)}
@@ -142,6 +212,9 @@ body>main.wrap{flex:1 0 auto;width:100%;margin-top:0;margin-bottom:0}
 @media(max-width:700px){.neptune-walkthrough-steps-visual{grid-template-columns:1fr}.neptune-walkthrough-shot img{height:150px}}
 </style>
 
+<?php endif; ?>
+<?php if(!$hideChrome && ($u || ($isPublicHome??false)) && !$neptunePortableMode): ?>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <?php endif; ?>
 <script>
 (function(){
@@ -191,6 +264,77 @@ body>main.wrap{flex:1 0 auto;width:100%;margin-top:0;margin-bottom:0}
   if('ResizeObserver' in window){const ro=new ResizeObserver(entries=>entries.forEach(x=>sizeGrid(x.target)));grids.forEach(x=>ro.observe(x));}
   else window.addEventListener('resize',()=>grids.forEach(sizeGrid));
 })();
+
+(function(){
+  const openButton=document.querySelector('[data-neptune-index-qr-open]');
+  const modal=document.getElementById('neptuneIndexQrModal');
+  if(!openButton||!modal)return;
+
+  const dialog=modal.querySelector('.neptune-index-qr-dialog');
+  const closeButtons=modal.querySelectorAll('[data-neptune-index-qr-close]');
+  const qrHost=document.getElementById('neptuneIndexQrCode');
+  const urlLink=document.getElementById('neptuneIndexQrUrl');
+  const openLink=document.getElementById('neptuneIndexQrOpenLink');
+  const targetUrl=new URL(<?=json_encode(base_url('index.php'))?>,window.location.origin).href;
+  const portableQrUrl=<?=json_encode($neptunePortableMode?base_url('assets/portable/neptune-lan-qr.png'):'')?>;
+  let qrBuilt=false;
+  let returnFocus=null;
+
+  if(urlLink){
+    urlLink.href=targetUrl;
+    urlLink.textContent=targetUrl;
+  }
+  if(openLink) openLink.href=targetUrl;
+
+  function buildQr(){
+    if(qrBuilt||!qrHost)return;
+    qrHost.innerHTML='';
+    if(portableQrUrl){
+      const img=document.createElement('img');
+      img.src=portableQrUrl+'?v='+Date.now();
+      img.alt='QR code for this Neptune event server';
+      qrHost.appendChild(img);
+      qrBuilt=true;
+      return;
+    }
+    if(typeof window.QRCode!=='function'){
+      const fallback=document.createElement('div');
+      fallback.className='neptune-index-qr-error';
+      fallback.textContent='QR rendering is unavailable. Use the link below to open Neptune.';
+      qrHost.appendChild(fallback);
+      return;
+    }
+    new QRCode(qrHost,{
+      text:targetUrl,
+      width:240,
+      height:240,
+      colorDark:'#000000',
+      colorLight:'#ffffff',
+      correctLevel:QRCode.CorrectLevel.M
+    });
+    qrBuilt=true;
+  }
+
+  function setOpen(open){
+    modal.classList.toggle('is-open',open);
+    modal.setAttribute('aria-hidden',open?'false':'true');
+    document.body.classList.toggle('neptune-modal-open',open);
+    if(open){
+      returnFocus=document.activeElement;
+      buildQr();
+      window.requestAnimationFrame(()=>dialog?.focus({preventScroll:true}));
+    }else if(returnFocus && typeof returnFocus.focus==='function'){
+      returnFocus.focus({preventScroll:true});
+    }
+  }
+
+  openButton.addEventListener('click',()=>setOpen(true));
+  closeButtons.forEach(button=>button.addEventListener('click',()=>setOpen(false)));
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&modal.classList.contains('is-open'))setOpen(false);
+  });
+})();
+
 
 (function(){
   const openButtons=[...document.querySelectorAll('[data-neptune-walkthrough-open]')];

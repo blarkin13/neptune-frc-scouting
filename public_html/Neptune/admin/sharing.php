@@ -152,7 +152,7 @@ include dirname(__DIR__).'/partials_header.php';
 <div class="grid">
   <div class="card">
     <h2>Scouting Data Sharing</h2>
-    <p class="muted">Existing team-to-team sharing controls for match, pit, notes, raw actions, and analytics.</p>
+    <p class="muted">Choose exactly what another Neptune team can see. Pit data includes pit fields and robot photos; free-text notes remain a separate permission.</p>
     <form method="post">
       <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
       <input type="hidden" name="kind" value="data_share">
@@ -172,7 +172,7 @@ include dirname(__DIR__).'/partials_header.php';
         <label><input style="width:auto" type="checkbox" name="match" checked> Match data</label>
         <label><input style="width:auto" type="checkbox" name="raw" checked> Raw actions</label>
         <label><input style="width:auto" type="checkbox" name="analytics" checked> Analytics</label>
-        <label><input style="width:auto" type="checkbox" name="pit"> Pit</label>
+        <label><input style="width:auto" type="checkbox" name="pit"> Pit data &amp; photos</label>
         <label><input style="width:auto" type="checkbox" name="notes"> Notes</label>
       </div>
       <button>Save data sharing</button>
@@ -215,7 +215,7 @@ include dirname(__DIR__).'/partials_header.php';
   <?php else:?>
     <div class="table-wrap">
       <table class="table">
-        <tr><th>Owner</th><th>Recipient</th><th>Match</th><th>Raw</th><th>Analytics</th><th>Pit</th><th>Notes</th></tr>
+        <tr><th>Owner</th><th>Recipient</th><th>Match</th><th>Raw</th><th>Analytics</th><th>Pit + photos</th><th>Notes</th></tr>
         <?php foreach($rels as $r):?>
           <tr>
             <td>#<?=e($r['owner_num'])?></td>

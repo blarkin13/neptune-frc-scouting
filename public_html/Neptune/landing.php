@@ -1827,6 +1827,11 @@ html[data-theme="light"] .nlp-org-dialog,html[data-theme="light"] .nlp-org-dialo
                             Set Up Your Team
                         </a>
 
+                        <a class="nlp-btn nlp-btn--secondary" href="<?= e(base_url('help/ntx-start.php')) ?>">
+                            <i class="fa-solid fa-qrcode"></i>
+                            NTX Quick Start
+                        </a>
+
                         <button class="nlp-btn nlp-btn--secondary" type="button" data-nlp-login>
                             <i class="fa-solid fa-right-to-bracket"></i>
                             Sign In

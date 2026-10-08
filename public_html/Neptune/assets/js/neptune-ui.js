@@ -259,3 +259,4 @@
 })();
 
 /* Page heroes are composed server-side by partials_hero.php before first paint. */
+

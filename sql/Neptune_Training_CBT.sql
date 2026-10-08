@@ -1,0 +1,32 @@
+-- Neptune Training Center / CBT tracking
+-- The training pages also run this CREATE TABLE IF NOT EXISTS automatically on first visit.
+CREATE TABLE IF NOT EXISTS training_attempts (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  organization_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  display_name_snapshot VARCHAR(150) NOT NULL,
+  username_snapshot VARCHAR(120) NULL,
+  role_snapshot VARCHAR(32) NULL,
+  course_code VARCHAR(32) NOT NULL,
+  course_version VARCHAR(20) NOT NULL,
+  attempt_number INT UNSIGNED NOT NULL DEFAULT 1,
+  status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
+  question_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  correct_count SMALLINT UNSIGNED NULL,
+  score_percent DECIMAL(5,2) NULL,
+  passing_score DECIMAL(5,2) NOT NULL DEFAULT 85.00,
+  passed TINYINT(1) NULL,
+  question_ids_json LONGTEXT NOT NULL,
+  option_order_json LONGTEXT NOT NULL,
+  results_json LONGTEXT NULL,
+  started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME NULL,
+  duration_seconds INT UNSIGNED NULL,
+  client_ip VARCHAR(64) NULL,
+  user_agent VARCHAR(255) NULL,
+  PRIMARY KEY (id),
+  KEY idx_training_org_course (organization_id, course_code, status),
+  KEY idx_training_user_course (user_id, course_code, status),
+  KEY idx_training_completed (organization_id, completed_at),
+  KEY idx_training_passed (organization_id, course_code, passed)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
