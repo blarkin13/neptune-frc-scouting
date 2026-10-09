@@ -5,7 +5,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/portable.php';
 
 $portableLocal=neptune_portable_is_local($config);
-$u=require_role($portableLocal?['owner','admin']:['owner']);
+$u=require_role($portableLocal?['owner','admin']:['owner','admin','strategy']);
 
 if(!$portableLocal){
     neptune_portable_ensure_schema($pdo);

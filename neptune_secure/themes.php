@@ -28,6 +28,7 @@ $presets=[
  'STEM Gals'=>['c1-blue'=>'#D84D9D','accent'=>'#8A6BFF','c1-green'=>'#23A89B','good'=>'#23B5A5','bad'=>'#E65A86','warn'=>'#F0B24A','ready'=>'#6BD8D0','bg'=>'#0D0D18','bg2'=>'#121225','panel'=>'#181729','panel2'=>'#211F38','line'=>'#403D63','text'=>'#F7F5FF','muted'=>'#B2AECE','bg-glow'=>'#31194E','module-trident'=>'#D84D9D','module-augur'=>'#8A6BFF','module-saturn'=>'#E59B45','module-vulcan'=>'#C95A8E','module-system'=>'#7775A0','module-org'=>'#23B5A5','module-ops'=>'#8A6BFF','access-strategy'=>'#8583B9','access-admin'=>'#BD6E9D','access-owner'=>'#AFA9D4'],
  'Galactic'=>['c1-blue'=>'#D9B44A','accent'=>'#5BB7FF','c1-green'=>'#45A77D','good'=>'#67D6A3','bad'=>'#E05A5A','warn'=>'#F0C05A','ready'=>'#72C7FF','bg'=>'#07090D','bg2'=>'#0D1118','panel'=>'#131923','panel2'=>'#1A2230','line'=>'#354156','text'=>'#F4F6FA','muted'=>'#A9B1C0','bg-glow'=>'#132946','module-trident'=>'#5BB7FF','module-augur'=>'#8D7CE8','module-saturn'=>'#D9B44A','module-vulcan'=>'#D95C52','module-system'=>'#76849A','module-org'=>'#52A77E','module-ops'=>'#D9B44A','access-strategy'=>'#718DB3','access-admin'=>'#B79548','access-owner'=>'#AEB8C8'],
  'Obsidian'=>['c1-blue'=>'#F5F5F5','solid-text'=>'#050505','accent'=>'#FFFFFF','c1-green'=>'#AFAFAF','good'=>'#6FD08C','bad'=>'#FF6B6B','warn'=>'#E6B85C','ready'=>'#FFFFFF','bg'=>'#000000','bg2'=>'#030303','panel'=>'#070707','panel2'=>'#0E0E0E','line'=>'#2A2A2A','text'=>'#FFFFFF','muted'=>'#A6A6A6','bg-glow'=>'#111111','alliance-blue'=>'#BFC7D5','alliance-blue-deep'=>'#7E8795','module-trident'=>'#FFFFFF','module-augur'=>'#D8D8D8','module-saturn'=>'#BEBEBE','module-vulcan'=>'#A8A8A8','module-system'=>'#8F8F8F','module-org'=>'#D0D0D0','module-ops'=>'#FFFFFF','access-strategy'=>'#9F9F9F','access-admin'=>'#C8C8C8','access-owner'=>'#FFFFFF'],
+
 ];
 $presets['Neptune Default']=$defaults['dark'];
 // Each preset gets a dedicated Game Builder palette derived from colors already present in that preset.
@@ -57,6 +58,10 @@ $presetLight=[
  'STEM Gals'=>['c1-blue'=>'#5A2A6E','solid-text'=>'#FFFFFF','bg'=>'#FFF6FB','bg2'=>'#F2F0FF','panel'=>'#FFFFFF','panel2'=>'#FAF4FF','line'=>'#DDD6EF','text'=>'#281F38','muted'=>'#6F6685','accent'=>'#7B61FF','good'=>'#188A7C','bad'=>'#C63B71','warn'=>'#A66A18','bg-glow'=>'#F4DDF4','shadow'=>'#2F1D3A22'],
  'Galactic'=>['c1-blue'=>'#171B23','solid-text'=>'#FFFFFF','bg'=>'#F3F6FA','bg2'=>'#E9EEF5','panel'=>'#FFFFFF','panel2'=>'#EEF2F7','line'=>'#CCD5E1','text'=>'#171B23','muted'=>'#687385','accent'=>'#286FA8','good'=>'#2E8665','bad'=>'#B94141','warn'=>'#9A7220','bg-glow'=>'#DCE9F8','shadow'=>'#0D142022'],
  'Obsidian'=>['c1-blue'=>'#080808','solid-text'=>'#FFFFFF','bg'=>'#FFFFFF','bg2'=>'#FAFAFA','panel'=>'#FFFFFF','panel2'=>'#F3F3F3','line'=>'#D4D4D4','text'=>'#050505','muted'=>'#5E5E5E','accent'=>'#111111','good'=>'#237A49','bad'=>'#B33A3A','warn'=>'#8C6519','bg-glow'=>'#ECECEC','shadow'=>'#0000001F'],
+
+
+
+
 ];
 $presetMeta=[
  'Neptune Default'=>'Original Neptune palette',
@@ -70,6 +75,9 @@ $presetMeta=[
  'STEM Gals'=>'Magenta, violet and teal',
  'Galactic'=>'Space-opera gold, blue and red',
  'Obsidian'=>'Near-black surfaces with crisp white highlights',
+
+
+
 ];
     return ['defaults'=>$defaults,'presets'=>$presets,'preset_light'=>$presetLight,'meta'=>$presetMeta];
 }
