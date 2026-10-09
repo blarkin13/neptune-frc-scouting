@@ -48,7 +48,7 @@ $pageStyles=is_array($pageStyles??null)?$pageStyles:[];
 $scriptPath=str_replace('\\','/',(string)($_SERVER['SCRIPT_NAME']??''));
 $isPublicHome=!$u && (bool)preg_match('~/(?:index\.php)?$~',$scriptPath);
 
-$siteUrl='https://neptune.mckinneysteamacademy.org/';
+$siteUrl='https://neptunefrc.com/';
 $seoTitle='Neptune FRC Scouting Platform | Analytics & Strategy';
 $seoDescription='Neptune is an FRC scouting platform for live match scouting, pit scouting, pre-scouting, robot intelligence, analytics, strategy, event management, TBA integration and multi-team scouting.';
 $seoOgTitle='Neptune FRC Scouting Platform';

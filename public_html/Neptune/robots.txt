@@ -14,4 +14,4 @@ Disallow: /uploads/
 Disallow: /change-password.php
 Disallow: /register.php
 
-Sitemap: https://neptune.mckinneysteamacademy.org/sitemap.xml
+Sitemap: https://neptunefrc.com/sitemap.xml

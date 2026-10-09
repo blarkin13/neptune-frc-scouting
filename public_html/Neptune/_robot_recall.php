@@ -503,7 +503,7 @@ function robot_recall_join_url(string $room): string {
     $proto='http';
     if((!empty($_SERVER['HTTPS'])&&strtolower((string)$_SERVER['HTTPS'])!=='off'))$proto='https';
     if($trustProxy&&!empty($_SERVER['HTTP_X_FORWARDED_PROTO']))$proto=strtolower(trim(explode(',',(string)$_SERVER['HTTP_X_FORWARDED_PROTO'])[0]));
-    $host=(string)($_SERVER['HTTP_HOST']??'neptune.mckinneysteamacademy.org');
+    $host=(string)($_SERVER['HTTP_HOST']??'neptunefrc.com');
     return $proto.'://'.$host.base_url('play/?room='.rawurlencode($room));
 }
 
