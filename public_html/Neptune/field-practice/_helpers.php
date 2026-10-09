@@ -2,22 +2,22 @@
 declare(strict_types=1);
 
 /**
- * Neptune public field-practice signup helpers.
+ * Neptune public Sunday field-practice signup helpers.
  *
- * Change the values returned by neptune_field_practice_config() when this
- * page is reused for a future practice night. Existing registrations are
- * separated by practice_key.
+ * This is a standing 2027-season program. The public QR/URL stays the same
+ * all season; each registration is stored under the Sunday selected by the
+ * team (practice_key = ntx-sunday-YYYY-MM-DD).
  */
 function neptune_field_practice_config(): array {
     return [
-        'practice_key' => 'ntx-sunday-2026-10-11',
-        'title' => 'NTX Sunday Field Practice',
-        'date_label' => 'Sunday, October 11, 2026',
+        'season' => 2027,
+        'practice_key_prefix' => 'ntx-sunday-',
+        'title' => '2027 Sunday Field Practice',
+        'program_label' => '2027 FRC Season',
+        'day_label' => 'Sundays',
         'start_label' => '5:00 PM',
         'end_label' => '8:00 PM',
-        'start_at' => '2026-10-11 17:00:00',
-        'end_at' => '2026-10-11 20:00:00',
-        'location_name' => 'McKinney STEM Academy',
+        'location_name' => 'McKinney STEAM Academy',
         'address' => '192 Industrial Blvd, Suite 109, McKinney, TX 75069',
         'public_url' => 'https://neptune.mckinneysteamacademy.org/field-practice/',
         'qr_image' => 'assets/images/ntx-field-practice-qr.png',
@@ -81,11 +81,40 @@ function neptune_field_practice_clean_line(string $value, int $max): string {
     return substr($value, 0, $max);
 }
 
-function neptune_field_practice_is_open(array $cfg): bool {
-    try {
-        $end = new DateTimeImmutable((string)$cfg['end_at']);
-        return new DateTimeImmutable('now') <= $end;
-    } catch (Throwable $e) {
-        return true;
-    }
+function neptune_field_practice_parse_date(string $value, ?array $cfg = null): ?DateTimeImmutable {
+    $cfg = $cfg ?: neptune_field_practice_config();
+    $value = trim($value);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return null;
+
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+    if (!$date || $date->format('Y-m-d') !== $value) return null;
+    if ((int)$date->format('Y') !== (int)$cfg['season']) return null;
+    if ((int)$date->format('N') !== 7) return null; // Sunday only.
+    return $date;
+}
+
+function neptune_field_practice_key_for_date(DateTimeImmutable $date, ?array $cfg = null): string {
+    $cfg = $cfg ?: neptune_field_practice_config();
+    return (string)$cfg['practice_key_prefix'].$date->format('Y-m-d');
+}
+
+function neptune_field_practice_date_from_key(string $key, ?array $cfg = null): ?DateTimeImmutable {
+    $cfg = $cfg ?: neptune_field_practice_config();
+    $prefix = (string)$cfg['practice_key_prefix'];
+    if (!str_starts_with($key, $prefix)) return null;
+    return neptune_field_practice_parse_date(substr($key, strlen($prefix)), $cfg);
+}
+
+function neptune_field_practice_date_label(DateTimeImmutable $date): string {
+    return $date->format('l, F j, Y');
+}
+
+function neptune_field_practice_season_like(?array $cfg = null): string {
+    $cfg = $cfg ?: neptune_field_practice_config();
+    return (string)$cfg['practice_key_prefix'].(int)$cfg['season'].'-%';
+}
+
+function neptune_field_practice_is_future_or_today(DateTimeImmutable $date): bool {
+    $today = new DateTimeImmutable('today');
+    return $date >= $today;
 }
