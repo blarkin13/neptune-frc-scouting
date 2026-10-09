@@ -1,8 +1,12 @@
 </main>
-<?php if(!$hideChrome && ($u || ($isPublicHome??false))): ?>
 <?php
-$neptuneFooterCanDownloadServer = !empty($u) && in_array((string)($u['role'] ?? ''), ['owner', 'admin', 'strategy'], true);
+$neptunePortableMode=!empty($config['app']['portable_mode']);
+$neptuneShowPortableLink=$u && (
+    ($neptunePortableMode && in_array((string)($u['role']??''),['owner','admin'],true))
+    || (!$neptunePortableMode && (string)($u['role']??'')==='owner')
+);
 ?>
+<?php if(!$hideChrome && ($u || ($isPublicHome??false))): ?>
 <footer class="neptune-site-footer" aria-label="Neptune footer">
   <div class="neptune-site-footer-inner">
     <div class="neptune-site-footer-brand">
@@ -11,46 +15,25 @@ $neptuneFooterCanDownloadServer = !empty($u) && in_array((string)($u['role'] ?? 
     </div>
     <div class="neptune-site-footer-meta">
       <?php if($u): ?>
-        <button type="button" class="neptune-footer-pill" id="neptunePhoneOpen" aria-haspopup="dialog" aria-controls="neptunePhoneModal">
-          <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
-          <span>Open on Phone</span>
-        </button>
-        <?php if($neptuneFooterCanDownloadServer): ?>
-          <a class="neptune-footer-pill" href="<?=e(base_url('admin/portable.php'))?>" title="Portable Organization Server">
-            <i class="fa-solid fa-download" aria-hidden="true"></i>
-            <span>Download Server</span>
-          </a>
-        <?php endif; ?>
         <button type="button" class="neptune-footer-pill" id="neptuneWalkthroughOpen" data-neptune-walkthrough-open aria-haspopup="dialog" aria-controls="neptuneWalkthroughModal">
           <i class="fa-solid fa-circle-play" aria-hidden="true"></i>
           <span>Walkthrough</span>
         </button>
       <?php endif; ?>
+      <?php if($neptuneShowPortableLink): ?>
+        <a class="neptune-footer-pill" href="<?=e(base_url('admin/portable.php'))?>">
+          <i class="fa-solid fa-laptop" aria-hidden="true"></i>
+          <span><?=$neptunePortableMode?'Offline Server':'Portable Server'?></span>
+        </a>
+      <?php endif; ?>
+      <button type="button" class="neptune-footer-pill" id="neptuneIndexQrOpen" data-neptune-index-qr-open aria-haspopup="dialog" aria-controls="neptuneIndexQrModal">
+        <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+        <span>Open on Phone</span>
+      </button>
       <span class="neptune-site-footer-info"><a href="https://www.mckinneysteamacademy.org" style="color:inherit;text-decoration:inherit">McKinney STEAM Academy</a><span class="neptune-site-footer-separator" aria-hidden="true">&middot;</span><span>&copy; <?=date('Y')?></span></span>
     </div>
   </div>
 </footer>
-
-<div class="neptune-share-modal" id="neptunePhoneModal" aria-hidden="true">
-  <div class="neptune-share-backdrop" data-neptune-phone-close></div>
-  <section class="neptune-share-dialog" role="dialog" aria-modal="true" aria-labelledby="neptunePhoneTitle" aria-describedby="neptunePhoneCopy" tabindex="-1">
-    <button type="button" class="neptune-share-close" data-neptune-phone-close aria-label="Close Open on Phone dialog">
-      <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-    </button>
-    <div class="neptune-share-mark" aria-hidden="true"><i class="fa-solid fa-mobile-screen-button"></i></div>
-    <div class="neptune-share-kicker">NEPTUNE · SCOUT DEVICE</div>
-    <h2 id="neptunePhoneTitle">Open Neptune on your phone</h2>
-    <p id="neptunePhoneCopy">Scan this code from a phone or tablet. The QR follows this Neptune server, so it works with hosted Neptune and the portable local server.</p>
-    <div class="neptune-share-qr-wrap">
-      <canvas id="neptunePhoneQr" width="328" height="328" aria-label="QR code for Neptune"></canvas>
-    </div>
-    <div class="neptune-share-url" id="neptunePhoneUrl"></div>
-    <div class="neptune-share-actions">
-      <button type="button" class="secondary" id="neptunePhoneCopyLink"><i class="fa-solid fa-link" aria-hidden="true"></i> Copy link</button>
-      <a class="neptune-share-open-link" id="neptunePhoneOpenLink" href="<?=e(base_url('index.php'))?>" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open Neptune</a>
-    </div>
-  </section>
-</div>
 
 <div class="neptune-walkthrough-modal" id="neptuneWalkthroughModal" aria-hidden="true">
   <div class="neptune-walkthrough-backdrop" data-neptune-walkthrough-close></div>
@@ -86,13 +69,15 @@ $neptuneFooterCanDownloadServer = !empty($u) && in_array((string)($u['role'] ?? 
         <span>6</span><div><b>SATURN + TRIDENT · Scout live</b><p>Command runs the match while scouts record robot actions from their assigned stations. Tap an action, then swipe left for failure or right for success.</p><button type="button" class="neptune-walkthrough-shot neptune-walkthrough-shot-phone" data-neptune-walkthrough-image="<?=e(base_url('assets/help/training/action-swipe.jpg'))?>?v=5" data-neptune-walkthrough-title="Live Match Scouting"><img src="<?=e(base_url('assets/help/training/action-swipe.jpg'))?>?v=5" alt="Neptune live scouting success and failure swipe" loading="lazy"><small><i class="fa-solid fa-image"></i> Live Match Scouting</small></button></div>
       </div>
       <div class="neptune-walkthrough-step">
-        <span>7</span><div><b>AUGUR · Turn data into strategy</b><p>Compare robots, combine public performance data with your scouting, and use Neptune EPA, trends, cycle data, Match Strategy, predictions, and Alliance Selection to make informed decisions.</p><button type="button" class="neptune-walkthrough-shot" data-neptune-walkthrough-image="<?=e(base_url('assets/help/training/robot-cards.jpg'))?>?v=11" data-neptune-walkthrough-title="AUGUR Robot Cards"><img src="<?=e(base_url('assets/help/training/robot-cards.jpg'))?>?v=11" alt="AUGUR Robot Cards comparing event robots and Neptune EPA" loading="lazy"><small><i class="fa-solid fa-image"></i> AUGUR Robot Cards</small></button></div>
+        <span>7</span><div><b>AUGUR · Turn data into strategy</b><p>Use Robot Intelligence, Match Strategy, predictions, and Alliance Selection to make decisions. We can add dedicated AUGUR screenshots in the next image pass.</p><button type="button" class="neptune-walkthrough-shot" data-neptune-walkthrough-image="<?=e(base_url('assets/help/training/command-center.jpg'))?>?v=5" data-neptune-walkthrough-title="Neptune workflow"><img src="<?=e(base_url('assets/help/training/command-center.jpg'))?>?v=5" alt="Neptune Command Center" loading="lazy"><small><i class="fa-solid fa-image"></i> Neptune Workflow</small></button></div>
       </div>
     </div>
     <div class="neptune-walkthrough-image-viewer" id="neptuneWalkthroughImageViewer" aria-hidden="true">
       <div class="neptune-walkthrough-image-backdrop" data-neptune-walkthrough-image-close></div>
-      <div class="neptune-walkthrough-image-dialog" role="dialog" aria-modal="true" aria-labelledby="neptuneWalkthroughImageTitle">
-        <div class="neptune-walkthrough-image-head"><b id="neptuneWalkthroughImageTitle">Training screenshot</b><button type="button" data-neptune-walkthrough-image-close aria-label="Close screenshot"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="neptune-walkthrough-image-dialog" role="dialog" aria-modal="true" aria-label="Training screenshot">
+        <button type="button" class="neptune-walkthrough-image-close" data-neptune-walkthrough-image-close aria-label="Close screenshot">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
         <div class="neptune-walkthrough-image-stage"><img id="neptuneWalkthroughImage" alt=""></div>
       </div>
     </div>
@@ -103,9 +88,39 @@ $neptuneFooterCanDownloadServer = !empty($u) && in_array((string)($u['role'] ?? 
     </div>
   </section>
 </div>
-<style>
-.neptune-share-qr-wrap canvas{display:block;width:100%;height:auto;image-rendering:pixelated}
 
+<div class="neptune-index-qr-modal" id="neptuneIndexQrModal" aria-hidden="true">
+  <div class="neptune-index-qr-backdrop" data-neptune-index-qr-close></div>
+  <section class="neptune-index-qr-dialog" role="dialog" aria-modal="true" aria-labelledby="neptuneIndexQrTitle" tabindex="-1">
+    <button type="button" class="neptune-index-qr-close" data-neptune-index-qr-close aria-label="Close QR code">
+      <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+    </button>
+    <div class="neptune-index-qr-head">
+      <div class="neptune-index-qr-mark" aria-hidden="true"><i class="fa-solid fa-qrcode"></i></div>
+      <div>
+        <div class="neptune-walkthrough-kicker">NEPTUNE · QUICK ACCESS</div>
+        <h2 id="neptuneIndexQrTitle">Open Neptune on your phone</h2>
+        <p>Scan this QR code to open the Neptune home page.</p>
+      </div>
+    </div>
+    <div class="neptune-index-qr-body">
+      <div class="neptune-index-qr-code" id="neptuneIndexQrCode" aria-label="QR code for Neptune home page"></div>
+      <a class="neptune-index-qr-url" id="neptuneIndexQrUrl" href="<?=e(base_url('index.php'))?>" target="_blank" rel="noopener">
+        <?=e(base_url('index.php'))?>
+      </a>
+    </div>
+    <div class="neptune-walkthrough-actions">
+      <a class="neptune-footer-pill" id="neptuneIndexQrOpenLink" href="<?=e(base_url('index.php'))?>" target="_blank" rel="noopener">
+        <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open Neptune
+      </a>
+      <button type="button" class="neptune-footer-pill" data-neptune-index-qr-close>
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Done
+      </button>
+    </div>
+  </section>
+</div>
+
+<style>
 /* Sticky footer: flush with the bottom on short pages, normal flow on long pages. */
 html{min-height:100%}
 body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
@@ -162,11 +177,45 @@ body>main.wrap{flex:1 0 auto;width:100%;margin-top:0;margin-bottom:0}
   }
 }
 
-.neptune-walkthrough-steps-visual{grid-template-columns:1fr 1fr}.neptune-walkthrough-steps-visual>.neptune-walkthrough-step{align-items:start}.neptune-walkthrough-shot{display:block;width:100%;margin-top:10px;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#02070b;color:var(--text);text-align:left;cursor:zoom-in}.neptune-walkthrough-shot img{display:block;width:100%;height:120px;object-fit:cover;object-position:top center;background:#02070b}.neptune-walkthrough-shot-phone img{object-fit:contain}.neptune-walkthrough-shot small{display:flex;align-items:center;gap:6px;padding:7px 9px;background:var(--panel);color:var(--muted);font-weight:850}.neptune-walkthrough-shot:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}.neptune-walkthrough-image-viewer{position:fixed;inset:0;z-index:11000;display:none;place-items:center;padding:18px}.neptune-walkthrough-image-viewer.is-open{display:grid}.neptune-walkthrough-image-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.86);backdrop-filter:blur(6px)}.neptune-walkthrough-image-dialog{position:relative;z-index:1;width:min(96vw,1700px);max-height:94vh;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden;box-shadow:0 28px 90px rgba(0,0,0,.62)}.neptune-walkthrough-image-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border-bottom:1px solid var(--line)}.neptune-walkthrough-image-head button{width:38px;height:38px;padding:0}.neptune-walkthrough-image-stage{max-height:calc(94vh - 60px);overflow:auto;padding:8px;background:#02070b;text-align:center}.neptune-walkthrough-image-stage img{max-width:100%;height:auto}.neptune-modal-open-image{overflow:hidden}@media(max-width:700px){.neptune-walkthrough-steps-visual{grid-template-columns:1fr}.neptune-walkthrough-shot img{height:150px}}
+
+.neptune-index-qr-modal{position:fixed;inset:0;z-index:10850;display:none;place-items:center;padding:18px}
+.neptune-index-qr-modal.is-open{display:grid}
+.neptune-index-qr-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(6px)}
+.neptune-index-qr-dialog{position:relative;z-index:1;width:min(92vw,460px);max-height:90vh;overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 28px 90px rgba(0,0,0,.62);padding:22px}
+.neptune-index-qr-close{position:absolute;top:12px;right:12px;z-index:3;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--text);cursor:pointer}
+.neptune-index-qr-head{display:grid;grid-template-columns:auto minmax(0,1fr);gap:13px;align-items:start;padding-right:42px}
+.neptune-index-qr-head h2{margin:2px 0 6px}
+.neptune-index-qr-head p{margin:0;color:var(--muted)}
+.neptune-index-qr-mark{display:grid;place-items:center;width:46px;height:46px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);font-size:1.25rem}
+.neptune-index-qr-body{display:grid;justify-items:center;gap:12px;margin:20px 0 4px}
+.neptune-index-qr-code{display:grid;place-items:center;width:264px;min-height:264px;padding:12px;border-radius:16px;background:#fff}
+.neptune-index-qr-code img,.neptune-index-qr-code canvas{display:block;max-width:240px!important;width:240px!important;height:240px!important}
+.neptune-index-qr-url{display:block;max-width:100%;overflow-wrap:anywhere;text-align:center;color:var(--accent);font-size:.82rem}
+.neptune-index-qr-error{color:#111;text-align:center;font-size:.82rem;line-height:1.4}
+@media(max-width:520px){
+  .neptune-index-qr-dialog{padding:18px}
+  .neptune-index-qr-code{width:232px;min-height:232px}
+  .neptune-index-qr-code img,.neptune-index-qr-code canvas{max-width:208px!important;width:208px!important;height:208px!important}
+}
+
+.neptune-walkthrough-steps-visual{grid-template-columns:1fr 1fr}.neptune-walkthrough-steps-visual>.neptune-walkthrough-step{align-items:start}.neptune-walkthrough-shot{display:block;width:100%;margin-top:10px;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#02070b;color:var(--text);text-align:left;cursor:zoom-in}.neptune-walkthrough-shot img{display:block;width:100%;height:120px;object-fit:cover;object-position:top center;background:#02070b}.neptune-walkthrough-shot-phone img{object-fit:contain}.neptune-walkthrough-shot small{display:flex;align-items:center;gap:6px;padding:7px 9px;background:var(--panel);color:var(--muted);font-weight:850}.neptune-walkthrough-shot:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}.neptune-walkthrough-image-viewer{position:fixed;inset:0;z-index:11000;display:none;place-items:center;padding:18px}
+.neptune-walkthrough-image-viewer.is-open{display:grid}
+.neptune-walkthrough-image-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.86);backdrop-filter:blur(6px)}
+#neptuneWalkthroughImageViewer .neptune-walkthrough-image-dialog{position:relative!important;z-index:1!important;width:min(72vw,820px)!important;max-width:820px!important;max-height:78vh!important;border:1px solid var(--line)!important;border-radius:16px!important;background:#02070b!important;overflow:hidden!important;box-shadow:0 28px 90px rgba(0,0,0,.62)!important}
+#neptuneWalkthroughImageViewer .neptune-walkthrough-image-stage{display:grid!important;place-items:center!important;width:100%!important;max-height:78vh!important;padding:0!important;overflow:hidden!important;background:#02070b!important;text-align:center!important}
+#neptuneWalkthroughImageViewer .neptune-walkthrough-image-stage img{display:block!important;width:100%!important;height:auto!important;max-width:100%!important;max-height:78vh!important;object-fit:contain!important;object-position:center!important}
+#neptuneWalkthroughImageViewer .neptune-walkthrough-image-close{position:absolute!important;top:12px!important;right:12px!important;z-index:10!important;display:grid!important;place-items:center!important;width:42px!important;height:42px!important;min-width:42px!important;padding:0!important;margin:0!important;border:1px solid rgba(255,255,255,.28)!important;border-radius:999px!important;background:rgba(6,11,18,.92)!important;color:#fff!important;box-shadow:0 4px 18px rgba(0,0,0,.45)!important;cursor:pointer!important}
+#neptuneWalkthroughImageViewer .neptune-walkthrough-image-close:hover{background:rgba(21,35,52,.98)!important;border-color:rgba(255,255,255,.48)!important}
+#neptuneWalkthroughImageViewer .neptune-walkthrough-image-close i{font-size:1.1rem!important;line-height:1!important;color:#fff!important}
+.neptune-modal-open-image{overflow:hidden}
+@media(min-width:1400px){#neptuneWalkthroughImageViewer .neptune-walkthrough-image-dialog{width:min(58vw,820px)!important}}
+@media(max-width:700px){.neptune-walkthrough-steps-visual{grid-template-columns:1fr}.neptune-walkthrough-shot img{height:150px}}
 </style>
 
 <?php endif; ?>
-<script src="<?=e(base_url('assets/js/qrcode-v4l.js'))?>"></script>
+<?php if(!$hideChrome && ($u || ($isPublicHome??false)) && !$neptunePortableMode): ?>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<?php endif; ?>
 <script>
 (function(){
   const btn=document.getElementById('themeToggle');
@@ -217,44 +266,75 @@ body>main.wrap{flex:1 0 auto;width:100%;margin-top:0;margin-bottom:0}
 })();
 
 (function(){
-  const openBtn=document.getElementById('neptunePhoneOpen');
-  const modal=document.getElementById('neptunePhoneModal');
-  if(!openBtn||!modal)return;
-  const dialog=modal.querySelector('.neptune-share-dialog');
-  const closeButtons=modal.querySelectorAll('[data-neptune-phone-close]');
-  const canvas=document.getElementById('neptunePhoneQr');
-  const urlEl=document.getElementById('neptunePhoneUrl');
-  const copyBtn=document.getElementById('neptunePhoneCopyLink');
-  const openLink=document.getElementById('neptunePhoneOpenLink');
-  const basePath=<?=json_encode(base_url('index.php'), JSON_UNESCAPED_SLASHES)?>;
-  let phoneUrl='';
+  const openButton=document.querySelector('[data-neptune-index-qr-open]');
+  const modal=document.getElementById('neptuneIndexQrModal');
+  if(!openButton||!modal)return;
+
+  const dialog=modal.querySelector('.neptune-index-qr-dialog');
+  const closeButtons=modal.querySelectorAll('[data-neptune-index-qr-close]');
+  const qrHost=document.getElementById('neptuneIndexQrCode');
+  const urlLink=document.getElementById('neptuneIndexQrUrl');
+  const openLink=document.getElementById('neptuneIndexQrOpenLink');
+  const targetUrl=new URL(<?=json_encode(base_url('index.php'))?>,window.location.origin).href;
+  const portableQrUrl=<?=json_encode($neptunePortableMode?base_url('assets/portable/neptune-lan-qr.png'):'')?>;
+  let qrBuilt=false;
   let returnFocus=null;
-  function resolveUrl(){
-    try{return new URL(basePath,window.location.origin).href;}catch(e){return window.location.origin+String(basePath||'/');}
+
+  if(urlLink){
+    urlLink.href=targetUrl;
+    urlLink.textContent=targetUrl;
   }
-  function renderQr(){
-    phoneUrl=resolveUrl();
-    if(urlEl)urlEl.textContent=phoneUrl;
-    if(openLink)openLink.href=phoneUrl;
-    if(canvas&&window.NeptuneQR){
-      try{window.NeptuneQR.draw(canvas,phoneUrl,{scale:8,quiet:4,dark:'#000',light:'#fff'});}catch(e){}
+  if(openLink) openLink.href=targetUrl;
+
+  function buildQr(){
+    if(qrBuilt||!qrHost)return;
+    qrHost.innerHTML='';
+    if(portableQrUrl){
+      const img=document.createElement('img');
+      img.src=portableQrUrl+'?v='+Date.now();
+      img.alt='QR code for this Neptune event server';
+      qrHost.appendChild(img);
+      qrBuilt=true;
+      return;
     }
+    if(typeof window.QRCode!=='function'){
+      const fallback=document.createElement('div');
+      fallback.className='neptune-index-qr-error';
+      fallback.textContent='QR rendering is unavailable. Use the link below to open Neptune.';
+      qrHost.appendChild(fallback);
+      return;
+    }
+    new QRCode(qrHost,{
+      text:targetUrl,
+      width:240,
+      height:240,
+      colorDark:'#000000',
+      colorLight:'#ffffff',
+      correctLevel:QRCode.CorrectLevel.M
+    });
+    qrBuilt=true;
   }
+
   function setOpen(open){
     modal.classList.toggle('is-open',open);
     modal.setAttribute('aria-hidden',open?'false':'true');
     document.body.classList.toggle('neptune-modal-open',open);
-    if(open){returnFocus=document.activeElement;renderQr();window.requestAnimationFrame(()=>dialog?.focus({preventScroll:true}));}
-    else if(returnFocus&&typeof returnFocus.focus==='function')returnFocus.focus({preventScroll:true});
+    if(open){
+      returnFocus=document.activeElement;
+      buildQr();
+      window.requestAnimationFrame(()=>dialog?.focus({preventScroll:true}));
+    }else if(returnFocus && typeof returnFocus.focus==='function'){
+      returnFocus.focus({preventScroll:true});
+    }
   }
-  openBtn.addEventListener('click',()=>setOpen(true));
-  closeButtons.forEach(btn=>btn.addEventListener('click',()=>setOpen(false)));
-  copyBtn?.addEventListener('click',async()=>{
-    if(!phoneUrl)renderQr();
-    try{await navigator.clipboard.writeText(phoneUrl);const old=copyBtn.innerHTML;copyBtn.innerHTML='<i class="fa-solid fa-check"></i> Copied';setTimeout(()=>copyBtn.innerHTML=old,1400);}catch(e){}
+
+  openButton.addEventListener('click',()=>setOpen(true));
+  closeButtons.forEach(button=>button.addEventListener('click',()=>setOpen(false)));
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&modal.classList.contains('is-open'))setOpen(false);
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modal.classList.contains('is-open'))setOpen(false)});
 })();
+
 
 (function(){
   const openButtons=[...document.querySelectorAll('[data-neptune-walkthrough-open]')];
@@ -282,13 +362,12 @@ body>main.wrap{flex:1 0 auto;width:100%;margin-top:0;margin-bottom:0}
 
   const imageViewer=document.getElementById('neptuneWalkthroughImageViewer');
   const imageEl=document.getElementById('neptuneWalkthroughImage');
-  const imageTitle=document.getElementById('neptuneWalkthroughImageTitle');
   function setImageOpen(open,src='',title='Training screenshot'){
     if(!imageViewer||!imageEl)return;
     imageViewer.classList.toggle('is-open',open);
     imageViewer.setAttribute('aria-hidden',open?'false':'true');
     document.body.classList.toggle('neptune-modal-open-image',open);
-    if(open){imageEl.src=src;imageEl.alt=title;if(imageTitle)imageTitle.textContent=title;}else{imageEl.removeAttribute('src');}
+    if(open){imageEl.src=src;imageEl.alt=title;}else{imageEl.removeAttribute('src');}
   }
   modal.querySelectorAll('[data-neptune-walkthrough-image]').forEach(button=>button.addEventListener('click',()=>setImageOpen(true,button.dataset.neptuneWalkthroughImage||'',button.dataset.neptuneWalkthroughTitle||'Training screenshot')));
   imageViewer?.querySelectorAll('[data-neptune-walkthrough-image-close]').forEach(button=>button.addEventListener('click',()=>setImageOpen(false)));
