@@ -26,7 +26,7 @@ $neptuneFooterCanDownloadServer = !empty($u) && in_array((string)($u['role'] ?? 
           <span>Walkthrough</span>
         </button>
       <?php endif; ?>
-      <span class="neptune-site-footer-info"><span>McKinney STEAM Academy</span><span class="neptune-site-footer-separator" aria-hidden="true">&middot;</span><span>&copy; <?=date('Y')?></span></span>
+      <span class="neptune-site-footer-info"><a href="https://www.mckinneysteamacademy.org" style="color:inherit;text-decoration:inherit">McKinney STEAM Academy</a><span class="neptune-site-footer-separator" aria-hidden="true">&middot;</span><span>&copy; <?=date('Y')?></span></span>
     </div>
   </div>
 </footer>
