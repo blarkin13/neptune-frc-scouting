@@ -17,7 +17,7 @@ function ar_num($v,int $d=1): string {
     return $v===null||$v===''?'—':number_format((float)$v,$d);
 }
 function ar_abs_url(string $path): string {
-    $base='https://neptune.mckinneysteamacademy.org';
+    $base='https://neptunefrc.com';
     if($path==='') return $base.'/';
     if(preg_match('~^https?://~i',$path)) return $path;
     return $base.'/'.ltrim($path,'/');
