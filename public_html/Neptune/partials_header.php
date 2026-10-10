@@ -48,7 +48,7 @@ $pageStyles=is_array($pageStyles??null)?$pageStyles:[];
 $scriptPath=str_replace('\\','/',(string)($_SERVER['SCRIPT_NAME']??''));
 $isPublicHome=!$u && (bool)preg_match('~/(?:index\.php)?$~',$scriptPath);
 
-$siteUrl='https://neptunefrc.com/';
+$siteUrl='https://neptune.mckinneysteamacademy.org/';
 $seoTitle='Neptune FRC Scouting Platform | Analytics & Strategy';
 $seoDescription='Neptune is an FRC scouting platform for live match scouting, pit scouting, pre-scouting, robot intelligence, analytics, strategy, event management, TBA integration and multi-team scouting.';
 $seoOgTitle='Neptune FRC Scouting Platform';
@@ -194,6 +194,22 @@ $homeStructuredData=[
 
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('neptune-theme')||'dark'}catch(e){}</script>
 
+<script>
+/* Select the light/dark metallic logo from Neptune's existing theme setting. */
+(function(){
+  function updateLogo(){
+    const img=document.querySelector('.neptune-metal-logo');
+    if(!img)return;
+    const light=document.documentElement.dataset.theme==='light';
+    const target=light?'/images/logoSilverDark.png':'/images/logoSilver.png';
+    if(img.getAttribute('src')!==target)img.setAttribute('src',target);
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    updateLogo();
+    new MutationObserver(updateLogo).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  });
+})();
+</script>
 <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon.png">
 <link rel="apple-touch-icon" href="/images/app-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -215,8 +231,8 @@ $homeStructuredData=[
 <header class="topbar topbar-clean">
     <a class="brand" href="<?=e(base_url($u ? 'dashboard/index.php' : 'index.php'))?>" aria-label="Neptune home">
         <img
-            class="brand-logo"
-            src="/images/logo.png"
+            class="brand-logo neptune-metal-logo"
+            src="/images/logoSilver.png"
             alt="Neptune FRC Scouting Platform"
             width="96"
             height="96"

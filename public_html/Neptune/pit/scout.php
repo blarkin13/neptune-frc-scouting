@@ -51,7 +51,12 @@ function save_pit_photo(PDO $pdo,array $u,int $org,int $pitId,int $eventId,int $
 }
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
+    if(empty($_POST) && (int)($_SERVER['CONTENT_LENGTH']??0)>0){
+        http_response_code(413);
+        exit('Pit form request exceeds the server upload limit. Reload and try saving answers without pictures.');
+    }
     verify_csrf();
+    $pitAjax=(string)($_POST['pit_ajax']??'')==='1';
     try{
         $posted=is_array($_POST['pit']??null)?$_POST['pit']:[];$clean=[];$missing=[];
             foreach($questions as $q){
@@ -99,6 +104,12 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             }
         $pit=$pdo->query('SELECT * FROM pit_scouting WHERE id='.(int)$pitId)->fetch();$data=$clean;
     }catch(Throwable $e){$error=$e->getMessage();}
+    if($pitAjax){
+        header('Content-Type: application/json; charset=utf-8');
+        if($error!=='')http_response_code(422);
+        echo json_encode(['ok'=>$error==='','message'=>$error?:$msg,'pit_id'=>isset($pitId)?(int)$pitId:0]);
+        exit;
+    }
 }
 
 $photos=[];if($pit){$s=$pdo->prepare('SELECT * FROM pit_scouting_photos WHERE pit_scouting_id=? ORDER BY category,created_at DESC');$s->execute([(int)$pit['id']]);$photos=$s->fetchAll();}
@@ -144,7 +155,8 @@ $pageTitle='Pit #'.$team;$moduleName='TRIDENT';include dirname(__DIR__).'/partia
     </div>
     <span class="pill"><i class="fa-solid fa-compress"></i> <?=e($imageCaps['preferred_label'])?> preferred</span>
   </div>
-  <div class="notice"><b>Automatic optimization:</b> Images are resized to a maximum of 1800 px and saved as AVIF when supported, with WebP/JPEG fallbacks. Upload limit: <?=e($photoLimit)?>.</div>
+  <div class="notice"><b>Automatic optimization:</b> Phone photos are resized to 1800 px before upload when your browser supports decoding them. Each image uploads separately after the scouting answers save. Server per-file limit: <?=e($photoLimit)?>.</div>
+  <div class="notice" id="pitSaveFeedback" role="status" aria-live="polite" hidden></div>
   <div class="pit-photo-inputs pit-photo-capture-grid">
     <?php foreach(['front'=>'Front','back'=>'Back','left'=>'Left side','right'=>'Right side','mechanism'=>'Mechanism / detail'] as $cat=>$label):?>
       <div class="pit-photo-capture" data-photo-capture data-photo-label="<?=e($label)?>">
@@ -355,6 +367,100 @@ $pageTitle='Pit #'.$team;$moduleName='TRIDENT';include dirname(__DIR__).'/partia
       }
     });
   });
+
+  // Reliable save: send answers without images first, then upload one resized image at a time.
+  const pitForm=document.querySelector('form[enctype="multipart/form-data"]');
+  const feedback=document.getElementById('pitSaveFeedback');
+  const pitSaveButtons=[...pitForm.querySelectorAll('button[name="save_mode"]')];
+  let saving=false;
+  function pitFeedback(message,bad=false){
+    if(!feedback)return;
+    feedback.hidden=false;
+    feedback.textContent=message;
+    feedback.className='notice'+(bad?' bad':' good');
+    feedback.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  function pitPhotoInputs(){
+    return [...document.querySelectorAll('[data-photo-capture]')].map(card=>({
+      card,category:card.querySelector('[data-photo-camera]')?.name.replace(/^photo_(.*)_camera$/,'$1'),
+      file:card.querySelector('[data-photo-camera]')?.files?.[0]||card.querySelector('[data-photo-library]')?.files?.[0]
+    })).filter(item=>item.file);
+  }
+  function pitDecodeImage(file){
+    return new Promise((resolve,reject)=>{
+      const url=URL.createObjectURL(file), img=new Image();
+      img.onload=()=>{URL.revokeObjectURL(url);resolve(img);};
+      img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Cannot decode this image on the phone. Choose a JPEG instead.'));};
+      img.src=url;
+    });
+  }
+  async function pitOptimize(file){
+    const img=await pitDecodeImage(file);
+    const scale=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+    canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('This browser cannot resize photos.');
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.8));
+    canvas.width=canvas.height=1;
+    if(!blob)throw new Error('Photo compression failed.');
+    return new File([blob],'pit-photo.jpg',{type:'image/jpeg'});
+  }
+  async function pitResponse(response){
+    const content=await response.text();
+    let result;
+    try{result=JSON.parse(content);}catch(e){
+      throw new Error('The server did not return a save confirmation (HTTP '+response.status+'). Your answers may not have saved.');
+    }
+    if(!response.ok||!result.ok)throw new Error(result.message||'Server rejected the request.');
+    return result;
+  }
+  pitForm?.addEventListener('submit',async event=>{
+    if(!('fetch' in window)||!('FormData' in window))return;
+    event.preventDefault();
+    if(saving)return;
+    saving=true;pitSaveButtons.forEach(btn=>btn.disabled=true);
+    const clicked=event.submitter;
+    const mode=clicked?.value==='draft'?'draft':'complete';
+    try{
+      pitFeedback('Saving scouting answers…');
+      const body=new FormData(pitForm);
+      for(const key of [...body.keys()])if(key.startsWith('photo_'))body.delete(key);
+      body.set('save_mode',mode);body.set('pit_ajax','1');
+      const answers=await pitResponse(await fetch('<?=e(base_url('api/save-pit-scouting.php'))?>',{method:'POST',body,credentials:'same-origin',headers:{'Accept':'application/json'}}));
+      const selections=pitPhotoInputs();
+      if(!selections.length){pitFeedback(answers.message);return;}
+      let done=0;const failed=[];
+      for(const item of selections){
+        const title=item.card.dataset.photoLabel||item.category;
+        pitFeedback('Answers saved. Uploading '+title+' ('+(done+1)+'/'+selections.length+')…');
+        try{
+          const optimized=await pitOptimize(item.file);
+          const upload=new FormData();
+          upload.set('csrf',pitForm.querySelector('[name="csrf"]').value);
+          upload.set('event_id',pitForm.querySelector('[name="event_id"]').value);
+          upload.set('team',pitForm.querySelector('[name="team"]').value);
+          upload.set('category',item.category);
+          upload.set('photo',optimized);
+          await pitResponse(await fetch('<?=e(base_url('api/upload-pit-photo.php'))?>',{method:'POST',body:upload,credentials:'same-origin',headers:{'Accept':'application/json'}}));
+          // Uploaded photo no longer needs to be submitted again.
+          item.card.querySelectorAll('input[type="file"]').forEach(input=>input.value='');
+          done++;
+        }catch(e){failed.push(title+': '+(e.message||'upload failed'));}
+      }
+      if(failed.length){
+        pitFeedback('Scouting answers saved; '+done+' photo(s) uploaded. Photo failures: '+failed.join(' | ')+'. You may press Save again to retry failed photos.',true);
+      }else{
+        pitFeedback('Scouting answers saved; '+done+' photo(s) uploaded.');
+        // Refresh to show new server photos and clear old previews.
+        location.reload();
+      }
+    }catch(e){pitFeedback('Save not confirmed: '+(e.message||'Network failure')+'. Keep this page open and retry.',true);}
+    finally{saving=false;pitSaveButtons.forEach(btn=>btn.disabled=false);}
+  });
+
 })();
 </script>
 <?php include dirname(__DIR__).'/partials_footer.php';
