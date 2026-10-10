@@ -79,24 +79,15 @@ include dirname(__DIR__).'/partials_header.php';
 
 
 
-    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/augur-ratings.php'))?>">
-      <div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-chart-line"></i></span><span class="neptune-hub-badge access-all"><i class="fa-solid fa-globe"></i> Public</span></div>
-      <span class="neptune-hub-card-kicker">Public TBA-derived ratings</span>
-      <h3>EPA Ratings</h3>
-      <p>View overall, Auto, Teleop and Endgame EPA from Neptune's shared TBA archive and access the public REST API.</p>
-      <div class="neptune-hub-meta"><span>EPA</span><span>Auto</span><span>Teleop</span><span>Endgame</span><span>Archive</span><span>REST API</span></div>
-      <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
-    </a>
-
-    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/depa-beta.php'))?>">
+    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/stats/'))?>" style="border-color:color-mix(in srgb,var(--accent,#18b8ff) 55%,var(--border,#26344b));background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#18b8ff) 13%,var(--card,#152435)),var(--card,#152435));">
       <div class="neptune-hub-card-top">
-        <span class="neptune-hub-icon"><i class="fa-solid fa-shield-halved"></i></span>
-        <span class="neptune-hub-badge access-all"><i class="fa-solid fa-globe"></i> Public</span>
+        <span class="neptune-hub-icon"><i class="fa-solid fa-globe"></i></span>
+        <span class="neptune-hub-badge access-all"><i class="fa-solid fa-arrow-up-right-from-square"></i> Public site</span>
       </div>
-      <span class="neptune-hub-card-kicker">Defensive suppression ratings</span>
-      <h3>D-EPA Ratings</h3>
-      <p>Compare D-EPA across all matches with Neptune D-EPA from scouting-confirmed defensive matches.</p>
-      <div class="neptune-hub-meta"><span>D-EPA</span><span>Nep. D-EPA</span><span>Verified Defense</span><span>Evidence</span><span>REST API</span></div>
+      <span class="neptune-hub-card-kicker">Explore FRC statistics without signing in</span>
+      <h3>Public FRC Statistics</h3>
+      <p>Explore EPA leaderboards, team profiles, season history and event analytics in Neptune's public statistics center.</p>
+      <div class="neptune-hub-meta"><span>EPA Rankings</span><span>Team Profiles</span><span>Events</span><span>Public Access</span></div>
       <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
     </a>
 

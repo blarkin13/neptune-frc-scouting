@@ -138,6 +138,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Public theme: use the last active organization selected in this browser, or the
+// site's platform organization. This does not authenticate or switch organizations.
+$publicLandingThemeCss = '';
+try {
+    require_once dirname(__DIR__, 2) . '/neptune_secure/themes.php';
+    $publicThemeOrg = 0;
+    $lastOrg = filter_var($_COOKIE['neptune_last_org'] ?? null, FILTER_VALIDATE_INT);
+    if ($lastOrg && $lastOrg > 0) {
+        $orgCheck = $pdo->prepare("SELECT id FROM organizations WHERE id=? AND COALESCE(platform_status,'active')='active' LIMIT 1");
+        $orgCheck->execute([$lastOrg]);
+        $publicThemeOrg = (int)($orgCheck->fetchColumn() ?: 0);
+    }
+    if (!$publicThemeOrg) {
+        $publicThemeOrg = (int)($config['app']['platform_organization_id'] ?? 1);
+    }
+    $publicLandingThemeCss = neptune_theme_active_css($pdo, $publicThemeOrg);
+} catch (Throwable $e) {
+    error_log('[Neptune public theme] '.$e->getMessage());
+}
+
 $pageTitle = 'Neptune | FRC Scouting Platform';
 
 include __DIR__ . '/partials_header.php';

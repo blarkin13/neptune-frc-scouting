@@ -25,8 +25,54 @@ if($event&&((int)$event['match_count'])>0){
 $pitPct=$event&&(int)$event['team_count']?round((int)$event['pit_complete']*100/(int)$event['team_count']):0;
 $pageTitle='Home';$moduleName='NEPTUNE';include dirname(__DIR__).'/partials_header.php';
 ?>
+<!-- Dashboard-only ocean atmosphere. Does not affect scouting screens or sign-in. -->
+<style>
+.nd-ocean {--nd-sea:var(--accent,#20b9dd);position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;isolation:isolate}
+.nd-ocean__wash,.nd-ocean__rays,.nd-ocean__particles {position:absolute;inset:-15%;pointer-events:none}
+.nd-ocean__wash {background:radial-gradient(ellipse at 50% -12%,color-mix(in srgb,var(--nd-sea) 20%,transparent),transparent 59%),linear-gradient(180deg,transparent 5%,color-mix(in srgb,var(--nd-sea) 6%,transparent) 55%,transparent);opacity:.8;transform:translate3d(0,calc(var(--nd-scroll,0px)*.06),0)}
+.nd-ocean__rays {background:repeating-conic-gradient(from 191deg at 50% -10%, transparent 0deg 8deg,color-mix(in srgb,var(--nd-sea) 8%,transparent) 9deg 11deg,transparent 12deg 24deg);opacity:.5;filter:blur(14px);transform:translate3d(0,calc(var(--nd-scroll,0px)*.14),0);animation:nd-current 20s ease-in-out infinite alternate}
+.nd-ocean__particles {transform:translate3d(0,calc(var(--nd-scroll,0px)*-.09),0)}
+.nd-ocean__bubble {position:absolute;bottom:-15vh;left:var(--x);height:var(--size);width:var(--size);border:1px solid color-mix(in srgb,var(--nd-sea) 65%,white 15%);border-radius:50%;background:radial-gradient(circle at 28% 23%,color-mix(in srgb,var(--nd-sea) 22%,white 10%),transparent 45%);box-shadow:inset -1px -2px 5px color-mix(in srgb,var(--nd-sea) 18%,transparent),0 0 9px color-mix(in srgb,var(--nd-sea) 14%,transparent);opacity:0;animation:nd-rise var(--duration) linear var(--delay) infinite;will-change:transform,opacity}
+@keyframes nd-rise {0%{opacity:0;transform:translate3d(0,0,0) scale(.65)}12%{opacity:var(--alpha)}86%{opacity:var(--alpha)}100%{opacity:0;transform:translate3d(var(--drift),-130vh,0) scale(1.1)}}
+@keyframes nd-current{from{translate:-1.5% 0}to{translate:1.5% 0}}
+/* Dashboard content stays above decorative water, with all controls interactive. */
+body:has(.nd-ocean) main,body:has(.nd-ocean) .container {position:relative;z-index:1}
+body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12px 40px color-mix(in srgb,var(--nd-sea) 9%,transparent)}
+@media(max-width:640px){.nd-ocean__rays{opacity:.32}.nd-ocean__bubble:nth-child(n+16){display:none}}
+@media(prefers-reduced-motion:reduce){.nd-ocean__rays,.nd-ocean__bubble{animation:none!important}.nd-ocean__bubble{display:none!important}}
+</style>
+<div class="nd-ocean" aria-hidden="true"><div class="nd-ocean__wash"></div><div class="nd-ocean__rays"></div><div class="nd-ocean__particles" id="ndBubbleField"></div></div>
+<script>
+(function(){
+  const field=document.getElementById('ndBubbleField');
+  if(!field||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const count=window.matchMedia('(max-width: 640px)').matches?14:32;
+  for(let i=0;i<count;i++){
+    const b=document.createElement('span');b.className='nd-ocean__bubble';
+    b.style.setProperty('--x',(Math.random()*100).toFixed(2)+'%');
+    b.style.setProperty('--size',(3+Math.random()*15).toFixed(1)+'px');
+    b.style.setProperty('--duration',(12+Math.random()*20).toFixed(2)+'s');
+    b.style.setProperty('--delay',(-Math.random()*32).toFixed(2)+'s');
+    b.style.setProperty('--drift',((Math.random()-.5)*170).toFixed(1)+'px');
+    b.style.setProperty('--alpha',(.11+Math.random()*.33).toFixed(2));
+    field.appendChild(b);
+  }
+  let ticking=false;
+  window.addEventListener('scroll',()=>{
+    if(ticking)return;ticking=true;
+    requestAnimationFrame(()=>{document.querySelector('.nd-ocean')?.style.setProperty('--nd-scroll',Math.min(window.scrollY,3500)+'px');ticking=false});
+  },{passive:true});
+})();
+</script>
+
+<style id="neptune-home-metal-logo-switch">
+/* The signed-in homepage hero uses the current Neptune theme, not OS preference. */
+.home-hero .home-hero-logo--black{display:none}
+html[data-theme="light"] .home-hero .home-hero-logo--silver{display:none}
+html[data-theme="light"] .home-hero .home-hero-logo--black{display:block}
+</style>
 <section class="card home-hero">
-  <div><img class="home-hero-logo" src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"><h1>Welcome to Neptune</h1><p class="muted">FRC Scouting &amp; Strategy Platform</p><p class="home-hero-detail">One platform connecting scouting, command, intelligence, live synchronization, configuration, and data.</p></div>
+  <div><img class="home-hero-logo home-hero-logo--silver" src="<?=e(base_url('images/logoSilver.png'))?>" alt="Neptune" decoding="async"><img class="home-hero-logo home-hero-logo--black" src="<?=e(base_url('images/logoSilverDark.png'))?>" alt="" aria-hidden="true" decoding="async"><h1>Welcome to Neptune</h1><p class="muted">FRC Scouting &amp; Strategy Platform</p><p class="home-hero-detail">One platform connecting scouting, command, intelligence, live synchronization, configuration, and data.</p></div>
   <div class="status-panel">
     <?php if($event):?>
       <div class="muted"><?=$event['is_current']?'Current event':'Current / upcoming event'?></div><h2><?=e($event['name'])?></h2><div class="muted"><?=e($event['game_name'])?> · <?=e(str_replace('_',' ',strtoupper($event['event_status'])))?></div>

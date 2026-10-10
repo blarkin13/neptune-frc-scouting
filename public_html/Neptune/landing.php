@@ -15,6 +15,10 @@
 $githubUrl = 'https://github.com/blarkin13/neptune-frc-scouting';
 ?>
 
+<?php if (!empty($publicLandingThemeCss)): ?>
+<style id="neptune-public-theme"><?= $publicLandingThemeCss ?></style>
+<?php endif; ?>
+
 <style>
 /* ==========================================================================
    NEPTUNE PUBLIC LANDING PAGE
@@ -1770,9 +1774,55 @@ html[data-theme="light"] .nlp .nlp-hero-tagline {
 html[data-theme="light"] .nlp-org-dialog,html[data-theme="light"] .nlp-org-dialog-head,html[data-theme="light"] .nlp-org-dialog-body{background:#fff!important}
 @media(max-width:560px){.nlp-org-field-row,.nlp-org-search-row{grid-template-columns:1fr}.nlp-org-find{width:100%}}
 
+
+/* PUBLIC OCEAN ENVIRONMENT — respects current organization color variables */
+.nlp {
+    --nlp-accent:var(--accent,#0b79b7);
+    --nlp-accent-2:var(--ready,var(--accent,#0b79b7));
+    --nlp-panel:var(--panel,#0b1118);
+    --nlp-panel-2:var(--panel2,#101923);
+    --nlp-border:var(--line,#24323f);
+    --nlp-muted:var(--muted,#91a1b1);
+    --nlp-text:var(--text,#f4f7fa);
+    position:relative;
+    isolation:isolate;
+    background:var(--bg,#05080b);
+}
+html[data-theme="light"] .nlp {
+    --nlp-accent:var(--accent,#004977);
+    --nlp-accent-2:var(--ready,var(--accent,#004977));
+    --nlp-panel:var(--panel,#fff);
+    --nlp-panel-2:var(--panel2,#f1f3f5);
+    --nlp-border:var(--line,#d1d5db);
+    --nlp-muted:var(--muted,#5e6b76);
+    --nlp-text:var(--text,#17212a);
+}
+.nlp > :not(.nlp-ocean) {position:relative;z-index:1}
+.nlp-ocean {position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;contain:layout paint;opacity:.92}
+.nlp-ocean__depth {position:absolute;inset:-18vh -14vw;background:
+    radial-gradient(ellipse at 48% -8%,color-mix(in srgb,var(--nlp-accent) 31%,transparent),transparent 53%),
+    radial-gradient(ellipse at 8% 75%,color-mix(in srgb,var(--nlp-accent-2) 19%,transparent),transparent 56%),
+    linear-gradient(180deg,color-mix(in srgb,var(--bg) 91%,var(--nlp-accent)),var(--bg2));
+    transform:translate3d(0,calc(var(--nlp-scroll,0px)*-.12),0);will-change:transform}
+.nlp-ocean__rays {position:absolute;inset:-22% -40%;opacity:.56;background:repeating-conic-gradient(from 183deg at 50% -30%,transparent 0deg 8deg,color-mix(in srgb,var(--nlp-accent-2) 16%,transparent) 9deg 10deg,transparent 11deg 21deg);mask-image:linear-gradient(#000,transparent 83%);transform:translate3d(0,calc(var(--nlp-scroll,0px)*.19),0) rotate(var(--nlp-ray-tilt,0deg));will-change:transform}
+.nlp-ocean__caustics {position:absolute;inset:-15%;opacity:.27;background:repeating-radial-gradient(ellipse at 46% -12%,transparent 0 31px,color-mix(in srgb,var(--nlp-accent-2) 35%,transparent) 33px 35px,transparent 38px 77px);filter:blur(7px);transform:translate3d(calc(var(--nlp-scroll,0px)*.035),calc(var(--nlp-scroll,0px)*-.075),0);will-change:transform}
+.nlp-ocean__floor {position:absolute;left:-14%;right:-14%;bottom:-24vh;height:73vh;opacity:.6;background:radial-gradient(ellipse at 48% 100%,color-mix(in srgb,var(--nlp-accent) 36%,transparent),transparent 68%),repeating-linear-gradient(171deg,transparent 0 42px,color-mix(in srgb,var(--nlp-accent-2) 12%,transparent) 43px 45px,transparent 46px 92px);transform:translate3d(0,calc(var(--nlp-scroll,0px)*-.075),0);will-change:transform}
+.nlp-ocean__bubble {position:absolute;left:var(--x);bottom:-12vh;top:auto;width:var(--size);height:var(--size);border:1px solid color-mix(in srgb,var(--nlp-accent-2) 74%,transparent);border-radius:50%;opacity:0;pointer-events:none;background:radial-gradient(circle at 30% 27%,color-mix(in srgb,var(--nlp-accent-2) 42%,transparent),transparent 37%);box-shadow:inset -2px -2px 5px color-mix(in srgb,var(--nlp-accent) 16%,transparent),0 0 12px color-mix(in srgb,var(--nlp-accent) 29%,transparent);animation:nlp-bubble-rise var(--duration,16s) linear var(--delay,0s) infinite;will-change:transform,opacity}
+@keyframes nlp-bubble-rise{0%{transform:translate3d(0,0,0) scale(.77);opacity:0}8%{opacity:var(--alpha)}48%{transform:translate3d(calc(var(--drift) * .52),-62vh,0) scale(1)}88%{opacity:var(--alpha)}100%{transform:translate3d(var(--drift),-130vh,0) scale(1.1);opacity:0}}
+.nlp-hero,.nlp-final,.nlp-section--soft {background:color-mix(in srgb,var(--bg) 59%,transparent)!important}
+.nlp .nlp-panel,.nlp .nlp-module,.nlp .nlp-login,.nlp .nlp-deploy-card {backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.nlp .nlp-hero::before {background:radial-gradient(ellipse at 50% 0%,color-mix(in srgb,var(--nlp-accent) 21%,transparent),transparent 68%)}
+.nlp .nlp-hero h1 span {color:var(--nlp-accent-2)}
+.nlp .nlp-btn--primary {background:var(--nlp-accent);color:var(--solid-text,#fff)}
+html[data-theme="light"] .nlp-ocean {opacity:.45}
+html[data-theme="light"] .nlp-hero,html[data-theme="light"] .nlp-final,html[data-theme="light"] .nlp-section--soft {background:color-mix(in srgb,var(--bg) 70%,transparent)!important}
+@media(max-width:700px){.nlp-ocean__rays{opacity:.32}.nlp-ocean__floor{opacity:.38}}
+@media(prefers-reduced-motion:reduce){.nlp-ocean__depth,.nlp-ocean__rays,.nlp-ocean__caustics,.nlp-ocean__floor,.nlp-ocean__bubble{animation:none!important;transform:translate3d(0,-45vh,0)!important;opacity:.2;will-change:auto!important}}
+
 </style>
 
 <div class="nlp">
+    <div class="nlp-ocean" aria-hidden="true"><div class="nlp-ocean__depth"></div><div class="nlp-ocean__rays"></div><div class="nlp-ocean__caustics"></div><div class="nlp-ocean__floor"></div></div>
 
     <!-- ================================================================
          PUBLIC PAGE NAVIGATION
@@ -3241,3 +3291,43 @@ neptune_secure/config.php</span>
 })();
 </script>
 
+
+<script>
+(() => {
+  'use strict';
+  const host = document.querySelector('.nlp');
+  const ocean = host && host.querySelector('.nlp-ocean');
+  if (!ocean) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // Visual variety only: colors always come from the selected theme.
+  const count = window.innerWidth < 700 ? 22 : 48;
+  const frag = document.createDocumentFragment();
+  for (let n = 0; n < count; n++) {
+    const b = document.createElement('i');
+    b.className = 'nlp-ocean__bubble';
+    b.style.setProperty('--x', (Math.random() * 100).toFixed(2) + '%');
+    b.style.setProperty('--duration', (10 + Math.random() * 21).toFixed(2) + 's');
+    b.style.setProperty('--delay', (-Math.random() * 32).toFixed(2) + 's');
+    b.style.setProperty('--size', (3 + Math.pow(Math.random(), 1.7) * 16).toFixed(1) + 'px');
+    b.style.setProperty('--alpha', (.22 + Math.random() * .52).toFixed(2));
+    b.style.setProperty('--speed', (-.07 + Math.random() * .20).toFixed(3));
+    b.style.setProperty('--drift', (Math.random() * 180 - 90).toFixed(1) + 'px');
+    frag.appendChild(b);
+  }
+  ocean.appendChild(frag);
+  ocean.style.setProperty('--nlp-ray-tilt', (Math.random() * 8 - 4).toFixed(1) + 'deg');
+  let queued = false;
+  function update() {
+    queued = false;
+    if (reduce.matches) { host.style.removeProperty('--nlp-scroll'); return; }
+    const box = host.getBoundingClientRect();
+    const travel = Math.max(-window.innerHeight, Math.min(host.offsetHeight + window.innerHeight, -box.top));
+    host.style.setProperty('--nlp-scroll', travel.toFixed(0) + 'px');
+  }
+  function request() { if (!queued) { queued = true; requestAnimationFrame(update); } }
+  window.addEventListener('scroll', request, {passive:true});
+  window.addEventListener('resize', request, {passive:true});
+  reduce.addEventListener?.('change', request);
+  request();
+})();
+</script>
