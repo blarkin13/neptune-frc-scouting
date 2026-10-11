@@ -3,6 +3,7 @@
 require_once __DIR__.'/_alliance_helpers.php';
 require_once dirname(__DIR__).'/prescout/_helpers.php';
 require_once __DIR__.'/_augur_epa.php';
+require_once __DIR__.'/_scoring_source.php';
 
 function augur_prediction_mean(array $values): float {
     return $values ? array_sum($values) / count($values) : 0.0;
@@ -150,7 +151,7 @@ function augur_prediction_match_is_prior(array $candidate, array $target): bool 
 function augur_prediction_baseline_excluding(array $observations, int $excludeMatch): ?float {
     $values = [];
     foreach ($observations as $row) {
-        if ((int)$row['match_id'] !== $excludeMatch) $values[] = (float)$row['points'];
+        if ((int)$row['match_id'] !== $excludeMatch && ($row['points_source'] ?? 'traditional')==='traditional' && !empty($row['score_observed'])) $values[] = (float)$row['points'];
     }
     return $values ? augur_prediction_mean($values) : null;
 }
@@ -295,7 +296,10 @@ function augur_prediction_prior_tba_opr_map(array $event, array $teams): array {
 function augur_prediction_field_robot_average(array $observations): float {
     $values = [];
     foreach ($observations as $rows) {
-        foreach ($rows as $row) $values[] = (float)($row['points'] ?? 0.0);
+        foreach ($rows as $row) {
+            if(($row['points_source']??'traditional')==='tag_estimate'||!empty($row['score_observed']))
+                $values[]=(float)($row['points']??0.0);
+        }
     }
     return $values ? augur_prediction_mean($values) : 0.0;
 }
@@ -305,12 +309,41 @@ function augur_prediction_field_robot_average(array $observations): float {
  * EPA anchors the robot early in an event; scouting earns more influence as the
  * sample grows so one unusually good/bad first match cannot take over the model.
  */
-function augur_prediction_offense_blend(array $points, ?float $epa, array $settings): array {
+/**
+ * Match-level reliability for offense evidence used to augment Neptune EPA.
+ * Traditional scoring is measured evidence (quality 1.0). Tag scoring is an
+ * estimated share of an official alliance score: use the shared human-observer
+ * confidence, with a modest dependence discount because public EPA is also
+ * based on official match results. Missing confidence must NOT count as 100%.
+ * These are model weights, not calibrated win probabilities.
+ */
+function augur_prediction_offense_evidence_quality(array $rows): float {
+    if (!$rows) return 1.0; // Preserve historic behavior for older callers.
+    $total=0.0;
+    foreach ($rows as $row) {
+        if (($row['points_source']??'traditional')==='tag_estimate') {
+            $reported=is_numeric($row['tag_confidence_pct']??null)
+                ? (float)$row['tag_confidence_pct'] : 40.0;
+            $total += augur_prediction_clamp($reported/100.0,0.0,1.0)*0.85;
+        } else {
+            $total += 1.0;
+        }
+    }
+    return augur_prediction_clamp($total/count($rows),0.0,1.0);
+}
+
+/**
+ * $evidenceRows must correspond one-to-one, in match order, to $points. When
+ * omitted, existing traditional-only integrations retain prior blend weights.
+ */
+function augur_prediction_offense_blend(array $points, ?float $epa, array $settings, array $evidenceRows=[]): array {
     $eventAverage=augur_prediction_mean($points);
     $recentAverage=augur_prediction_weighted_recent($points,6);
     $p75=augur_prediction_percentile($points,0.75);
     $n=count($points);
-    $scoutingInfluence=$n>0 ? augur_prediction_clamp($n/4.0,0.25,1.0) : 0.0;
+    $evidenceQuality=($n>0 && count($evidenceRows)===$n)
+        ? augur_prediction_offense_evidence_quality($evidenceRows) : 1.0;
+    $scoutingInfluence=($n>0 ? augur_prediction_clamp($n/4.0,0.25,1.0) : 0.0)*$evidenceQuality;
     $components=[
         ['value'=>$eventAverage,'weight'=>(float)$settings['event_offense_weight']*$scoutingInfluence,'available'=>$n>0],
         ['value'=>$recentAverage,'weight'=>(float)$settings['recent_offense_weight']*$scoutingInfluence,'available'=>$n>0],
@@ -326,12 +359,13 @@ function augur_prediction_offense_blend(array $points, ?float $epa, array $setti
     $slopeRaw=count($recent)>=3?augur_prediction_slope($recent):0.0;
     $trendSample=count($recent)>=3?augur_prediction_clamp((count($recent)-2)/4.0,0.0,1.0):0.0;
     $slopeCap=max(2.0,max($base,10.0)*0.08);
-    $slope=augur_prediction_clamp($slopeRaw,-$slopeCap,$slopeCap)*$trendSample;
+    $slope=augur_prediction_clamp($slopeRaw,-$slopeCap,$slopeCap)*$trendSample*$evidenceQuality;
     $trendCap=max(4.0,max($base,10.0)*0.15);
     $trendAdjustment=augur_prediction_clamp($slope*(float)$settings['trend_strength'],-$trendCap,$trendCap);
     return [
         'event_avg'=>$eventAverage,'recent_avg'=>$recentAverage,'p75'=>$p75,
-        'scouting_influence'=>$scoutingInfluence,'base'=>$base,'weight_total'=>$weightTotal,
+        'scouting_influence'=>$scoutingInfluence,'evidence_quality'=>$evidenceQuality,
+        'base'=>$base,'weight_total'=>$weightTotal,
         'slope_raw'=>$slopeRaw,'slope'=>$slope,'trend_adjustment'=>$trendAdjustment,
         'neptune_epa'=>max(0.0,$base+$trendAdjustment),
         'augur_epa'=>max(0.0,$base+$trendAdjustment), // legacy compatibility alias
@@ -353,15 +387,23 @@ function augur_prediction_team_metrics(
 ): array {
     $rows=$observations[$team]??[];
     $priorRows=$priorObservations[$team]??[];
-    $points=array_map(static fn($row)=>(float)$row['points'],$rows);
-    $priorPoints=array_map(static fn($row)=>(float)$row['points'],$priorRows);
-    $defense=array_map(static fn($row)=>(float)$row['defense'],$rows);
+    $scoringRows=array_values(array_filter($rows,static fn($r)=>
+        ($r['points_source']??'traditional')==='tag_estimate'||!empty($r['score_observed'])));
+    $points=array_map(static fn($row)=>(float)$row['points'],$scoringRows);
+    $priorPoints=array_map(static fn($row)=>(float)$row['points'],array_values(array_filter($priorRows,
+        static fn($r)=>!empty($r['score_observed'])||(int)($r['attempts']??0)>0||(float)($r['points']??0)!=0.0)));
+    $defense=array_map(static fn($row)=>(float)$row['defense'],array_values(array_filter($rows,static fn($row)=>($row['defense_observed']??(($row['points_source']??'traditional')==='traditional')))));
     $priorDefense=array_map(static fn($row)=>(float)$row['defense'],$priorRows);
 
     $epaRow=$epaMap[$team]??[];
     $epa=isset($epaRow['epa'])&&is_numeric($epaRow['epa'])?(float)$epaRow['epa']:null;
     $epaConfidence=isset($epaRow['confidence'])&&is_numeric($epaRow['confidence'])?(float)$epaRow['confidence']:null;
-    $blend=augur_prediction_offense_blend($points,$epa,$settings);
+    $blend=augur_prediction_offense_blend($points,$epa,$settings,$scoringRows);
+    $tagEstimateMatches=count(array_filter($rows,static fn($row)=>($row['points_source']??'traditional')==='tag_estimate'));
+    $tagEvidenceValues=array_values(array_filter(array_map(static fn($r)=>
+        ($r['points_source']??'traditional')==='tag_estimate'&&is_numeric($r['tag_confidence_pct']??null)
+            ?(float)$r['tag_confidence_pct']:null,$rows),'is_numeric'));
+    $tagEvidenceConfidence=$tagEvidenceValues?augur_prediction_mean($tagEvidenceValues):null;
     $eventAverage=$blend['event_avg'];$recentAverage=$blend['recent_avg'];$p75=$blend['p75'];
     $currentEstimate=$blend['base'];
 
@@ -380,9 +422,9 @@ function augur_prediction_team_metrics(
         $base=$priorBaseline;
     }
 
-    if($epa!==null&&$currentMatches>0)$source='EPA + current-event scouting';
+    if($epa!==null&&$currentMatches>0)$source=$tagEstimateMatches>0?'EPA + Tag-estimated points':'EPA + current-event scouting';
     elseif($epa!==null)$source='EPA';
-    elseif($currentMatches>0)$source=$priorBaseline>0?'current + season prior':'current-event scouting';
+    elseif($currentMatches>0)$source=$tagEstimateMatches>0?'Tag-estimated match points':($priorBaseline>0?'current + season prior':'current-event scouting');
     elseif($priorPoints)$source=$tbaOpr!==null?'prior-event scouting':'prior-event scouting';
     elseif($tbaOpr!==null)$source='public EPA unavailable';
     elseif($fieldAverage>0)$source='event field average';
@@ -394,7 +436,7 @@ function augur_prediction_team_metrics(
     $slopeRaw=count($recent)>=3?augur_prediction_slope($recent):0.0;
     $trendSample=count($recent)>=3?augur_prediction_clamp((count($recent)-2)/4.0,0.0,1.0):0.0;
     $slopeCap=max(2.0,max($base,10.0)*0.08);
-    $slope=augur_prediction_clamp($slopeRaw,-$slopeCap,$slopeCap)*$trendSample;
+    $slope=augur_prediction_clamp($slopeRaw,-$slopeCap,$slopeCap)*$trendSample*$blend['evidence_quality'];
     $trendCap=max(4.0,max($base,10.0)*0.15);
     $trendAdjustment=augur_prediction_clamp($slope*(float)$settings['trend_strength'],-$trendCap,$trendCap);
     $augurEpa=max(0.0,$base+$trendAdjustment);
@@ -407,6 +449,7 @@ function augur_prediction_team_metrics(
         $opponentColor=$color==='red'?'blue':'red';$deltas=[];
         foreach(($matches[$matchId][$opponentColor]??[]) as $opponentTeam){
             if(!isset($obsByTeamMatch[$opponentTeam][$matchId]))continue;
+            if(($obsByTeamMatch[$opponentTeam][$matchId]['points_source']??'traditional')!=='traditional')continue;
             $baseline=augur_prediction_baseline_excluding($observations[$opponentTeam]??[],$matchId);
             if($baseline===null)continue;
             $deltas[]=$baseline-(float)$obsByTeamMatch[$opponentTeam][$matchId]['points'];
@@ -433,7 +476,7 @@ function augur_prediction_team_metrics(
     $played=max(0,(int)($record['wins']??0)+(int)($record['losses']??0)+(int)($record['ties']??0));
     $winRate=$played>0?(((int)($record['wins']??0)+0.5*(int)($record['ties']??0))/$played):0.5;
 
-    $currentFactor=augur_prediction_clamp($currentMatches/6.0,0.0,1.0);
+    $currentFactor=augur_prediction_clamp($currentMatches/6.0,0.0,1.0)*$blend['evidence_quality'];
     $priorFactor=augur_prediction_clamp($priorMatches/8.0,0.0,1.0);
     $epaFactor=$epa!==null?augur_prediction_clamp(($epaConfidence??55.0)/100.0,0.35,0.98):0.0;
     $fallbackFactor=max($priorFactor*0.75,$tbaOpr!==null?0.38:0.0,$fieldAverage>0?0.18:0.0,$epaFactor);
@@ -447,7 +490,10 @@ function augur_prediction_team_metrics(
 
     return [
         'matches'=>$currentMatches,'current_matches'=>$currentMatches,'prior_season_matches'=>$priorMatches,
-        'event_avg'=>$eventAverage,'recent_avg'=>$recentAverage,'p75'=>$p75,'scouting_influence'=>$blend['scouting_influence'],
+        'tag_estimated_matches'=>$tagEstimateMatches,'tag_evidence_confidence'=>$tagEvidenceConfidence,'points_source'=>$tagEstimateMatches?($tagEstimateMatches===$currentMatches?'tag_estimate':'mixed'):'traditional',
+        'event_avg'=>$eventAverage,'recent_avg'=>$recentAverage,'p75'=>$p75,
+        'scouting_influence'=>$blend['scouting_influence'],
+        'scouting_evidence_quality_pct'=>round($blend['evidence_quality']*100.0,1),
         'prior_season_avg'=>$priorAverage,'prior_tba_opr'=>$tbaOpr,'field_avg_fallback'=>$fieldAverage,
         'baseline_source'=>$source,'baseline_before_trend'=>$base,'slope_raw'=>$slopeRaw,'slope'=>$slope,
         'volatility'=>$volatility,'projected_offense'=>$augurEpa,'neptune_epa'=>$augurEpa,'augur_epa'=>$augurEpa,'trend_adjustment'=>$trendAdjustment,
@@ -628,6 +674,7 @@ function augur_prediction_run(
         $stmt = $pdo->prepare(
             "SELECT sa.match_id,sa.match_run_number,sa.frc_team_number,
                     COALESCE(SUM(sa.points),0) points,
+                    SUM(CASE WHEN (sa.action_type='offense' AND sa.result IN ('Success','Failure')) OR sa.points<>0 THEN 1 ELSE 0 END) scoring_events,
                     SUM(CASE WHEN sa.action_type='defense' AND sa.result='Success' THEN 1 ELSE 0 END) defense_actions,
                     SUM(CASE WHEN sa.action_type='offense' THEN 1 ELSE 0 END) offense_attempts,
                     SUM(CASE WHEN sa.action_type='offense' AND sa.result='Success' THEN 1 ELSE 0 END) offense_successes
@@ -641,6 +688,7 @@ function augur_prediction_run(
             $key = $team.':'.(int)$row['match_id'];
             $actionRuns[$key][(int)$row['match_run_number']] = [
                 'points' => (float)$row['points'],
+                'score_observed' => (int)$row['scoring_events']>0,
                 'defense' => (int)$row['defense_actions'],
                 'attempts' => (int)$row['offense_attempts'],
                 'successes' => (int)$row['offense_successes'],
@@ -656,6 +704,9 @@ function augur_prediction_run(
         foreach ($membership as $matchId => $color) {
             $key = $team.':'.$matchId;
             if (!isset($picked[$key])) continue;
+            // An empty session is not a recorded zero-point scoring action.
+            // Let a valid Tag share fill it if one exists.
+            if (!isset($actionRuns[$key][(int)$picked[$key]['run']])) continue;
             $agg = $picked[$key];
             $row = [
                 'match_id' => $matchId,
@@ -664,9 +715,47 @@ function augur_prediction_run(
                 'defense' => (int)$agg['defense'],
                 'attempts' => (int)$agg['attempts'],
                 'successes' => (int)$agg['successes'],
+                'points_source' => 'traditional',
+                'score_observed'=>(bool)($actionRuns[$key][(int)$agg['run']]['score_observed']??false),
+                'defense_observed'=>true,
             ];
             $observations[$team][] = $row;
             $obsByTeamMatch[$team][$matchId] = $row;
+        }
+    }
+    // Tag points fill robot/matches with no recorded traditional actions.
+    // Respect the pre-match cutoff via the exact eligible local match IDs.
+    $tagRows=neptune_scoring_tag_match_points($pdo,$org,$eventId,array_keys($matches));
+    foreach($tagRows as $team=>$byMatch){
+        if(!in_array((int)$team,$selectedTeams,true)) continue;
+        foreach($byMatch as $matchId=>$tag){
+            if(!isset($teamMatchAlliance[$team][$matchId]))continue;
+            if(isset($obsByTeamMatch[$team][$matchId])){
+                if(!empty($obsByTeamMatch[$team][$matchId]['score_observed']))continue;
+                $obsByTeamMatch[$team][$matchId]['points']=(float)$tag['points'];
+                $obsByTeamMatch[$team][$matchId]['points_source']='tag_estimate';
+                $obsByTeamMatch[$team][$matchId]['tag_confidence_pct']=$tag['confidence_pct']??null;
+                foreach($observations[$team] as &$existing){
+                    if((int)$existing['match_id'] !== (int)$matchId)continue;
+                    $existing['points']=(float)$tag['points'];
+                    $existing['points_source']='tag_estimate';
+                    $existing['tag_confidence_pct']=$tag['confidence_pct']??null;
+                    break;
+                }
+                unset($existing);
+                continue;
+            }
+            $row=[
+                'match_id'=>(int)$matchId,
+                'match_number'=>(int)$matches[$matchId]['match_number'],
+                'points'=>(float)$tag['points'],
+                'defense'=>0,'attempts'=>0,'successes'=>0,
+                'points_source'=>'tag_estimate',
+                'tag_confidence_pct'=>$tag['confidence_pct']??null,
+                'score_observed'=>true,
+            ];
+            $observations[$team][]=$row;
+            $obsByTeamMatch[$team][$matchId]=$row;
         }
     }
     foreach ($observations as &$rows) {
@@ -682,7 +771,7 @@ function augur_prediction_run(
     $fieldAverage = augur_prediction_field_robot_average($observations);
 
     if ($useTbaRankings) {
-        $rankingRows = alliance_rankings_for_event($event);
+        $rankingRows = alliance_rankings_for_event($event,$pdo,$org);
         $recordMap = [];
         foreach ($rankingRows['rows'] as $row) $recordMap[(int)$row['team']] = $row;
     } else {

@@ -67,18 +67,6 @@ include dirname(__DIR__).'/partials_header.php';
       <div class="neptune-hub-meta"><span>Schedule</span><span>Alliance Compare</span><span>Robot Detail</span></div>
       <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
     </a>
-
-    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/pit-operations.php'))?>">
-      <div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="neptune-hub-badge access-all"><i class="fa-solid fa-user-group"></i> All users</span></div>
-      <span class="neptune-hub-card-kicker">Live pit operations</span>
-      <h3>Pit Operations Board</h3>
-      <p>Run match-day pit readiness with robot status, queue timing, checklists, alliance context, and the next-match briefing.</p>
-      <div class="neptune-hub-meta"><span>Readiness</span><span>Queue</span><span>Checklist</span><span>Next Match</span><span>TV Mode</span></div>
-      <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
-    </a>
-
-
-
     <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/stats/'))?>" style="border-color:color-mix(in srgb,var(--accent,#18b8ff) 55%,var(--border,#26344b));background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#18b8ff) 13%,var(--card,#152435)),var(--card,#152435));">
       <div class="neptune-hub-card-top">
         <span class="neptune-hub-icon"><i class="fa-solid fa-globe"></i></span>
@@ -87,7 +75,7 @@ include dirname(__DIR__).'/partials_header.php';
       <span class="neptune-hub-card-kicker">Explore FRC statistics without signing in</span>
       <h3>Public FRC Statistics</h3>
       <p>Explore EPA leaderboards, team profiles, season history and event analytics in Neptune's public statistics center.</p>
-      <div class="neptune-hub-meta"><span>EPA Rankings</span><span>Team Profiles</span><span>Events</span><span>Public Access</span></div>
+      <div class="neptune-hub-meta"><span>EPA Rankings</span><span>Team Profiles</span><span>Events</span><span>Developer API</span></div>
       <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
     </a>
 

@@ -22,7 +22,7 @@ include dirname(__DIR__).'/partials_header.php';
     <div>
       <div class="module-eyebrow"><span>AUGUR</span><small>Strategy Workspace</small></div>
       <h1>Alliance Selection</h1>
-      <p>Use official TBA qualification rankings for captains, track live selections, and estimate alliance offensive potential from your scouting data.</p>
+      <p>Use official TBA rankings when available, or provisional standings from recorded qualification results. Track selections and estimate alliance potential using Neptune EPA.</p>
     </div>
     <div class="alliance-head-actions">
       <span class="alliance-online-pill" id="allianceOnlinePill"><i class="fa-solid fa-wifi"></i> Online</span>
@@ -66,7 +66,7 @@ include dirname(__DIR__).'/partials_header.php';
       <button type="button" class="secondary compact" id="newDraftBtn"><i class="fa-solid fa-plus"></i> Scenario</button>
       <button type="button" class="secondary compact" id="cloneDraftBtn"><i class="fa-regular fa-copy"></i> Clone</button>
       <button type="button" class="secondary compact" id="draftMenuBtn"><i class="fa-solid fa-ellipsis"></i></button>
-      <button type="button" class="secondary compact" id="seedCaptainsBtn"><i class="fa-solid fa-rotate"></i> Refresh TBA Rankings</button>
+      <button type="button" class="secondary compact" id="seedCaptainsBtn"><i class="fa-solid fa-rotate"></i> Refresh Rankings</button>
       <button type="button" class="secondary compact" id="undoDraftBtn" title="Undo"><i class="fa-solid fa-rotate-left"></i></button>
       <button type="button" class="secondary compact" id="redoDraftBtn" title="Redo"><i class="fa-solid fa-rotate-right"></i></button>
       <?php endif;?>
@@ -149,7 +149,7 @@ include dirname(__DIR__).'/partials_header.php';
       <div class="alliance-pick-team-dialog-head">
         <div>
           <small id="alliancePickTeamDialogTier">Pick List</small>
-          <h2 id="alliancePickTeamDialogTitle">Choose a Team</h2><span class="alliance-pick-team-sort-note">Sorted by qualification points, then Neptune EPA</span>
+          <h2 id="alliancePickTeamDialogTitle">Choose a Team</h2><span class="alliance-pick-team-sort-note">Sorted by available qualification standings, then Neptune EPA</span>
         </div>
         <button type="button" class="secondary compact" id="alliancePickTeamDialogClose" aria-label="Close team chooser"><i class="fa-solid fa-xmark"></i></button>
       </div>

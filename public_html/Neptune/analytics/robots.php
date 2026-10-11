@@ -4,6 +4,7 @@ require_once __DIR__.'/_helpers.php';
 require_once __DIR__.'/_depa_metrics.php';
 require_once __DIR__.'/_augur_prediction_model.php';
 require_once __DIR__.'/_team_logo_cache.php';
+require_once __DIR__.'/_robot_tag_cards.php';
 $u=require_login();
 $org=(int)$u['organization_id'];
 $tv=isset($_GET['tv'])&&$_GET['tv']==='1';
@@ -19,8 +20,12 @@ $depaMap=[];
 $logoMap=[];
 $recentPointMap=[];
 $tagMap=[];
+$tagPointMatchMap=[];
+$epaDisplay=[];
+$tagMatchCardMap=[];
 
 if($event&&$teamNumbers){
+    try{$tagMatchCardMap=robot_tag_match_cards($pdo,$org,$eventId);}catch(Throwable $e){error_log('Robot Cards tags: '.$e->getMessage());$tagMatchCardMap=[];}
     try{
         // Use the same organization-private AUGUR model as Match Strategy and
         // Alliance Selection. Disable live TBA rankings so Robot Cards reads
@@ -68,6 +73,8 @@ if($event&&$teamNumbers){
         try{$epaMap=augur_epa_rating_map($pdo,$org,$event,$teamNumbers,null);}
         catch(Throwable $ignored){$epaMap=[];}
     }
+    try{$epaDisplay=augur_epa_robot_display_map($pdo,$org,$event,$teamNumbers);}
+    catch(Throwable $ignored){$epaDisplay=[];}
     try{$depaMap=neptune_depa_event_map_with_season_fallback($pdo,$event,$teamNumbers);}
     catch(Throwable $ignored){$depaMap=[];}
 
@@ -76,21 +83,46 @@ if($event&&$teamNumbers){
     // then reuse those local files offline on future loads.
     $logoMap=neptune_team_logo_map($org,(int)($event['season_year']??date('Y')),$teamNumbers);
 
+    // Separate true scouting runs from Tag-derived scoring snapshots.
+    try{$tagPointMatchMap=neptune_scoring_tag_match_points($pdo,$org,$eventId);}catch(Throwable $ignored){$tagPointMatchMap=[];}
+
     // Match-by-match scouting points for the small recent-form sparkline.
     try{
-        $s=$pdo->prepare("SELECT sa.frc_team_number,m.comp_level,m.set_number,m.match_number,sa.match_run_number,
-                   SUM(sa.points) AS scout_points
+        $s=$pdo->prepare("SELECT sa.frc_team_number,sa.match_id,m.comp_level,m.set_number,m.match_number,sa.match_run_number,
+                   SUM(sa.points) AS scout_points,
+                   SUM(CASE WHEN (sa.action_type='offense' AND sa.result IN ('Success','Failure')) OR sa.points<>0 THEN 1 ELSE 0 END) scoring_events
             FROM scouting_actions sa
             JOIN matches m ON m.id=sa.match_id AND m.organization_id=sa.organization_id AND m.event_id=sa.event_id
             WHERE sa.organization_id=? AND sa.event_id=? AND sa.deleted_at IS NULL
-            GROUP BY sa.frc_team_number,m.comp_level,m.set_number,m.match_number,sa.match_run_number
+            GROUP BY sa.frc_team_number,sa.match_id,m.comp_level,m.set_number,m.match_number,sa.match_run_number
             ORDER BY FIELD(m.comp_level,'qm','ef','qf','sf','f','legacy'),m.set_number,m.match_number,sa.match_run_number");
         $s->execute([$org,$eventId]);
+        $offenseByTeamMatch=[];
         foreach($s->fetchAll() as $row){
-            $n=(int)$row['frc_team_number'];
-            $recentPointMap[$n][]=(float)$row['scout_points'];
+            $n=(int)$row['frc_team_number'];$matchId=(int)$row['match_id'];
+            // Highest available scouted run for each robot/match wins.
+            $offenseByTeamMatch[$n][$matchId]=[
+                'match_id'=>$matchId,'match_number'=>(int)$row['match_number'],
+                'comp_level'=>(string)$row['comp_level'],
+                'points'=>(float)$row['scout_points'],'points_source'=>'traditional',
+                'score_observed'=>(int)$row['scoring_events']>0,
+            ];
         }
-        foreach($recentPointMap as $n=>$values)$recentPointMap[$n]=array_slice($values,-8);
+        foreach($tagPointMatchMap as $n=>$tagMatches){
+            foreach($tagMatches as $matchId=>$row){
+                if(!isset($offenseByTeamMatch[$n][$matchId]) || !$offenseByTeamMatch[$n][$matchId]['score_observed'])$offenseByTeamMatch[$n][$matchId]=$row;
+            }
+        }
+        foreach($offenseByTeamMatch as $n=>$byMatch){
+            $rows=array_values(array_filter($byMatch,static fn($r)=>
+                ($r['points_source']??'traditional')==='tag_estimate'||!empty($r['score_observed'])));
+            usort($rows,static fn($a,$b)=>
+                (augur_prediction_comp_rank((string)$a['comp_level'])<=>augur_prediction_comp_rank((string)$b['comp_level']))
+                ?:((int)$a['match_number']<=>(int)$b['match_number'])
+                ?:((int)$a['match_id']<=>(int)$b['match_id'])
+            );
+            $recentPointMap[$n]=array_slice(array_map(static fn($r)=>(float)$r['points'],$rows),-8);
+        }
     }catch(Throwable $ignored){$recentPointMap=[];}
 
     // Surface a few high-signal Tag Scouting observations directly on the card.
@@ -143,7 +175,7 @@ foreach($stats as $team=>$r){
     $n=(int)$team;
     $a=$augurMap[$n]['neptune_epa']??$augurMap[$n]['augur_epa']??null;
     if(is_numeric($a))$augurRankValues[$n]=(float)$a;
-    $ppmRankValues[$n]=(float)($r['ppm']??0);
+    if(!empty($r['has_scoring_data']))$ppmRankValues[$n]=(float)$r['ppm'];
 }
 $augurRanks=robot_card_rank_map($augurRankValues);
 $ppmRanks=robot_card_rank_map($ppmRankValues);
@@ -175,9 +207,9 @@ include dirname(__DIR__).'/partials_header.php';
     <div class="robot-history-toggle"><?=neptune_history_toggle_html(neptune_selector_show_history(),'events')?></div>
     <div><label for="robotSearch">Find robot</label><div class="robot-search-wrap"><i class="fa-solid fa-magnifying-glass"></i><input id="robotSearch" type="search" placeholder="Team or name" autocomplete="off"></div></div>
     <div><label for="robotFilter">Filter</label><select id="robotFilter"><option value="all">All robots</option><option value="pit">Pit complete</option><option value="trend">Trending up</option><option value="defense">Defense evidence</option><option value="tags">Has scout tags</option></select></div>
-    <div><label for="sortBy">Sort robots by</label><select id="sortBy"><option value="augur">Neptune EPA</option><option value="ppm">Points / match</option><option value="recent">Recent average</option><option value="confidence">Model confidence</option><option value="epa">Public EPA</option><option value="auto">Auto EPA</option><option value="teleop">Teleop EPA</option><option value="endgame">Endgame EPA</option><option value="trend">Recent trend</option><option value="cycle">Cycle time (fastest)</option><option value="depa">D-EPA</option><option value="nepdepa">Nep. D-EPA</option><option value="defense">Defense / match</option><option value="success">Offense success %</option><option value="matches">Matches scouted</option><option value="team">Team number</option></select></div>
+    <div><label for="sortBy">Sort robots by</label><select id="sortBy"><option value="augur">Neptune EPA</option><option value="ppm">Scouted / tag-est. points per match</option><option value="recent">Recent average</option><option value="confidence">Model confidence</option><option value="epa">Public EPA</option><option value="auto">Auto EPA</option><option value="teleop">Teleop EPA</option><option value="endgame">Endgame EPA</option><option value="trend">Recent trend</option><option value="cycle">Cycle time (fastest)</option><option value="depa">D-EPA</option><option value="nepdepa">Nep. D-EPA</option><option value="defense">Defense / match</option><option value="success">Offense success %</option><option value="matches">Matches with scoring data</option><option value="team">Team number</option></select></div>
   </form>
-  <div class="robot-result-line"><span id="robotResultCount"><?=e($totalRobots)?> robots</span><span class="muted">Neptune EPA blends public EPA with your current-event scouting and recent form.</span></div>
+  <div class="robot-result-line"><span id="robotResultCount"><?=e($totalRobots)?> robots</span><span class="muted">Neptune EPA combines available public EPA, scouting, Tag-estimated scoring, and recent form when available.</span></div>
 </div>
 <?php endif;?>
 <style>
@@ -207,7 +239,7 @@ include dirname(__DIR__).'/partials_header.php';
 .robot-primary-hero{position:relative;padding:12px;border:1px solid color-mix(in srgb,var(--module-augur,var(--accent)) 46%,var(--line));border-radius:9px;background:linear-gradient(135deg,color-mix(in srgb,var(--module-augur,var(--accent)) 10%,var(--panel2)),var(--panel2))}
 .robot-primary-label{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:.65rem;font-weight:900;text-transform:uppercase;letter-spacing:.055em}.robot-primary-value{display:flex;align-items:baseline;gap:9px;margin-top:4px}.robot-primary-value b{font-size:2rem;line-height:1;color:var(--module-augur,var(--accent));letter-spacing:-.045em}.robot-epa-delta{font-size:.73rem;font-weight:900}.robot-epa-delta.up{color:var(--good)}.robot-epa-delta.down{color:var(--bad)}.robot-epa-delta.flat{color:var(--muted)}
 .robot-trend-line{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:.7rem;font-weight:800;color:var(--muted)}.robot-trend-line .up{color:var(--good)}.robot-trend-line .down{color:var(--bad)}
-.robot-primary-side{display:grid;grid-template-columns:1fr 1fr;gap:7px}.robot-mini-stat{display:flex;flex-direction:column;justify-content:space-between;min-width:0;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}.robot-mini-stat span{font-size:.64rem;color:var(--muted);font-weight:800;line-height:1.15}.robot-mini-stat b{margin-top:5px;font-size:1rem;line-height:1}.robot-mini-stat.wide{grid-column:1/-1;flex-direction:row;align-items:center;gap:8px}.robot-mini-stat.wide b{margin-top:0}
+.robot-primary-side{display:grid;grid-template-columns:1fr 1fr;gap:7px}.robot-primary-side>.robot-mini-stat:only-child{grid-column:1/-1}.robot-mini-stat{display:flex;flex-direction:column;justify-content:space-between;min-width:0;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}.robot-mini-stat span{font-size:.64rem;color:var(--muted);font-weight:800;line-height:1.15}.robot-mini-stat b{margin-top:5px;font-size:1rem;line-height:1}.robot-mini-stat.wide{grid-column:1/-1;flex-direction:row;align-items:center;gap:8px}.robot-mini-stat.wide b{margin-top:0}
 
 .robot-phase-block{margin-top:10px;padding:10px 11px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
 .robot-section-kicker{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:.62rem;font-weight:900;letter-spacing:.065em;text-transform:uppercase;color:var(--muted)}
@@ -221,6 +253,9 @@ include dirname(__DIR__).'/partials_header.php';
 .robot-defense-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.robot-defense-label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.62rem;font-weight:900;letter-spacing:.065em;text-transform:uppercase}.robot-defense-confidence{font-size:.62rem;color:var(--muted);font-weight:800}
 .robot-defense-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.robot-defense-stat{min-width:0}.robot-defense-stat span{display:block;color:var(--muted);font-size:.6rem;font-weight:800;line-height:1.15}.robot-defense-stat b{display:block;margin-top:4px;font-size:.88rem;line-height:1}
 
+.robot-mini-stat.wide.robot-match-tags{flex-direction:column;align-items:flex-start;justify-content:center;gap:5px}
+.robot-mini-tags{display:flex;flex-wrap:wrap;align-items:center;gap:5px;min-width:0}
+.robot-mini-tags small{display:inline-flex;align-items:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.62rem;line-height:1.35;font-weight:850;padding:3px 7px;border-radius:999px;color:var(--text);background:color-mix(in srgb,var(--accent) 9%,var(--panel2));border:1px solid var(--line)}.robot-mini-stat>small{font-size:.57rem;color:var(--muted);font-weight:750;display:block;margin-top:3px}
 .robot-tag-strip{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}.robot-tag-chip{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:4px 7px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);font-size:.62rem;font-weight:850;line-height:1.2}.robot-tag-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.robot-tag-chip.positive{color:var(--good)}.robot-tag-chip.warning{color:#c68a18}.robot-tag-chip.critical{color:var(--bad)}
 
 .robot-card-grid .robot-card-foot{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:auto;padding-top:11px;font-size:.72rem}.robot-card-foot .robot-open-details{display:inline-flex;align-items:center;gap:5px;color:var(--accent);font-weight:900;white-space:nowrap}
@@ -235,16 +270,28 @@ include dirname(__DIR__).'/partials_header.php';
   $team=(int)$r['team'];
   $epa=$epaMap[$team]['epa']??null;
   $metrics=$augurMap[$team]??[];
+  $ratingDisplay=$epaDisplay[$team]??[];
+  $hasScoutRuns=(int)($r['scouted_offense_matches']??0)>0;
+  $tagCard=$tagMatchCardMap[$team]??[];
+  $hasHumanTagData=!empty($tagCard['has_human_observations']);
+  $hasMeasuredOffense=$hasScoutRuns;
+  $showTagData=!$hasMeasuredOffense&&$hasHumanTagData;
+  $tagEstimate=$showTagData&&is_numeric($tagCard['estimated_ppm']??null)?(float)$tagCard['estimated_ppm']:null;
+  $tagTop=$showTagData?array_slice($tagCard['top_tags']??[],0,3):[];
   $augur=$metrics['neptune_epa']??$metrics['augur_epa']??null;
   $auto=$metrics['auto_epa']??$epaMap[$team]['auto']??null;
   $teleop=$metrics['teleop_epa']??$epaMap[$team]['teleop']??null;
   $endgame=$metrics['endgame_epa']??$epaMap[$team]['endgame']??null;
   $confidence=$metrics['confidence']??null;
-  $eventAvg=$metrics['event_avg']??$r['ppm'];
-  $recentAvg=$metrics['recent_avg']??$r['ppm'];
-  $p75=$metrics['p75']??null;
-  $trend=$metrics['trend_adjustment']??0.0;
-  $volatility=$metrics['volatility']??null;
+  $eventAvg=!empty($r['has_scoring_data'])?($metrics['event_avg']??$r['ppm']):null;
+  $hasTagOffense=!empty($metrics['tag_estimated_matches'])||!empty($r['tag_estimated_matches']);
+  $hasOffenseRuns=!empty($r['has_scoring_data'])||$hasTagOffense;
+  $recentAvg=$hasOffenseRuns?($metrics['recent_avg']??$r['ppm']):($ratingDisplay['recent_epa_avg']??null);
+  $p75=$hasOffenseRuns?($metrics['p75']??null):($ratingDisplay['epa_p75']??null);
+  $trend=$hasOffenseRuns?($metrics['trend_adjustment']??null):($ratingDisplay['trend_per_match']??null);
+  $volatility=$hasOffenseRuns?($metrics['volatility']??null):($ratingDisplay['sigma_epa']??null);
+  $recentLabel=$hasTagOffense?'Recent est. avg':($hasScoutRuns?'Recent avg':'Recent EPA avg');
+  $p75Label=$hasTagOffense?'Est. P75':($hasScoutRuns?'P75 ceiling':'EPA P75');
   $depaRow=$depaMap[$team]??[];
   $depa=$depaRow['depa']??null;
   $nepDepa=$depaRow['neptune_depa']??null;
@@ -254,20 +301,22 @@ include dirname(__DIR__).'/partials_header.php';
   $depaValidation=trim((string)($depaRow['validation_label']??''));
   $delta=($augur!==null&&$epa!==null)?((float)$augur-(float)$epa):null;
   $deltaClass=$delta===null||abs($delta)<0.05?'flat':($delta>0?'up':'down');
-  $trendClass=abs((float)$trend)<0.05?'flat':((float)$trend>0?'up':'down');
-  $trendLabel=$trendClass==='up'?'Trending up':($trendClass==='down'?'Trending down':'Stable trend');
+  $trendClass=$trend===null?'flat':(abs((float)$trend)<0.05?'flat':((float)$trend>0?'up':'down'));
+  $trendLabel=$trend===null?'EPA history unavailable':($trendClass==='up'?'Trending up':($trendClass==='down'?'Trending down':'Stable trend'));
   $phaseNumeric=array_values(array_filter([$auto,$teleop,$endgame],fn($v)=>is_numeric($v)));
   $phaseMax=$phaseNumeric?max(array_map('floatval',$phaseNumeric)):1.0;
-  $sparkValues=$recentPointMap[$team]??[];
+  $sparkValues=$hasOffenseRuns?($recentPointMap[$team]??[]):array_column($ratingDisplay['trajectory']??[],'post_rating');
+  $sparkValues=array_slice($sparkValues,-8);
+  $sparkCountLabel=$hasScoutRuns?'scouted runs':($hasTagOffense?'Tag match estimates':'rated matches');
   $sparkPoints=robot_card_spark_points($sparkValues);
   $logoInfo=$logoMap[$team]??['exists'=>false,'path'=>'','version'=>''];
   $logo=!empty($logoInfo['exists'])?(string)$logoInfo['path']:'';
   $rank=$augurRanks[$team]??($ppmRanks[$team]??null);
-  $rankTotal=isset($augurRanks[$team])?$totalRankedAugur:$totalRobots;
+  $rankTotal=isset($augurRanks[$team])?$totalRankedAugur:count($ppmRankValues);
   $rankLabel=isset($augurRanks[$team])?'N-EPA':'PPM';
   $pitComplete=($r['pit_status']??'')==='complete';
   $defenseEvidence=$verifiedDefense>0||$possibleDefense>0||(float)$r['defense_per_match']>0;
-  $hasTags=!empty($tagMap[$team]);
+  $hasTags=!empty($tagMap[$team])||$hasHumanTagData;
   $searchText=strtolower($team.' '.($r['nickname']?:'FRC Team '.$team));
 ?>
   <button
@@ -276,7 +325,7 @@ include dirname(__DIR__).'/partials_header.php';
     data-event-id="<?=$eventId?>"
     data-team="<?=$team?>"
     data-name="<?=e($searchText)?>"
-    data-ppm="<?=$r['ppm']?>"
+    data-ppm="<?=e((string)($showTagData?($tagEstimate??-999999):($r['has_scoring_data']?$r['ppm']:-999999)))?>"
     data-epa="<?=$epa!==null?e((string)$epa):-999999?>"
     data-augur="<?=$augur!==null?e((string)$augur):-999999?>"
     data-recent="<?=is_numeric($recentAvg)?e((string)$recentAvg):-999999?>"
@@ -289,7 +338,7 @@ include dirname(__DIR__).'/partials_header.php';
     data-nepdepa="<?=$nepDepa!==null?e((string)$nepDepa):-999999?>"
     data-cycle="<?=$r['cycle_time']??99999?>"
     data-defense="<?=$r['defense_per_match']?>"
-    data-success="<?=$r['success_rate']?>"
+    data-success="<?=($r['successes']+$r['failures'])>0?$r['success_rate']:-999999?>"
     data-matches="<?=$r['matches']?>"
     data-pit="<?=$pitComplete?'1':'0'?>"
     data-defense-evidence="<?=$defenseEvidence?'1':'0'?>"
@@ -318,21 +367,32 @@ include dirname(__DIR__).'/partials_header.php';
 
       <div class="robot-primary">
         <div class="robot-primary-hero">
-          <div class="robot-primary-label"><span>Neptune EPA</span><?php if(is_numeric($confidence)):?><span><?=number_format((float)$confidence,0)?>% confidence</span><?php endif;?></div>
+          <div class="robot-primary-label"><span>Neptune EPA<?=($ratingDisplay['source']??'')==='FIRST provisional'?' · FIRST provisional':''?></span><?php if(is_numeric($confidence)):?><span><?=number_format((float)$confidence,0)?>% confidence</span><?php endif;?></div>
           <div class="robot-primary-value">
             <b><?=$augur!==null?number_format((float)$augur,1):'—'?></b>
-            <?php if($delta!==null):?><span class="robot-epa-delta <?=$deltaClass?>"><?=$delta>0?'+':''?><?=number_format($delta,1)?> vs public</span><?php endif;?>
+            <?php if($delta!==null):?><span class="robot-epa-delta <?=$deltaClass?>"><?=$delta>0?'+':''?><?=number_format($delta,1)?> vs <?=($ratingDisplay['source']??'')==='FIRST provisional'?'FIRST baseline':'public'?></span><?php endif;?>
           </div>
           <div class="robot-trend-line">
             <i class="fa-solid <?=$trendClass==='up'?'fa-arrow-trend-up':($trendClass==='down'?'fa-arrow-trend-down':'fa-minus')?> <?=$trendClass?>"></i>
-            <span><?=$trendLabel?><?php if(is_numeric($trend)&&abs((float)$trend)>=0.05):?> · <?=$trend>0?'+':''?><?=number_format((float)$trend,1)?> EPA<?php endif;?></span>
-            <?php if(is_numeric($volatility)):?><span title="Recent scoring volatility">· σ <?=number_format((float)$volatility,1)?></span><?php endif;?>
+            <span><?=$trendLabel?><?php if(is_numeric($trend)&&abs((float)$trend)>=0.05):?> · <?=$trend>0?'+':''?><?=number_format((float)$trend,1)?> <?=$hasScoutRuns?'EPA adjustment':'EPA/match'?><?php endif;?></span>
+            <?php if(is_numeric($volatility)):?><span title="<?=$hasScoutRuns?'Scouted scoring volatility':'Rated EPA variation'?>">· <?=$hasScoutRuns?'σ':'EPA σ'?> <?=number_format((float)$volatility,1)?></span><?php endif;?>
           </div>
         </div>
         <div class="robot-primary-side">
-          <div class="robot-mini-stat"><span>Public EPA</span><b><?=$epa!==null?number_format((float)$epa,1):'—'?></b></div>
-          <div class="robot-mini-stat"><span>Points / match</span><b><?=number_format((float)$r['ppm'],1)?></b></div>
-          <div class="robot-mini-stat wide"><span>Cycle / success</span><b><?=$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'?> · <?=number_format((float)$r['success_rate'],0)?>%</b></div>
+          <div class="robot-mini-stat"><span><?=($ratingDisplay['source']??'')==='FIRST provisional'?'FIRST EPA':'Public EPA'?></span><b><?=$epa!==null?number_format((float)$epa,1):'—'?></b></div>
+          <?php if($showTagData):?>
+            <?php if($tagEstimate!==null):?>
+            <div class="robot-mini-stat"><span>Tag est. pts / match</span><b><?=number_format($tagEstimate,1)?></b><?php if(($tagCard['scored_matches']??0)>0):?><small><?=e((int)$tagCard['scored_matches'])?> scored match<?=((int)$tagCard['scored_matches'])===1?'':'es'?><?=isset($tagCard['confidence_pct'])?' · '.number_format((float)$tagCard['confidence_pct'],0).'% evidence confidence':''?></small><?php endif;?></div>
+            <?php endif;?>
+            <?php if($tagTop):?>
+            <div class="robot-mini-stat wide robot-match-tags"><span>Tags</span><div class="robot-mini-tags"><?php foreach($tagTop as $tag):?><small title="<?=e((string)($tag['label']??'Tag').(isset($tag['count'])?' · '.(int)$tag['count'].' mentions':''))?>"><?=e(neptune_robot_tag_hashtag((string)($tag['label']??'Tag')))?></small><?php endforeach;?></div></div>
+            <?php endif;?>
+          <?php else:?>
+            <?php if($hasScoutRuns):?><div class="robot-mini-stat"><span>Points / match</span><b><?=number_format((float)$r['ppm'],1)?></b></div><?php endif;?>
+            <?php if($r['cycle_time']!==null||($r['successes']+$r['failures'])>0):?>
+            <div class="robot-mini-stat wide"><span>Cycle / success</span><b><?=$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'?> · <?=($r['successes']+$r['failures'])>0?number_format((float)$r['success_rate'],0).'%':'—'?></b></div>
+            <?php endif;?>
+          <?php endif;?>
         </div>
       </div>
 
@@ -350,12 +410,12 @@ include dirname(__DIR__).'/partials_header.php';
 
       <div class="robot-form-block">
         <div class="robot-form-metrics">
-          <div class="robot-form-stat"><span>Event avg</span><b><?=is_numeric($eventAvg)?number_format((float)$eventAvg,1):'—'?></b></div>
-          <div class="robot-form-stat"><span>Recent avg</span><b><?=is_numeric($recentAvg)?number_format((float)$recentAvg,1):'—'?></b></div>
-          <div class="robot-form-stat"><span>P75 ceiling</span><b><?=is_numeric($p75)?number_format((float)$p75,1):'—'?></b></div>
+          <div class="robot-form-stat"><span><?=$hasTagOffense?'Event est. avg':'Event avg'?></span><b><?=is_numeric($eventAvg)?number_format((float)$eventAvg,1):'—'?></b></div>
+          <div class="robot-form-stat"><span><?=e($recentLabel)?></span><b><?=is_numeric($recentAvg)?number_format((float)$recentAvg,1):'—'?></b></div>
+          <div class="robot-form-stat"><span><?=e($p75Label)?></span><b><?=is_numeric($p75)?number_format((float)$p75,1):'—'?></b></div>
         </div>
         <div class="robot-spark">
-          <div class="robot-spark-head"><span>Recent form</span><span><?=count($sparkValues)?> run<?=count($sparkValues)===1?'':'s'?></span></div>
+          <div class="robot-spark-head"><span><?=$hasScoutRuns?'Recent form':($hasTagOffense?'Tag scoring form':'EPA progression')?></span><span><?=count($sparkValues)?> <?=e($sparkCountLabel)?></span></div>
           <?php if($sparkPoints!==''):?><svg viewBox="0 0 132 34" preserveAspectRatio="none" aria-hidden="true"><polyline points="<?=e($sparkPoints)?>"></polyline></svg><?php else:?><div class="robot-spark-empty">Not enough match data</div><?php endif;?>
         </div>
       </div>
@@ -366,7 +426,7 @@ include dirname(__DIR__).'/partials_header.php';
           <div class="robot-defense-confidence"><?php if($depaConfidence!==null):?><?=number_format($depaConfidence,0)?>% confidence<?php elseif($depaValidation!==''):?><?=e($depaValidation)?><?php endif;?></div>
         </div>
         <div class="robot-defense-stats">
-          <div class="robot-defense-stat"><span>Defense / match</span><b><?=number_format((float)$r['defense_per_match'],1)?></b></div>
+          <div class="robot-defense-stat"><span>Defense / match</span><b><?=$hasScoutRuns?number_format((float)$r['defense_per_match'],1):'—'?></b></div>
           <div class="robot-defense-stat"><span>D-EPA</span><b><?=$depa!==null?number_format((float)$depa,1):'—'?></b></div>
           <div class="robot-defense-stat"><span>Nep. D-EPA</span><b><?=$nepDepa!==null?number_format((float)$nepDepa,1):'—'?></b></div>
           <div class="robot-defense-stat"><span>Verified</span><b><?=e($verifiedDefense)?></b></div>
@@ -381,7 +441,7 @@ include dirname(__DIR__).'/partials_header.php';
       </div><?php endif;?>
 
       <div class="robot-card-foot">
-        <span class="muted"><?=$r['matches']?> match run<?=$r['matches']==1?'':'s'?> · <?=$r['actions']?> actions<?php if($possibleDefense>0):?> · <?=$possibleDefense?> possible defense<?php endif;?></span>
+        <span class="muted"><?=e((int)($r['scouted_matches']??0))?> scouted runs<?php if(!empty($r['tag_estimated_matches'])):?> · <?=e((int)$r['tag_estimated_matches'])?> Tag-estimated matches<?php endif;?> · <?=$r['actions']?> actions<?php if($possibleDefense>0):?> · <?=$possibleDefense?> possible defense<?php endif;?></span>
         <span class="robot-open-details"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Full details</span>
       </div>
     </div>

@@ -29,6 +29,9 @@ function rmi_spark_points(array $rows,int $width=760,int $height=150): string {
 $epa=null;
 try{if(augur_epa_tables_ready($pdo)){$epaMap=augur_epa_rating_map($pdo,$org,$event,[$team],null);$epa=$epaMap[$team]??null;}}catch(Throwable $ignored){$epa=null;}
 
+$ratingDisplay=[];
+try{$ratingDisplay=augur_epa_robot_display_map($pdo,$org,$event,[$team])[$team]??[];}catch(Throwable $ignored){}
+
 $depa=null;
 try{$dm=neptune_depa_event_map_with_season_fallback($pdo,$event,[$team]);$depa=$dm[$team]??null;}catch(Throwable $ignored){$depa=null;}
 
@@ -41,24 +44,11 @@ try{
     $augur=$prediction['a']['teams'][0]['metrics']??null;
 }catch(Throwable $ex){$augurError=$ex->getMessage();}
 
-$publicRank=null;$publicCount=0;$eventRecord=null;
-try{
-    $eventKey=trim((string)($event['tba_event_key']??''));
-    if($eventKey!==''){
-        $s=$pdo->prepare('SELECT rating,wins,losses,ties FROM augur_epa_event_ratings WHERE tba_event_key=? AND frc_team_number=? LIMIT 1');$s->execute([$eventKey,$team]);$ratingRow=$s->fetch();
-        if($ratingRow){
-            $s=$pdo->prepare('SELECT COUNT(*) AS total,1+SUM(CASE WHEN rating>? THEN 1 ELSE 0 END) AS rank_num FROM augur_epa_event_ratings WHERE tba_event_key=?');$s->execute([(float)$ratingRow['rating'],$eventKey]);$rankRow=$s->fetch();
-            $publicCount=(int)($rankRow['total']??0);$publicRank=$publicCount>0?(int)($rankRow['rank_num']??0):null;
-            $eventRecord=['wins'=>(int)$ratingRow['wins'],'losses'=>(int)$ratingRow['losses'],'ties'=>(int)$ratingRow['ties']];
-        }
-    }
-}catch(Throwable $ignored){}
-
-$trajectory=[];
-try{
-    $eventKey=trim((string)($event['tba_event_key']??''));
-    if($eventKey!==''){$s=$pdo->prepare('SELECT match_number,post_rating,rating_delta,post_auto_rating,post_teleop_rating,post_endgame_rating FROM augur_epa_match_ratings WHERE tba_event_key=? AND frc_team_number=? ORDER BY match_number');$s->execute([$eventKey,$team]);$trajectory=$s->fetchAll();}
-}catch(Throwable $ignored){$trajectory=[];}
+$publicRank=$ratingDisplay['rank']??null;
+$publicCount=(int)($ratingDisplay['rank_total']??0);
+$eventRecord=$ratingDisplay['record']??null;
+$ratingSource=(string)($ratingDisplay['source']??'');
+$trajectory=$ratingDisplay['trajectory']??[];
 $trajectoryPoints=rmi_spark_points($trajectory);
 
 $spotAvailable=false;$spotRows=[];$spotMedia=[];$spotTagCounts=[];$spotWarnings=0;
@@ -80,8 +70,20 @@ if(is_file($spotHelper)){
 }
 
 $public=$epa['epa']??null;$neptune=$augur['neptune_epa']??$augur['augur_epa']??null;$delta=(is_numeric($public)&&is_numeric($neptune))?((float)$neptune-(float)$public):null;
-$trend=$augur['trend_adjustment']??0.0;$confidence=$augur['confidence']??null;$eventAvg=$augur['event_avg']??null;$recentAvg=$augur['recent_avg']??null;$p75=$augur['p75']??null;$volatility=$augur['volatility']??null;
-$trendClass=abs((float)$trend)<0.05?'flat':((float)$trend>0?'up':'down');$trendLabel=$trendClass==='up'?'Trending up':($trendClass==='down'?'Trending down':'Stable');
+$scoutedMatches=(int)($augur['current_matches']??0);
+$tagEstimateMatches=(int)($augur['tag_estimated_matches']??0);
+$hasTagEstimates=$tagEstimateMatches>0;
+$tagEvidenceConfidence=$augur['tag_evidence_confidence']??null;
+$trend=$scoutedMatches>0?($augur['trend_adjustment']??null):($ratingDisplay['trend_per_match']??null);
+$confidence=$augur['confidence']??null;$eventAvg=$augur['event_avg']??null;
+$recentAvg=$scoutedMatches>0?($augur['recent_avg']??null):($ratingDisplay['recent_epa_avg']??null);
+$p75=$scoutedMatches>0?($augur['p75']??null):($ratingDisplay['epa_p75']??null);
+$volatility=$scoutedMatches>0?($augur['volatility']??null):($ratingDisplay['sigma_epa']??null);
+$recentAvgLabel=$scoutedMatches>0?($hasTagEstimates?'Recent Est. Avg':'Recent Avg'):'Recent EPA Avg';
+$p75Label=$scoutedMatches>0?($hasTagEstimates?'Est. P75':'P75 Ceiling'):'EPA P75';
+$trendDescription=$scoutedMatches>0?($hasTagEstimates?'Estimated scoring trend':'Scouted trend adjustment'):'EPA change per rated match';
+$trendClass=$trend===null?'flat':(abs((float)$trend)<0.05?'flat':((float)$trend>0?'up':'down'));
+$trendLabel=$trend===null?'Unavailable':($trendClass==='up'?'Trending up':($trendClass==='down'?'Trending down':'Stable'));
 $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['possible_defense_matches']??0);$defConfidence=is_numeric($depa['confidence_score']??null)?(float)$depa['confidence_score']:null;$defValidation=trim((string)($depa['validation_label']??''));
 ?>
 <div data-robot-intel-target="overview">
@@ -90,21 +92,21 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
       <div class="robot-overview-neptune">
         <span>Neptune EPA</span>
         <b><?=rmi_num($neptune,1)?></b>
-        <?php if($delta!==null):?><small class="<?=$delta>0?'positive':($delta<0?'negative':'')?>"><?=$delta>0?'+':''?><?=rmi_num($delta,1)?> vs Public EPA</small><?php else:?><small>Private AUGUR offense rating</small><?php endif;?>
+        <?php if($delta!==null):?><small class="<?=$delta>0?'positive':($delta<0?'negative':'')?>"><?=$delta>0?'+':''?><?=rmi_num($delta,1)?> vs <?=$ratingSource==='FIRST provisional'?'FIRST EPA':'Public EPA'?></small><?php else:?><small>Private AUGUR offense rating</small><?php endif;?>
       </div>
-      <div class="robot-overview-kpi"><span>Public EPA rank</span><b><?=$publicRank!==null?'#'.rmi_e($publicRank).' / '.rmi_e($publicCount):'—'?></b><small>Event field</small></div>
-      <div class="robot-overview-kpi"><span>Trend</span><b class="<?=rmi_e($trendClass)?>"><i class="fa-solid <?=$trendClass==='up'?'fa-arrow-trend-up':($trendClass==='down'?'fa-arrow-trend-down':'fa-minus')?>"></i> <?=rmi_num($trend,1)?></b><small><?=rmi_e($trendLabel)?><?php if(is_numeric($volatility)):?> · σ <?=rmi_num($volatility,1)?><?php endif;?></small></div>
+      <div class="robot-overview-kpi"><span><?=$ratingSource==='FIRST provisional'?'FIRST EPA rank':'Public EPA rank'?></span><b><?=$publicRank!==null?'#'.rmi_e($publicRank).' / '.rmi_e($publicCount):'—'?></b><small><?=$ratingSource==='FIRST provisional'?'Rated FIRST field':'Event field'?></small></div>
+      <div class="robot-overview-kpi"><span>Trend</span><b class="<?=rmi_e($trendClass)?>"><i class="fa-solid <?=$trendClass==='up'?'fa-arrow-trend-up':($trendClass==='down'?'fa-arrow-trend-down':'fa-minus')?>"></i> <?=rmi_num($trend,1)?></b><small><?=rmi_e($trendDescription)?> · <?=rmi_e($trendLabel)?><?php if(is_numeric($volatility)):?> · <?=($scoutedMatches>0?'σ':'EPA σ')?> <?=rmi_num($volatility,1)?><?php endif;?></small></div>
       <div class="robot-overview-kpi"><span>Confidence</span><b><?=is_numeric($confidence)?rmi_num($confidence,0).'%':'—'?></b><small><?=rmi_e($augur['baseline_source']??'AUGUR model')?></small></div>
     </div>
 
     <div class="robot-intel-rating-grid robot-intel-rating-grid-v2">
-      <div class="robot-intel-rating primary"><span>Public EPA</span><b><?=rmi_num($public,1)?></b><small>TBA-derived</small></div>
+      <div class="robot-intel-rating primary"><span><?=$ratingSource==='FIRST provisional'?'FIRST EPA':'Public EPA'?></span><b><?=rmi_num($public,1)?></b><small><?=rmi_e($ratingSource==='FIRST provisional'?'FIRST provisional':($ratingSource==='TBA public'?'TBA-derived':'Baseline unavailable'))?></small></div>
       <div class="robot-intel-rating"><span>Auto EPA</span><b><?=rmi_num($augur['auto_epa']??$epa['auto']??null,1)?></b><small>Autonomous</small></div>
       <div class="robot-intel-rating"><span>Teleop EPA</span><b><?=rmi_num($augur['teleop_epa']??$epa['teleop']??null,1)?></b><small>Teleoperated</small></div>
       <div class="robot-intel-rating"><span>Endgame EPA</span><b><?=rmi_num($augur['endgame_epa']??$epa['endgame']??null,1)?></b><small>Endgame</small></div>
-      <div class="robot-intel-rating"><span>Event Avg</span><b><?=rmi_num($eventAvg,1)?></b><small>Scouted output</small></div>
-      <div class="robot-intel-rating"><span>Recent Avg</span><b><?=rmi_num($recentAvg,1)?></b><small>Recent form</small></div>
-      <div class="robot-intel-rating"><span>P75 Ceiling</span><b><?=rmi_num($p75,1)?></b><small>Upper quartile</small></div>
+      <div class="robot-intel-rating"><span><?=$hasTagEstimates?'Event Est. Avg':'Event Avg'?></span><b><?=rmi_num($eventAvg,1)?></b><small><?=$hasTagEstimates?'Tag-derived scoring and/or traditional actions':'Scouted output'?><?php if($hasTagEstimates&&is_numeric($tagEvidenceConfidence)):?> · <?=rmi_num($tagEvidenceConfidence,0)?>% Tag evidence confidence<?php endif;?></small></div>
+      <div class="robot-intel-rating"><span><?=rmi_e($recentAvgLabel)?></span><b><?=rmi_num($recentAvg,1)?></b><small><?=$scoutedMatches>0?($hasTagEstimates?'Estimated scoring form':'Scouted form'):'Rated EPA snapshots'?></small></div>
+      <div class="robot-intel-rating"><span><?=rmi_e($p75Label)?></span><b><?=rmi_num($p75,1)?></b><small><?=$scoutedMatches>0?'Upper quartile':'Recent rated EPA'?></small></div>
       <div class="robot-intel-rating"><span>Record</span><b><?=$eventRecord?rmi_e($eventRecord['wins'].'-'.$eventRecord['losses'].'-'.$eventRecord['ties']):'—'?></b><small><?=rmi_e($event['name']??'Event')?></small></div>
     </div>
   </section>
@@ -113,7 +115,7 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
     <div class="robot-intel-section-title"><h3><i class="fa-solid fa-shield-halved"></i> Defense</h3><?php if($defConfidence!==null):?><span class="pill"><?=rmi_num($defConfidence,0)?>% confidence</span><?php elseif($defValidation!==''):?><span class="pill"><?=rmi_e($defValidation)?></span><?php endif;?></div>
     <div class="robot-defense-dashboard">
       <div><span>Neptune D-EPA</span><b><?=rmi_num($depa['neptune_depa']??null,1)?></b></div>
-      <div><span>Public D-EPA</span><b><?=rmi_num($depa['depa']??null,1)?></b></div>
+      <div><span>D-EPA</span><b><?=rmi_num($depa['depa']??null,1)?></b></div>
       <div><span>Verified matches</span><b><?=rmi_e($verified)?></b></div>
       <div><span>Possible matches</span><b><?=rmi_e($possible)?></b></div>
     </div>
@@ -124,7 +126,7 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
     <?php if(!$spotAvailable):?><div class="robot-intel-empty">Tag Scouting is not installed on this Neptune server.</div>
     <?php elseif(!$spotRows):?><div class="robot-intel-empty">No Tag Scouting observations have been recorded for this robot at this event.</div>
     <?php else:?>
-      <div class="robot-intel-spot-summary"><?php foreach(array_slice(array_values($spotTagCounts),0,5) as $tag):$severity=in_array($tag['severity'],['positive','warning','critical'],true)?$tag['severity']:'';?><span class="robot-intel-spot-chip <?=rmi_e($severity)?>"><i class="<?=rmi_e($tag['icon'])?>"></i><?=rmi_e($tag['label'])?><b>×<?=rmi_e($tag['count'])?></b></span><?php endforeach;?></div>
+      <div class="robot-intel-spot-summary"><?php foreach(array_slice(array_values($spotTagCounts),0,5) as $tag):$severity=in_array($tag['severity'],['positive','warning','critical'],true)?$tag['severity']:'';?><span class="robot-intel-spot-chip <?=rmi_e($severity)?>"><i class="<?=rmi_e($tag['icon'])?>"></i>#<?=rmi_e(strtolower(trim((string)preg_replace('/[^\p{L}\p{N}]+/u','-',(string)$tag['label']),'-')))?><b>×<?=rmi_e($tag['count'])?></b></span><?php endforeach;?></div>
       <button type="button" class="btn secondary compact robot-jump-tab" data-robot-jump-tab="scout"><i class="fa-solid fa-binoculars"></i> View all scout intel</button>
     <?php endif;?>
     <?php if($augurError!==''):?><div class="robot-intel-model-note">AUGUR model detail unavailable: <?=rmi_e($augurError)?></div><?php endif;?>
@@ -134,7 +136,7 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
 <div data-robot-intel-target="matches">
   <?php if($trajectory):?>
   <section class="robot-modal-section robot-form-chart-section">
-    <div class="robot-intel-section-title"><h3><i class="fa-solid fa-wave-square"></i> EPA Progression</h3><span class="pill"><?=count($trajectory)?> rated match<?=count($trajectory)===1?'':'es'?></span></div>
+    <div class="robot-intel-section-title"><h3><i class="fa-solid fa-wave-square"></i> <?=rmi_e($ratingSource)?> EPA Progression</h3><span class="pill"><?=count($trajectory)?> rated match<?=count($trajectory)===1?'':'es'?></span></div>
     <?php if($trajectoryPoints!==''):?>
       <div class="robot-performance-chart">
         <svg viewBox="0 0 760 150" preserveAspectRatio="none" role="img" aria-label="EPA progression across event matches"><line x1="18" y1="132" x2="742" y2="132" class="axis"></line><polyline points="<?=rmi_e($trajectoryPoints)?>"></polyline></svg>
@@ -155,12 +157,12 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
     <?php if(!$spotAvailable):?><div class="robot-intel-empty">Tag Scouting is not installed on this Neptune server.</div>
     <?php elseif(!$spotRows):?><div class="robot-intel-empty">No Tag Scouting observations have been recorded for team #<?=rmi_e($team)?> at this event.</div>
     <?php else:?>
-      <?php if($spotTagCounts):?><div class="robot-intel-spot-summary"><?php foreach(array_slice(array_values($spotTagCounts),0,10) as $tag):$severity=in_array($tag['severity'],['positive','warning','critical'],true)?$tag['severity']:'';?><span class="robot-intel-spot-chip <?=rmi_e($severity)?>"><i class="<?=rmi_e($tag['icon'])?>"></i><?=rmi_e($tag['label'])?><b>×<?=rmi_e($tag['count'])?></b></span><?php endforeach;?></div><?php endif;?>
+      <?php if($spotTagCounts):?><div class="robot-intel-spot-summary"><?php foreach(array_slice(array_values($spotTagCounts),0,10) as $tag):$severity=in_array($tag['severity'],['positive','warning','critical'],true)?$tag['severity']:'';?><span class="robot-intel-spot-chip <?=rmi_e($severity)?>"><i class="<?=rmi_e($tag['icon'])?>"></i>#<?=rmi_e(strtolower(trim((string)preg_replace('/[^\p{L}\p{N}]+/u','-',(string)$tag['label']),'-')))?><b>×<?=rmi_e($tag['count'])?></b></span><?php endforeach;?></div><?php endif;?>
       <div class="robot-intel-spot-feed">
         <?php foreach($spotRows as $row):$severity=in_array((string)($row['severity']??''),['positive','warning','critical'],true)?(string)$row['severity']:'';$media=$spotMedia[(int)$row['id']]??[];?>
         <article class="robot-intel-spot-item <?=rmi_e($severity)?>">
           <div class="robot-intel-spot-head"><div><b><?=rmi_e(rmi_match_label($row))?></b><?php if(!empty($row['event_name'])):?><span> · <?=rmi_e($row['event_name'])?></span><?php endif;?></div><span><?=rmi_e(($row['status']??'open')==='resolved'?'Resolved':'Open')?></span></div>
-          <?php if(!empty($row['tags'])):?><div class="robot-intel-spot-tags"><?php foreach($row['tags'] as $tag):?><span class="robot-intel-spot-tag"><i class="<?=rmi_e($tag['icon']??'fa-solid fa-tag')?>"></i><?=rmi_e($tag['label']??'Tag')?></span><?php endforeach;?></div><?php endif;?>
+          <?php if(!empty($row['tags'])):?><div class="robot-intel-spot-tags"><?php foreach($row['tags'] as $tag):?><span class="robot-intel-spot-tag"><i class="<?=rmi_e($tag['icon']??'fa-solid fa-tag')?>"></i>#<?=rmi_e(strtolower(trim((string)preg_replace('/[^\p{L}\p{N}]+/u','-',(string)($tag['label']??'Tag')),'-')))?></span><?php endforeach;?></div><?php endif;?>
           <?php if(trim((string)($row['note']??''))!==''):?><p class="robot-intel-spot-note"><?=nl2br(rmi_e($row['note']))?></p><?php endif;?>
           <?php if($media):?><div class="robot-intel-spot-media"><?php foreach($media as $item):?><?php if(($item['media_type']??'')==='photo'):?><a href="<?=rmi_e($item['url'])?>" target="_blank" rel="noopener"><img src="<?=rmi_e($item['url'])?>" loading="lazy" alt="<?=rmi_e($item['original_filename']??'Tag scouting photo')?>"></a><?php else:?><div class="video"><video controls preload="metadata" src="<?=rmi_e($item['url'])?>"></video><span class="video-label"><i class="fa-solid fa-video"></i><?=rmi_e($item['original_filename']??'Video')?></span></div><?php endif;?><?php endforeach;?></div><?php endif;?>
           <div class="robot-intel-spot-meta"><?php if(!empty($row['scout_name'])):?><span><i class="fa-solid fa-user"></i> <?=rmi_e($row['scout_name'])?></span><?php endif;?><?php if(!empty($row['created_at'])):?><span><i class="fa-regular fa-clock"></i> <?=rmi_e($row['created_at'])?></span><?php endif;?><?php if(!empty($row['resolution_note'])):?><span><i class="fa-solid fa-check"></i> <?=rmi_e($row['resolution_note'])?></span><?php endif;?></div>

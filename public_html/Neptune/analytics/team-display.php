@@ -3,6 +3,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once __DIR__.'/_helpers.php';
 require_once __DIR__.'/_depa_metrics.php';
 require_once __DIR__.'/_augur_prediction_model.php';
+require_once __DIR__.'/_robot_tag_cards.php';
 if(is_file(__DIR__.'/_team_logo_cache.php')) require_once __DIR__.'/_team_logo_cache.php';
 
 $u=require_login();
@@ -23,6 +24,7 @@ $eventStats=[];
 $augurMap=[];
 $depaMap=[];
 $tagMap=[];
+$tagMatchMap=[];
 $logoMap=[];
 $event=null;
 $seasonYear=(int)date('Y');
@@ -33,6 +35,10 @@ if($eventId){
     if($event)$seasonYear=(int)($event['season_year']??$seasonYear);
 
     $teamNumbers=array_values(array_unique(array_filter(array_map('intval',array_keys($eventStats)),fn($n)=>$n>0)));
+
+    // Raw Tag Scouting shares × recorded alliance scores; no modeled EPA and no DB writes.
+    try{$tagMatchMap=mb_tag_match_cards($pdo,$org,$eventId);}catch(Throwable $ignored){$tagMatchMap=[];}
+
 
     // Use the same private Neptune EPA model as Robot Intelligence so the
     // schedule cards and detail modal tell the same story.
@@ -113,11 +119,25 @@ if($eventId&&$teamNumber){
     foreach($a->fetchAll() as $r)$matchActuals[(int)$r['match_id']][(int)$r['frc_team_number']]=(float)$r['scout_points'];
 }
 
+/** Metric formatting and tag severity used while rendering every robot tile. */
 function mb_fmt_metric(mixed $v,int $dec=1,string $suffix=''): string {
     return is_numeric($v)?number_format((float)$v,$dec).$suffix:'—';
 }
 function mb_tag_class(string $severity): string {
     return in_array($severity,['positive','warning','critical'],true)?$severity:'info';
+}
+
+/**
+ * Match Board Tag Scouting summaries. Read-only and isolated to the selected org/event.
+ * A robot gets one point estimate per scored match, not per observer.
+ */
+function mb_tag_match_cards(PDO $pdo,int $org,int $eventId): array {
+    return robot_tag_match_cards($pdo,$org,$eventId);
+}
+
+/** Match Board uses the same match-level normalized Tag summary as Robot Cards. */
+function mb_tag_summarize_match_rows(array $rows,array $labels=[]): array {
+    return robot_tag_summarize_match_rows($rows,$labels);
 }
 
 $pageTitle='Match Board';
@@ -158,6 +178,12 @@ include dirname(__DIR__).'/partials_header.php';
 .schedule-robot-info{right:6px;bottom:6px;top:auto;font-size:.65rem}
 
 .mb-metrics{display:grid;grid-template-columns:1fr 1fr;gap:5px;width:100%;margin-top:9px}.mb-metric{min-width:0;padding:6px 7px;border:1px solid color-mix(in srgb,var(--line) 85%,transparent);border-radius:6px;background:color-mix(in srgb,var(--panel) 52%,transparent)}.mb-metric span{display:block;font-size:.49rem;line-height:1;text-transform:uppercase;letter-spacing:.055em;font-weight:900;color:var(--muted)}.mb-metric b{display:block;margin-top:4px;font-size:.82rem;line-height:1;color:var(--text)}.mb-metric.epa b{color:var(--module-augur,var(--accent))}
+.mb-metric .mb-metric-tag-list{display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px;margin-top:6px;min-width:0}
+.mb-metric .mb-metric-tag-item{display:inline-flex;align-items:center;max-width:100%;padding:3px 6px;border:1px solid var(--line);border-radius:999px;background:color-mix(in srgb,var(--accent) 9%,var(--panel));font-size:.59rem;line-height:1.2;font-weight:850;color:var(--text);text-transform:none;letter-spacing:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb-metric .mb-metric-subline{display:block;margin-top:4px;font-size:.51rem;line-height:1.15;color:var(--muted);font-weight:750}
+.mb-metric.mb-metric-tag-mode{min-height:0}.mb-metric.mb-metric-tag-only{grid-column:1/-1}
+.mb-metric.mb-metric-tag-mode .mb-metric-subline{white-space:normal}
+@media(max-width:900px){.mb-metric .mb-metric-tag-item{font-size:.68rem}.mb-metric .mb-metric-subline{font-size:.60rem}}
 .mb-defense-line{display:flex;width:100%;box-sizing:border-box;align-items:center;gap:5px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:.58rem;font-weight:850;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mb-defense-line i{font-size:.57rem}
 .mb-tag-strip{display:flex;width:100%;box-sizing:border-box;gap:4px;min-height:21px;margin-top:6px;overflow:hidden}.mb-tag{display:inline-flex;align-items:center;gap:3px;max-width:50%;padding:3px 5px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:.49rem;font-weight:850;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mb-tag i{font-size:.48rem}.mb-tag.positive{color:var(--good)}.mb-tag.warning{color:#b88116}.mb-tag.critical{color:var(--bad)}.mb-tag.info{color:var(--muted)}
 .mb-match-actual{width:100%;box-sizing:border-box;margin-top:auto;padding-top:6px;font-size:.53rem;font-weight:850;color:var(--muted)}.mb-match-actual b{color:var(--text)}
@@ -223,15 +249,14 @@ include dirname(__DIR__).'/partials_header.php';
     <h1 style="margin-bottom:4px">Match Board</h1>
     <div class="muted mb-subtitle">The familiar six-robot schedule board, now with the event metrics you actually use between matches. Click any robot for full Robot Intelligence.</div>
     <div class="mb-key" aria-label="Robot card metrics">
-      <span><i class="fa-solid fa-chart-simple"></i> Points / match</span>
-      <span><i class="fa-solid fa-stopwatch"></i> Cycle time</span>
+      <span><i class="fa-solid fa-chart-simple"></i> Scouted points or Tag-estimated points</span>
+      <span><i class="fa-solid fa-tags"></i> #tags (when Tag Scouting)</span>
       <span><i class="fa-solid fa-wave-square"></i> Neptune EPA</span>
       <span><i class="fa-solid fa-shield-halved"></i> Neptune D-EPA</span>
       <span><i class="fa-solid fa-tags"></i> Scout tags</span>
     </div>
   </div>
   <div class="toolbar" style="gap:8px;margin:0">
-    <a class="btn secondary" href="<?=e(base_url('analytics/pit-operations.php').'?'.http_build_query(['event_id'=>$eventId,'team'=>$teamNumber]))?>"><i class="fa-solid fa-screwdriver-wrench"></i> Pit Operations</a>
     <a class="btn secondary" href="?event_id=<?=$eventId?>&team=<?=$teamNumber?>&tv=1" target="_blank"><i class="fa-solid fa-expand"></i> TV Mode</a>
   </div>
 </div>
@@ -294,6 +319,13 @@ include dirname(__DIR__).'/partials_header.php';
       $nepDepa=$depaRow['neptune_depa']??null;
       $defActions=is_numeric($depaRow['defense_actions']??null)?(int)$depaRow['defense_actions']:(int)($stats['defense']??0);
       $defPerMatch=(float)($stats['defense_per_match']??0);
+      $tagSummary=$tagMatchMap[$n]??null;
+      $hasTrad=(int)($stats['actions']??0)>0;
+      $hasTradOffense=(int)($stats['successes']??0)+(int)($stats['failures']??0)>0
+          || (float)($stats['scouted_points']??0)>0 || is_numeric($stats['cycle_time']??null);
+      // Prefer real Tag submissions when present; otherwise keep traditional
+      // offense. Historical synthetic Tag imports never override traditional offense.
+      $showTag=$tagSummary!==null && !empty($tagSummary['has_human_observations']) && !$hasTradOffense;
       $tags=$tagMap[$n]??[];
       $logo=$logoMap[$n]??['exists'=>false,'path'=>'','version'=>''];
       $logoUrl=!empty($logo['exists'])?base_url((string)$logo['path']).(!empty($logo['version'])?'?v='.rawurlencode((string)$logo['version']):''):'';
@@ -316,8 +348,27 @@ include dirname(__DIR__).'/partials_header.php';
       </div>
 
       <span class="mb-metrics">
-        <span class="mb-metric"><span>Points / match</span><b><?=mb_fmt_metric($stats['ppm']??null,1)?></b></span>
-        <span class="mb-metric"><span>Cycle time</span><b><?=mb_fmt_metric($stats['cycle_time']??null,1,'s')?></b></span>
+        <?php if($showTag):?>
+          <?php if(!empty($tagSummary['top_tags'])):?>
+          <span class="mb-metric mb-metric-tag-mode"><span>Tags</span>
+            <span class="mb-metric-tag-list">
+              <?php foreach(array_slice($tagSummary['top_tags'],0,3) as $tag):?>
+                <span class="mb-metric-tag-item" title="<?=e((string)$tag['label'].' · '.(int)$tag['count'].' mentions')?>"><?=e(neptune_robot_tag_hashtag((string)$tag['label']))?></span>
+              <?php endforeach;?>
+            </span>
+          </span>
+          <?php endif;?>
+          <?php if(is_numeric($tagSummary['estimated_ppm']??null)):?>
+          <span class="mb-metric mb-metric-tag-mode <?=empty($tagSummary['top_tags'])?'mb-metric-tag-only':''?>" title="Each scout is averaged within a robot and match; when all alliance robots are covered, their shares are normalized to 100%. Estimated points use the official alliance score.">
+            <span>Est. pts / match</span>
+            <b><?=mb_fmt_metric($tagSummary['estimated_ppm'],1)?></b>
+            <small class="mb-metric-subline"><?=(int)$tagSummary['scored_matches']?> scored match<?=$tagSummary['scored_matches']===1?'':'es'?><?=isset($tagSummary['confidence_pct'])?' · '.number_format((float)$tagSummary['confidence_pct'],0).'% evidence confidence':''?></small>
+          </span>
+          <?php endif;?>
+        <?php else:?>
+          <span class="mb-metric"><span>Points / match</span><b><?=!empty($stats['has_scoring_data'])?mb_fmt_metric($stats['ppm']??null,1):'—'?></b></span>
+          <span class="mb-metric"><span>Cycle time</span><b><?=mb_fmt_metric($stats['cycle_time']??null,1,'s')?></b></span>
+        <?php endif;?>
         <span class="mb-metric epa"><span>Nep. EPA</span><b><?=mb_fmt_metric($nepEpa,1)?></b></span>
         <span class="mb-metric epa"><span>Nep. D-EPA</span><b><?=mb_fmt_metric($nepDepa,1)?></b></span>
       </span>
@@ -326,9 +377,9 @@ include dirname(__DIR__).'/partials_header.php';
 
       <?php if($tags):?><span class="mb-tag-strip" aria-label="Scout tags">
         <?php foreach($tags as $tag):$sev=mb_tag_class((string)($tag['severity']??''));$icon=trim((string)($tag['icon']??''));?>
-          <span class="mb-tag <?=e($sev)?>" title="<?=e((string)$tag['label'])?><?=(int)$tag['mentions']>1?' · '.e((int)$tag['mentions']).' mentions':''?>"><?php if($icon!==''):?><i class="<?=e($icon)?>"></i><?php endif;?><?=e((string)$tag['label'])?><?php if((int)$tag['mentions']>1):?> ×<?=e((int)$tag['mentions'])?><?php endif;?></span>
+          <span class="mb-tag <?=e($sev)?>" title="<?=e((string)$tag['label'])?><?=(int)$tag['mentions']>1?' · '.e((int)$tag['mentions']).' mentions':''?>"><?php if($icon!==''):?><i class="<?=e($icon)?>"></i><?php endif;?><?=e(neptune_robot_tag_hashtag((string)$tag['label']))?><?php if((int)$tag['mentions']>1):?> ×<?=e((int)$tag['mentions'])?><?php endif;?></span>
         <?php endforeach;?>
-      </span><?php else:?><span class="mb-tag-strip"><span class="mb-tag info"><i class="fa-solid fa-tag"></i> No active tags</span></span><?php endif;?>
+      </span><?php endif;?>
 
       <?php if($matchPoints!==null):?><span class="mb-match-actual">This match: <b><?=number_format((float)$matchPoints,1)?> scout pts</b></span>
       <?php elseif(!$past&&!$current):?><span class="mb-empty-note">Event scouting snapshot</span><?php endif;?>

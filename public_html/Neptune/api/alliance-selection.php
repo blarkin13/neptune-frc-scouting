@@ -57,18 +57,18 @@ function alliance_prepare_state(PDO $pdo,int $org,int $eventId,bool $canEdit=fal
     $event=alliance_api_event($pdo,$org,$eventId);
     $stored=alliance_load_workspace($pdo,$org,$eventId,false);
     $w=$stored['workspace'];
-    $rankings=alliance_rankings_for_event($event);
+    $rankings=alliance_rankings_for_event($event,$pdo,$org);
     $activeId=alliance_active_id($w);
     if($requestedDraftId!=='' && isset($w['scenarios'][$requestedDraftId])) $activeId=$requestedDraftId;
     $scenario=$w['scenarios'][$activeId];
 
     $captainsEmpty=true;
     foreach(range(1,8) as $a) if((int)($scenario['slots'][$a]['captain']??0)>0){$captainsEmpty=false;break;}
-    if($captainsEmpty && !$stored['exists'] && $rankings['rows']){
+    if($captainsEmpty && !alliance_has_picks($scenario) && $rankings['rows']){
         alliance_seed_captains($scenario,$rankings['rows']);
         $w['scenarios'][$activeId]=$scenario;
         if($canEdit){
-            alliance_save_workspace($pdo,$org,$eventId,$w,$userId);
+            $stored['version']=alliance_save_workspace($pdo,$org,$eventId,$w,$userId);
             $stored['exists']=true;
         }
     }
@@ -154,7 +154,7 @@ function alliance_prepare_state(PDO $pdo,int $org,int $eventId,bool $canEdit=fal
     return [
         'ok'=>true,'can_edit'=>$canEdit,'version'=>(int)$stored['version'],
         'event'=>['id'=>(int)$event['id'],'name'=>(string)$event['name'],'game_name'=>(string)$event['game_name'],'season_year'=>(int)$event['season_year'],'tba_event_key'=>(string)($event['tba_event_key']??'')],
-        'ranking'=>['label'=>(string)$rankings['label'],'precision'=>(int)$rankings['precision'],'error'=>(string)$rankings['error'],'available'=>!empty($rankings['rows'])],
+        'ranking'=>['label'=>(string)$rankings['label'],'precision'=>(int)$rankings['precision'],'source'=>(string)($rankings['source']??'TBA'),'official'=>!empty($rankings['official']),'error'=>(string)$rankings['error'],'available'=>!empty($rankings['rows'])],
         'augur_model'=>['available'=>!empty($augurMetrics),'error'=>$augurError],
         'drafts'=>alliance_draft_list($w),
         'draft'=>['id'=>$activeId,'name'=>(string)$scenario['name'],'mode'=>(string)$scenario['mode'],'status'=>'active','revision_cursor'=>count($scenario['undo']??[])],
@@ -188,7 +188,7 @@ try{
     $requested=(string)($_POST['draft_id']??'');
     if($requested!==''&&isset($w['scenarios'][$requested]))$w['active_id']=$requested;
     $id=alliance_active_id($w);$scenario=$w['scenarios'][$id];
-    $rankings=alliance_rankings_for_event($event);$rows=$rankings['rows'];
+    $rankings=alliance_rankings_for_event($event,$pdo,$org);$rows=$rankings['rows'];
 
     if($op==='create_draft'){
         $new='s'.max(2,(int)$w['next_id']);$w['next_id']=max(2,(int)$w['next_id'])+1;
@@ -220,7 +220,7 @@ try{
         $w['settings']??=[];
         $w['settings']['matchup_model']=alliance_matchup_settings($raw);
     } elseif($op==='refresh_rankings' || $op==='seed_captains'){
-        if(!$rows)throw new RuntimeException('TBA qualification rankings are not available for this event yet.');
+        if(!$rows)throw new RuntimeException('No qualification standings are available for this event yet.');
         if(alliance_has_picks($scenario))throw new RuntimeException('Picks have already started. Refresh rankings before alliance selection begins.');
         alliance_push_undo($scenario);alliance_seed_captains($scenario,$rows);$w['scenarios'][$id]=$scenario;
     } elseif($op==='set_slot'){

@@ -82,6 +82,7 @@ if($eventId&&$teams){
 
         $q=$pdo->prepare("SELECT sa.match_id,sa.match_run_number,sa.frc_team_number,
                 COALESCE(SUM(sa.points),0) points,
+                SUM(CASE WHEN (sa.action_type='offense' AND sa.result IN ('Success','Failure')) OR sa.points<>0 THEN 1 ELSE 0 END) scoring_events,
                 SUM(CASE WHEN sa.action_type='defense' AND sa.result='Success' THEN 1 ELSE 0 END) defense,
                 SUM(CASE WHEN sa.action_type='offense' AND sa.result IN ('Success','Failure') THEN 1 ELSE 0 END) attempts,
                 SUM(CASE WHEN sa.action_type='offense' AND sa.result='Success' THEN 1 ELSE 0 END) successes,
@@ -100,6 +101,7 @@ if($eventId&&$teams){
             $key=$team.':'.$matchId;
             $actionRuns[$key][$run]=[
                 'points'=>(float)$row['points'],
+                'score_observed'=>(int)$row['scoring_events']>0,
                 'defense'=>(int)$row['defense'],
                 'attempts'=>(int)$row['attempts'],
                 'successes'=>(int)$row['successes'],
@@ -111,6 +113,7 @@ if($eventId&&$teams){
 
         $picked=augur_prediction_pick_active_run_observations($actionRuns,$sessionRuns);
         foreach($picked as $key=>$pick){
+            if(!isset($actionRuns[$key][(int)$pick['run']]))continue;
             [$teamText,$matchText]=explode(':',$key,2);
             $team=(int)$teamText;$matchId=(int)$matchText;$run=(int)$pick['run'];
             $src=$actionRuns[$key][$run]??[
@@ -121,6 +124,7 @@ if($eventId&&$teams){
                 'match_id'=>$matchId,
                 'match_number'=>$qualMatches[$matchId]??0,
                 'points'=>(float)$src['points'],
+                'score_observed'=>(bool)($src['score_observed']??false),
                 'defense'=>(int)$src['defense'],
                 'attempts'=>(int)$src['attempts'],
                 'successes'=>(int)$src['successes'],
@@ -141,13 +145,21 @@ if($eventId&&$teams){
     }
 }
 
+$scoringRows=neptune_scoring_fill_missing(
+    $traditional,
+    $eventId?neptune_scoring_tag_match_points($pdo,$org,$eventId,array_keys($qualMatches??[])):[]
+);
 $rows=[];
 foreach($stats as $team=>$base){
     $team=(int)$team;
     $publicEpa=isset($epaMap[$team]['epa'])&&is_numeric($epaMap[$team]['epa'])?(float)$epaMap[$team]['epa']:null;
     $obs=$traditional[$team]??[];
-    $points=array_column($obs,'points');
-    $blend=augur_prediction_offense_blend($points,$publicEpa,$predictionSettings);
+    // Offense uses the shared traditional-first, Tag-second match samples.
+    // Detailed phase, cycle, and success metrics retain genuine action rows.
+    $scoringObs=array_values(array_filter($scoringRows[$team]??$obs,static fn($r)=>
+        ($r['points_source']??'traditional')==='tag_estimate'||!empty($r['score_observed'])));
+    $points=array_column($scoringObs,'points');
+    $blend=augur_prediction_offense_blend($points,$publicEpa,$predictionSettings,$scoringObs);
     $attempts=array_sum(array_column($obs,'attempts'));
     $successes=array_sum(array_column($obs,'successes'));
     $d=$depaRows[$team]??[];
@@ -156,7 +168,8 @@ foreach($stats as $team=>$base){
         'team'=>$team,
         'nickname'=>(string)($base['nickname']??''),
         'pit'=>(string)($base['pit_status']??''),
-        'matches'=>count($obs),
+        'matches'=>count($scoringObs),
+        'tag_estimated_matches'=>count(array_filter($scoringObs,static fn($r)=>($r['points_source']??'traditional')==='tag_estimate')),
         'points_avg'=>$points?$blend['event_avg']:null,
         'recent'=>$points?$blend['recent_avg']:null,
         'high'=>$points?$blend['p75']:null,
@@ -283,7 +296,7 @@ include dirname(__DIR__).'/partials_header.php';
             <th class="rst-sort">Nep. EPA <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">Defense/Match <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">Defense Actions <i class="fa-solid fa-sort"></i></th>
-            <th class="rst-sort">Public D-EPA <i class="fa-solid fa-sort"></i></th>
+            <th class="rst-sort">D-EPA <i class="fa-solid fa-sort"></i></th>
                         <th class="rst-sort">Nep. D-EPA <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">Verified <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">Possible <i class="fa-solid fa-sort"></i></th>
@@ -297,9 +310,9 @@ include dirname(__DIR__).'/partials_header.php';
             <td class="rst-name" data-value="<?=e(strtolower($r['nickname']))?>" title="<?=e($r['nickname'])?>"><?=e($r['nickname']?:'FRC Team '.$r['team'])?></td>
             <td data-value="<?=e($r['pit'])?>"><?=e($r['pit']?:'—')?></td>
             <td data-value="<?=$r['matches']?>"><?=$r['matches']?></td>
-            <td class="rst-good" data-value="<?=rst_value_attr($r['points_avg'])?>"><?=rst_num($r['points_avg'],1)?></td>
-            <td data-value="<?=rst_value_attr($r['recent'])?>"><?=rst_num($r['recent'],1)?></td>
-            <td data-value="<?=rst_value_attr($r['high'])?>"><?=rst_num($r['high'],1)?></td>
+            <td class="rst-good" data-value="<?=rst_value_attr($r['points_avg'])?>" title="<?=e($r['tag_estimated_matches']?'Includes '.$r['tag_estimated_matches'].' Tag-estimated match(es)':'Traditional scouting')?>"><?=rst_num($r['points_avg'],1)?><?=$r['tag_estimated_matches']?' *':''?></td>
+            <td data-value="<?=rst_value_attr($r['recent'])?>" title="<?=$r['tag_estimated_matches']?'Includes Tag estimates':'Traditional scouting'?>"><?=rst_num($r['recent'],1)?></td>
+            <td data-value="<?=rst_value_attr($r['high'])?>" title="<?=$r['tag_estimated_matches']?'Includes Tag estimates':'Traditional scouting'?>"><?=rst_num($r['high'],1)?></td>
             <td data-value="<?=rst_value_attr($r['auto_avg'])?>"><?=rst_num($r['auto_avg'],1)?></td>
             <td data-value="<?=rst_value_attr($r['teleop_avg'])?>"><?=rst_num($r['teleop_avg'],1)?></td>
             <td data-value="<?=rst_value_attr($r['endgame_avg'])?>"><?=rst_num($r['endgame_avg'],1)?></td>
@@ -456,7 +469,7 @@ include dirname(__DIR__).'/partials_header.php';
       return '<article class="rst-defense-match">'+
         '<div class="rst-defense-match-head"><div><h3>'+esc(m.match_label)+'</h3><small>'+esc(m.alliance)+' alliance'+(m.final_score?' · Final '+esc(m.final_score):'')+'</small></div>'+videoButton+'</div>'+
         '<div class="rst-defense-grid">'+
-          '<div class="rst-defense-stat"><span>Raw D-EPA</span><b>'+signed(m.raw_depa)+'</b></div>'+
+          '<div class="rst-defense-stat"><span>D-EPA</span><b>'+signed(m.raw_depa)+'</b></div>'+
           '<div class="rst-defense-stat"><span>Expected Opp.</span><b>'+number1(m.expected_opponent_score)+'</b></div>'+
           '<div class="rst-defense-stat"><span>Actual Opp.</span><b>'+number1(m.actual_opponent_score)+'</b></div>'+
           '<div class="rst-defense-stat"><span>Evidence Score</span><b>'+number1(m.evidence_score)+'</b></div>'+

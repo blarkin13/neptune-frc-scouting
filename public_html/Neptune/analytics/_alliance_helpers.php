@@ -224,38 +224,96 @@ function alliance_restore_snapshot(array &$scenario,array $snapshot): void {
     if(isset($snapshot['pick_list_taken'])&&is_array($snapshot['pick_list_taken'])) $scenario['pick_list_taken']=$snapshot['pick_list_taken'];
 }
 
-function alliance_rankings_for_event(array $event): array {
-    $eventKey=trim((string)($event['tba_event_key']??''));
-    if($eventKey==='') return ['rows'=>[],'label'=>'Points','precision'=>2,'error'=>'This event is not linked to The Blue Alliance.'];
-    require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
-    try{
-        $raw=tba_get('event/'.rawurlencode($eventKey).'/rankings',60);
-        $info=is_array($raw['sort_order_info']??null)?$raw['sort_order_info']:[];
-        $first=$info[0]??[];
-        $label=trim((string)($first['name']??''))?:'Points';
-        $precision=is_numeric($first['precision']??null)?(int)$first['precision']:2;
-        $rows=[];
-        foreach((array)($raw['rankings']??[]) as $r){
-            if(!is_array($r)) continue;
-            $key=(string)($r['team_key']??'');
-            if(!preg_match('/^frc(\d+)$/',$key,$m)) continue;
-            $record=is_array($r['record']??null)?$r['record']:[];
-            $sort=is_array($r['sort_orders']??null)?$r['sort_orders']:[];
-            $rows[]=[
-                'team'=>(int)$m[1],
-                'rank'=>(int)($r['rank']??0),
-                'points'=>isset($sort[0])&&is_numeric($sort[0])?(float)$sort[0]:0.0,
-                'wins'=>(int)($record['wins']??0),
-                'losses'=>(int)($record['losses']??0),
-                'ties'=>(int)($record['ties']??0),
-                'matches'=>(int)($r['matches_played']??0),
-            ];
-        }
-        usort($rows,static fn($a,$b)=>($a['rank']<=>$b['rank']) ?: ($b['points']<=>$a['points']));
-        return ['rows'=>$rows,'label'=>$label,'precision'=>$precision,'error'=>''];
-    }catch(Throwable $e){
-        return ['rows'=>[],'label'=>'Points','precision'=>2,'error'=>$e->getMessage()];
+/**
+ * Locally computed, PROVISIONAL qualification standings when official TBA
+ * rankings are unavailable. The matches are imported from FIRST/TBA, but the
+ * ranks are NOT official FIRST Ranking Points or published alliance captains.
+ * A win is 1, a tie 0.5; ties broken by average alliance score, then number.
+ * Strict org/event and event-roster scoping; read-only.
+ */
+function alliance_local_qualification_rankings(PDO $pdo,int $org,int $eventId): array {
+    $q=$pdo->prepare("SELECT m.id AS match_id,mt.frc_team_number,mt.alliance,m.red_score,m.blue_score
+        FROM matches m
+        JOIN match_teams mt ON mt.match_id=m.id
+        JOIN event_teams et ON et.event_id=m.event_id AND et.frc_team_number=mt.frc_team_number
+        WHERE m.organization_id=? AND m.event_id=? AND m.comp_level='qm'
+          AND m.red_score IS NOT NULL AND m.blue_score IS NOT NULL
+          AND m.red_score>=0 AND m.blue_score>=0
+          AND mt.alliance IN ('Red','Blue')");
+    $q->execute([$org,$eventId]);
+    $record=[];$seen=[];
+    foreach($q->fetchAll(PDO::FETCH_ASSOC) as $r){
+        $number=(int)$r['frc_team_number'];$match=(int)$r['match_id'];
+        if($number<1||$match<1||isset($seen[$number][$match]))continue;
+        $seen[$number][$match]=true;
+        $color=(string)$r['alliance'];
+        $ours=(float)($color==='Red'?$r['red_score']:$r['blue_score']);
+        $theirs=(float)($color==='Red'?$r['blue_score']:$r['red_score']);
+        $record[$number]??=['team'=>$number,'rank'=>0,'points'=>0.,'wins'=>0,'losses'=>0,'ties'=>0,'matches'=>0,'total_score'=>0.];
+        $record[$number]['matches']++;
+        $record[$number]['total_score']+=$ours;
+        if($ours>$theirs)$record[$number]['wins']++;
+        elseif($ours<$theirs)$record[$number]['losses']++;
+        else $record[$number]['ties']++;
     }
+    $rows=array_values($record);
+    foreach($rows as &$row){
+        $row['points']=($row['wins']+0.5*$row['ties'])/$row['matches'];
+        $row['avg_score']=$row['total_score']/$row['matches'];
+    }
+    unset($row);
+    usort($rows,static fn($a,$b)=>
+        ($b['points']<=>$a['points']) ?: ($b['avg_score']<=>$a['avg_score']) ?: ($a['team']<=>$b['team'])
+    );
+    foreach($rows as $index=>&$row){$row['rank']=$index+1;unset($row['avg_score'],$row['total_score']);}
+    unset($row);
+    return $rows;
+}
+
+function alliance_rankings_for_event(array $event,?PDO $pdo=null,?int $org=null): array {
+    $eventKey=trim((string)($event['tba_event_key']??''));
+    $tbaError='';
+    if($eventKey!==''){
+        try{
+            require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
+            $raw=tba_get('event/'.rawurlencode($eventKey).'/rankings',60);
+            $info=is_array($raw['sort_order_info']??null)?$raw['sort_order_info']:[];
+            $first=$info[0]??[];
+            $label=trim((string)($first['name']??''))?:'Points';
+            $precision=is_numeric($first['precision']??null)?(int)$first['precision']:2;
+            $rows=[];
+            foreach((array)($raw['rankings']??[]) as $r){
+                if(!is_array($r))continue;
+                $key=(string)($r['team_key']??'');
+                if(!preg_match('/^frc(\d+)$/',$key,$m))continue;
+                $record=is_array($r['record']??null)?$r['record']:[];
+                $sort=is_array($r['sort_orders']??null)?$r['sort_orders']:[];
+                $rows[]=[
+                    'team'=>(int)$m[1],'rank'=>(int)($r['rank']??0),
+                    'points'=>isset($sort[0])&&is_numeric($sort[0])?(float)$sort[0]:0.0,
+                    'wins'=>(int)($record['wins']??0),'losses'=>(int)($record['losses']??0),
+                    'ties'=>(int)($record['ties']??0),'matches'=>(int)($r['matches_played']??0),
+                ];
+            }
+            if($rows){
+                usort($rows,static fn($a,$b)=>($a['rank']<=>$b['rank']) ?: ($b['points']<=>$a['points']));
+                return ['rows'=>$rows,'label'=>$label,'precision'=>$precision,'source'=>'TBA','official'=>true,'error'=>''];
+            }
+            $tbaError='No TBA qualification rankings were published for this event.';
+        }catch(Throwable $e){$tbaError=$e->getMessage();}
+    }
+    if($pdo && $org && (int)($event['organization_id']??0)===$org && (int)($event['id']??0)>0){
+        try{
+            $rows=alliance_local_qualification_rankings($pdo,$org,(int)$event['id']);
+            if($rows){
+                return ['rows'=>$rows,'label'=>'Win fraction','precision'=>3,
+                    'source'=>'Local scored quals','official'=>false,
+                    'error'=>'Provisional standings from recorded qualification scores; not official FIRST/TBA rankings.'];
+            }
+        }catch(Throwable $e){error_log('Alliance local standings: '.$e->getMessage());}
+    }
+    return ['rows'=>[],'label'=>'Points','precision'=>2,'source'=>'Unavailable','official'=>false,
+        'error'=>$tbaError?:'No scored qualifications or published TBA rankings yet.'];
 }
 
 function alliance_seed_captains(array &$scenario,array $rankingRows): void {

@@ -876,7 +876,7 @@
     if (els.redo) els.redo.disabled = !editable() || !state?.can_redo;
     if (els.cloneDraft) els.cloneDraft.disabled = !d;
     if (els.draftMenu) els.draftMenu.disabled = !d || !cfg.canEdit;
-    if (els.seedCaptains) els.seedCaptains.disabled = !editable() || !state?.event?.tba_event_key;
+    if (els.seedCaptains) els.seedCaptains.disabled = !editable() || !state?.ranking?.available;
     if (els.mode) {
       els.mode.disabled = !editable();
       els.mode.innerHTML = d?.mode === 'live' ? '<i class="fa-solid fa-flask"></i> Make Scenario' : '<i class="fa-solid fa-tower-broadcast"></i> Make Live';
@@ -913,10 +913,10 @@
         const info = teamByNumber(team);
         const isCaptain = slot === 'captain';
         const active = !isCaptain && activeSlot?.alliance === a && activeSlot?.slot === slot;
-        html += `<div role="button" tabindex="0" draggable="${team && can ? 'true' : 'false'}" class="alliance-slot ${isCaptain ? 'captain' : ''} ${team ? 'filled' : ''} ${active ? 'active' : ''}" data-alliance="${a}" data-slot="${slot}" data-team="${team || ''}" ${isCaptain ? 'title="Captain from TBA qualification rank"' : ''}>
+        html += `<div role="button" tabindex="0" draggable="${team && can ? 'true' : 'false'}" class="alliance-slot ${isCaptain ? 'captain' : ''} ${team ? 'filled' : ''} ${active ? 'active' : ''}" data-alliance="${a}" data-slot="${slot}" data-team="${team || ''}" ${isCaptain ? 'title="Captain from available qualification standings"' : ''}>
           <small>${esc(slotLabels[slot])}</small>
           <strong>${team ? `#${team}` : '—'}</strong>
-          <span>${team ? esc(info?.nickname || `Team ${team}`) : (isCaptain ? 'Waiting for TBA rankings' : 'Select a team')}</span>
+          <span>${team ? esc(info?.nickname || `Team ${team}`) : (isCaptain ? 'Waiting for qualification standings' : 'Select a team')}</span>
           ${team && can && !isCaptain ? `<button type="button" class="alliance-slot-clear" aria-label="Remove team ${team} from Alliance ${a} ${esc(slotLabels[slot])}" title="Remove from alliance"><i class="fa-solid fa-xmark"></i></button>` : ''}
           ${team ? `<button type="button" class="alliance-slot-expand" aria-label="Open team ${team} intelligence" title="Open team intelligence"><i class="fa-solid fa-up-right-from-square"></i></button>` : ''}
         </div>`;
@@ -1433,7 +1433,7 @@
       return true;
     });
     const label = state?.ranking?.label || 'Points';
-    els.teamPoolSummary.textContent = `${filtered.length} of ${all.length} teams · sorted by TBA ${label}`;
+    els.teamPoolSummary.textContent = `${filtered.length} of ${all.length} teams · ${state?.ranking?.source || 'Unknown source'} · ${label}${state?.ranking?.official ? '' : ' (provisional)'}`;
     if (!filtered.length) {
       els.teamList.innerHTML = '<div class="alliance-empty-small" style="grid-column:1/-1">No teams match this filter.</div>';
       return;
@@ -1487,7 +1487,8 @@
     const severity = ['positive','info','warning','critical'].includes(String(tag?.severity || '')) ? String(tag.severity) : 'info';
     const icon = String(tag?.icon || 'fa-solid fa-tag');
     const label = String(tag?.label || 'Tag');
-    return `<span class="alliance-spot-tag severity-${esc(severity)}"><i class="${esc(icon)}"></i>${esc(label)}${count == null ? '' : `<b>×${Number(count || 0)}</b>`}</span>`;
+    const hashtag = '#' + (label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'tag');
+    return `<span class="alliance-spot-tag severity-${esc(severity)}" title="${esc(label)}"><i class="${esc(icon)}"></i>${esc(hashtag)}${count == null ? '' : `<b>×${Number(count || 0)}</b>`}</span>`;
   }
 
   function spotContextLabel(obs) {
@@ -1640,7 +1641,7 @@
 
     const rows = qualificationTrendRows(detail);
     const offense = rows.map(row => Number(row.scout_points || 0));
-    const defense = rows.map(row => Number(row.defense || 0));
+    const defense = rows.filter(row => row.defense != null).map(row => Number(row.defense));
     const offSlope = trendSlope(offense.slice(-6));
     const defSlope = trendSlope(defense.slice(-6));
     const recentOff = offense.slice(-3);
@@ -1651,24 +1652,24 @@
     const rank = Number(roster?.rank || 0);
     const rankingLabel = state?.ranking?.label || 'Ranking Score';
     const rankingPoints = roster ? num(roster.points, Number(state?.ranking?.precision ?? 2)) : '—';
-    const success = Number(detail.event_stats?.success_rate || 0);
+    const success = detail.event_stats?.success_rate == null ? null : Number(detail.event_stats.success_rate);
 
     els.selectedTeamDecision.innerHTML = `
       ${tbaProfileHtml(detail)}
       <div class="alliance-team-decision-grid">
-        <div class="alliance-decision-kpi"><span>TBA rank</span><b>${rank ? `#${rank}` : '—'}</b><small>${esc(rankingPoints)} ${esc(rankingLabel)}</small></div>
-        <div class="alliance-decision-kpi"><span>Qualification record</span><b>${esc(record)}</b><small>${rows.length} scouted qual${rows.length === 1 ? '' : 's'}</small></div>
-        <div class="alliance-decision-kpi"><span>Event PPM</span><b>${num(detail.event_stats?.ppm, 1)}</b><small>Last 3: ${num(recentPpm, 1)}</small></div>
+        <div class="alliance-decision-kpi"><span>${esc(state?.ranking?.official ? 'TBA rank' : 'Provisional rank')}</span><b>${rank ? `#${rank}` : '—'}</b><small>${esc(rankingPoints)} ${esc(rankingLabel)}</small></div>
+        <div class="alliance-decision-kpi"><span>Qualification record</span><b>${esc(record)}</b><small>${rows.length} scoring sample${rows.length === 1 ? '' : 's'}</small></div>
+        <div class="alliance-decision-kpi"><span>Event PPM</span><b>${detail.event_stats?.ppm == null ? '—' : num(detail.event_stats.ppm, 1)}</b><small>Last 3: ${num(recentPpm, 1)}</small></div>
         <div class="alliance-decision-kpi"><span>Defense / match</span><b>${num(detail.event_stats?.defense_per_match, 1)}</b><small>Last 3: ${num(recentDefense, 1)}</small></div>
-        <div class="alliance-decision-kpi"><span>Offense trend</span><b>${decisionTrend(offSlope, 'pts')}</b><small>Last 6 scouted quals</small></div>
-        <div class="alliance-decision-kpi"><span>Defense trend</span><b>${decisionTrend(defSlope, 'actions')}</b><small>Last 6 scouted quals</small></div>
-        <div class="alliance-decision-kpi"><span>Offense success</span><b>${num(success, 0)}%</b><small>${Number(detail.event_stats?.actions || 0)} recorded actions</small></div>
+        <div class="alliance-decision-kpi"><span>Offense trend</span><b>${decisionTrend(offSlope, 'pts')}</b><small>Last 6 scored samples</small></div>
+        <div class="alliance-decision-kpi"><span>Defense trend</span><b>${defense.length ? decisionTrend(defSlope, 'actions') : '—'}</b><small>Last 6 scored samples</small></div>
+        <div class="alliance-decision-kpi"><span>Offense success</span><b>${success == null ? '—' : `${num(success, 0)}%`}</b><small>${Number(detail.event_stats?.actions || 0)} recorded actions</small></div>
         <div class="alliance-decision-kpi"><span>Public EPA</span><b>${detail.epa_rating?.epa == null ? '—' : num(detail.epa_rating.epa, 1)}</b><small>${detail.epa_rating?.confidence == null ? 'EPA not built' : `${num(detail.epa_rating.confidence, 0)}% public-data confidence`}</small></div>
         <div class="alliance-decision-kpi"><span>Neptune EPA</span><b>${neptuneEpa(detail.epa_rating) == null ? '—' : num(neptuneEpa(detail.epa_rating), 1)}</b><small>${Number(detail.epa_rating?.scouting_matches || 0)} Neptune match${Number(detail.epa_rating?.scouting_matches || 0) === 1 ? '' : 'es'} blended</small></div>
         <div class="alliance-decision-kpi"><span>D-EPA</span><b>${detail.depa_rating?.depa == null ? '—' : num(detail.depa_rating.depa, 1)}</b><small>All-match defensive suppression</small></div>
         <div class="alliance-decision-kpi"><span>Nep. D-EPA</span><b>${detail.depa_rating?.neptune_depa == null ? '—' : num(detail.depa_rating.neptune_depa, 1)}</b><small>${Number(detail.depa_rating?.verified_defense_matches || 0)} verified defense match${Number(detail.depa_rating?.verified_defense_matches || 0)===1?'':'es'}</small></div>
-        <div class="alliance-decision-kpi"><span>EPA trend</span><b>${detail.epa_rating?.trend == null ? '—' : decisionTrend(Number(detail.epa_rating.trend), 'pts')}</b><small>TBA-derived rating trend</small></div>
-        <div class="alliance-decision-kpi"><span>Scouting sample</span><b>${rows.length}</b><small>qualification matches</small></div>
+        <div class="alliance-decision-kpi"><span>EPA trend</span><b>${detail.epa_rating?.trend == null ? '—' : decisionTrend(Number(detail.epa_rating.trend), 'pts')}</b><small>${detail.epa_rating?.source === 'FIRST provisional' ? 'FIRST provisional trend' : 'TBA-derived rating trend'}</small></div>
+        <div class="alliance-decision-kpi"><span>Scoring sample</span><b>${rows.length}</b><small>qualification matches</small></div>
       </div>`;
   }
 
@@ -2107,7 +2108,8 @@
     const slope = regressionSlope(recent);
     const sampleFactor = clamp(points.length / 6, 0, 1);
     const volatility = stddev(recent);
-    const success = clamp(Number(detail.event_stats?.success_rate || 0) / 100, 0, 1);
+    const successKnown = detail.event_stats?.success_rate != null;
+    const success = successKnown ? clamp(Number(detail.event_stats.success_rate) / 100, 0, 1) : null;
     const consistency = 1 - clamp(volatility / Math.max(weightedRecent + 10, 10), 0, 1);
 
     const base = (weightedRecent * 0.50) + (eventAverage * 0.30) + (upperQuartile * 0.20);
@@ -2115,7 +2117,10 @@
     const trendAdjustment = clamp(slope * 1.5, -trendCap, trendCap) * sampleFactor;
     const projected = Math.max(0, base + trendAdjustment);
     const uncertainty = (volatility * 0.75) + ((1 - sampleFactor) * Math.max(projected, 10) * 0.20);
-    const confidence = clamp((0.60 * sampleFactor + 0.25 * consistency + 0.15 * success) * 100, 0, 100);
+    // Missing measured success is not the same as a 0% success rate.
+    const confidence = successKnown
+      ? clamp((0.60 * sampleFactor + 0.25 * consistency + 0.15 * success) * 100, 0, 100)
+      : clamp(((0.60 * sampleFactor + 0.25 * consistency) / 0.85) * 100, 0, 100);
 
     return {
       matches: points.length,
@@ -2193,7 +2198,7 @@
       const trend = Number(info?.augur_trend);
       const confidenceValue = Number(info?.augur_confidence);
       return `<div class="potential-team-row">
-        <div class="potential-team-main"><b>${esc(item.label)} · #${item.team} ${esc(info?.nickname || '')}</b><span>${matches} scouted qual${matches === 1 ? '' : 's'} · avg ${eventAvg} · recent ${recentAvg}</span></div>
+        <div class="potential-team-main"><b>${esc(item.label)} · #${item.team} ${esc(info?.nickname || '')}</b><span>${matches} scoring sample${matches === 1 ? '' : 's'} · avg ${eventAvg} · recent ${recentAvg}</span></div>
         <span class="potential-spark" aria-hidden="true"></span>
         <div class="potential-team-trend">${trendMarkup(trend)}<small>${Number.isFinite(confidenceValue) ? confidenceText(confidenceValue) : 'No'} confidence</small></div>
         <strong>${num(augur, 1)}</strong>
@@ -2256,12 +2261,14 @@
         label: row.label,
         match_number: row.match_number,
         scout_points: Number(row.points_per_match || 0),
-        defense: Number(row.defense_actions || 0),
+        defense: row.defense_actions == null ? null : Number(row.defense_actions),
+        points_source: row.points_source || 'traditional',
         offense_rate: row.offense_success_rate,
         points_rolling_3: Number(row.points_rolling_3 || 0),
         defense_rolling_3: Number(row.defense_rolling_3 || 0),
         comp_level: 'qm',
-        scouted: true
+        scouted: row.points_source !== 'tag_estimate',
+        tag_estimated: row.points_source === 'tag_estimate'
       }));
     }
     return (d.matches || []).filter(m => String(m.comp_level || '') === 'qm' && (m.scouted === true || Number(m.actions || 0) > 0));
@@ -2319,9 +2326,9 @@
   }
 
   function trendPanelHtml(d, kind) {
-    const rows = qualificationTrendRows(d);
-    if (!rows.length) return '<div class="alliance-empty-small">No scouted qualification matches are available yet.</div>';
     const offense = kind === 'offense';
+    const rows = qualificationTrendRows(d).filter(m => offense || m.defense != null);
+    if (!rows.length) return '<div class="alliance-empty-small">No scouted qualification matches are available yet.</div>';
     const values = rows.map(m => Number(offense ? m.scout_points : m.defense) || 0);
     const avg = values.reduce((a, b) => a + b, 0) / values.length;
     const last = values[values.length - 1] || 0;
@@ -2329,18 +2336,19 @@
     const slope = trendSlope(values.slice(-6));
     const trend = Math.abs(slope) < 0.1 ? 'Flat' : slope > 0 ? `+${num(slope, 1)} / match` : `${num(slope, 1)} / match`;
     const title = offense ? 'Offensive output by qualification match' : 'Defensive actions by qualification match';
+    const includesTagEstimate = offense && rows.some(m => m.points_source === 'tag_estimate');
     const explanation = offense
-      ? 'Points are Neptune scout points credited to this robot in each scouted qualification match. The second line is the rolling 3-match PPM average.'
+      ? (includesTagEstimate ? 'Points include Tag-estimated robot contributions from official alliance scores where traditional observations are unavailable. Estimates are not verified scoring actions.' : 'Points are Neptune scouting actions credited to this robot in each qualification match. The second line is the rolling 3-match average.')
       : 'Defense is the number of successful defensive actions recorded by Neptune scouts in each qualification match. The second line is the rolling 3-match average.';
     return `<div class="alliance-trend-panel">
       <div class="alliance-trend-kpis">
         ${kpi(num(avg, 1), offense ? 'Event PPM' : 'Defense / match')}
-        ${kpi(num(last, offense ? 1 : 0), 'Last scouted match')}
+        ${kpi(num(last, offense ? 1 : 0), 'Last scored sample')}
         ${kpi(num(peak, offense ? 1 : 0), 'Best match')}
         ${kpi(trend, 'Last-6 slope')}
       </div>
       <section class="alliance-detail-section alliance-trend-section"><h3>${esc(title)}</h3>
-        ${lineTrendChart(rows, offense ? 'scout_points' : 'defense', { decimals: offense ? 1 : 0, primaryLabel: offense ? 'Scouted points' : 'Defensive actions', aria: title })}
+        ${lineTrendChart(rows, offense ? 'scout_points' : 'defense', { decimals: offense ? 1 : 0, primaryLabel: offense ? (includesTagEstimate ? 'Observed / estimated points' : 'Scouted points') : 'Defensive actions', aria: title })}
         <p class="alliance-trend-note">${esc(explanation)}</p>
       </section>
     </div>`;
@@ -2431,15 +2439,15 @@
       </table></div>
     </section>` : '';
 
-    return `<div class="alliance-detail-source">Source: Neptune scouting · current event</div>
+    return `<div class="alliance-detail-source">Source: Neptune scouting${Number(s.tag_estimated_matches || 0)>0?' + Tag Scouting estimates':''} · current event</div>
       <div class="alliance-kpis alliance-scouting-summary-kpis">
-        ${kpi(matches, 'Matches scouted')}
-        ${kpi(num(s.points, 1), 'Total scout points')}
-        ${kpi(num(s.ppm, 1), 'Points / match')}
+        ${kpi(matches, 'Matches with scoring data')}
+        ${kpi(num(s.points, 1), Number(s.tag_estimated_matches || 0)>0?'Observed + estimated points':'Total scout points')}
+        ${kpi(s.ppm == null ? '—' : num(s.ppm, 1), Number(s.tag_estimated_matches || 0)>0?'Scouted / est. PPM':'Points / match')}
         ${kpi(Number(s.actions || 0), 'Recorded actions')}
         ${kpi(Number(s.successes || 0), 'Successful actions')}
         ${kpi(Number(s.failures || 0), 'Failed actions')}
-        ${kpi(`${num(s.success_rate, 0)}%`, 'Offense success')}
+        ${kpi(s.success_rate == null ? '—' : `${num(s.success_rate, 0)}%`, 'Offense success')}
         ${kpi(s.cycle_time == null ? '—' : `${num(s.cycle_time, 1)}s`, 'Cycle time')}
         ${kpi(num(s.defense_per_match, 1), 'Defense / match')}
       </div>
@@ -2492,7 +2500,11 @@
       if (!d.epa_rating || !Object.keys(d.epa_rating).length) return `<div class="alliance-empty-small">${esc(d.epa_rating_error || 'No Public EPA rating is available yet. Rebuild ratings from the Public EPA Ratings page.')}</div>`;
       const s = d.epa_rating;
       const trend = s.trend == null ? '—' : (Math.abs(Number(s.trend)) < 0.05 ? 'Flat' : `${Number(s.trend) > 0 ? '+' : ''}${num(s.trend, 1)} / match`);
-      return `<div class="alliance-detail-source">Source: Public EPA · TBA public match results · ${esc(s.model_version || '')}</div><div class="alliance-kpis">${kpi(num(s.epa, 1), 'Public EPA')}${kpi(s.auto == null ? '—' : num(s.auto, 1), 'Auto EPA')}${kpi(s.teleop == null ? '—' : num(s.teleop, 1), 'Teleop EPA')}${kpi(s.endgame == null ? '—' : num(s.endgame, 1), 'Endgame EPA')}${kpi(neptuneEpa(s) == null ? '—' : num(neptuneEpa(s), 1), 'Neptune EPA')}${kpi(s.record || '—', 'Record')}${kpi(s.rank ? `#${s.rank}` : '—', 'Event rating rank')}${kpi(trend, 'EPA trend')}${kpi(s.confidence == null ? '—' : `${num(s.confidence, 0)}%`, 'EPA confidence')}</div><p class="alliance-trend-note">Public EPA uses only public TBA results. Neptune EPA blends that baseline with ${Number(s.scouting_matches || 0)} Neptune-scout${Number(s.scouting_matches || 0) === 1 ? 'ed match' : 'ed matches'} when available.</p>`;
+      const firstProvisional = s.source === 'FIRST provisional';
+      const sourceLabel = firstProvisional ? 'FIRST event-local provisional EPA (not public TBA)' : 'TBA public EPA';
+      const rankTotal = Number(s.rank_total || 0);
+      const epaRank = s.rank ? `#${s.rank}${rankTotal ? ` / ${rankTotal}` : ''}` : '—';
+      return `<div class="alliance-detail-source">Source: ${esc(sourceLabel)} · ${esc(s.model_version || '')}</div><div class="alliance-kpis">${kpi(num(s.epa, 1), firstProvisional ? 'FIRST EPA' : 'Public EPA')}${kpi(s.auto == null ? '—' : num(s.auto, 1), 'Auto EPA')}${kpi(s.teleop == null ? '—' : num(s.teleop, 1), 'Teleop EPA')}${kpi(s.endgame == null ? '—' : num(s.endgame, 1), 'Endgame EPA')}${kpi(neptuneEpa(s) == null ? '—' : num(neptuneEpa(s), 1), 'Neptune EPA')}${kpi(s.record || '—', 'Qualification record')}${kpi(epaRank, 'Event EPA rank')}${kpi(trend, 'EPA trend')}${kpi(s.confidence == null ? '—' : `${num(s.confidence, 0)}%`, 'EPA confidence')}</div><p class="alliance-trend-note">${firstProvisional ? 'FIRST provisional EPA uses recorded event results.' : 'Public EPA uses TBA results.'} Neptune EPA also uses ${Number(s.scouting_matches || 0)} Neptune-scout${Number(s.scouting_matches || 0) === 1 ? 'ed match' : 'ed matches'} when available.</p>`;
     }
     if (tab === 'game') {
       const matches = d.matches || [];
@@ -2616,7 +2628,8 @@
   els.redo?.addEventListener('click', () => state?.draft && mutate('redo', { draft_id: state.draft.id }, { toast: false }));
   els.seedCaptains?.addEventListener('click', async () => {
     if (!state?.draft) return;
-    const ok = await ui.confirm('Refresh Alliance 1–8 captains from the current TBA qualification rankings? This is intended for use before picks begin.', { title: 'Refresh TBA rankings', confirmText: 'Refresh Rankings' });
+    const src = state?.ranking?.official ? 'official TBA rankings' : 'provisional standings calculated from recorded qualification scores (not official FIRST rankings)';
+    const ok = await ui.confirm(`Refresh Alliance 1–8 captains from ${src}? This is intended for use before picks begin.`, { title: 'Refresh Rankings', confirmText: 'Refresh Rankings' });
     if (ok) await mutate('refresh_rankings', { draft_id: state.draft.id });
   });
   els.mode?.addEventListener('click', async () => {

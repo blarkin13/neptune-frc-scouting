@@ -182,7 +182,7 @@ if (!$eventId && $events) $eventId = (int)$events[0]['id'];
 
 $matches = [];
 if ($eventId) {
-    $s = $pdo->prepare("SELECT id,event_id,game_id,comp_level,set_number,match_number,field_id,state,scheduled_time,red_score,blue_score
+    $s = $pdo->prepare("SELECT id,event_id,game_id,comp_level,set_number,match_number,field_id,state,scheduled_time,tba_match_key,red_score,blue_score
         FROM matches WHERE event_id=?
         ORDER BY CASE comp_level WHEN 'qm' THEN 1 WHEN 'ef' THEN 2 WHEN 'qf' THEN 3 WHEN 'sf' THEN 4 WHEN 'f' THEN 5 ELSE 6 END,
                  set_number,match_number,field_id");
@@ -240,11 +240,21 @@ if (!$matchId && $matches) {
 
 $robots = [];
 $match = null;
+$manualScores = null;
+$officialScores = ['red'=>null,'blue'=>null,'provider'=>'Official'];
 $summaryByTeam = [];
 $tagConsensus = [];
 $mineByTeam = [];
 if ($matchId) {
     foreach ($matches as $m) if ((int)$m['id'] === $matchId) { $match = $m; break; }
+    if($match){
+        require_once __DIR__ . '/_manual_match_scores.php';
+        $officialScores = neptune_manual_scores_official_display($pdo,$org,$eventId,$match);
+    }
+    try {
+        require_once __DIR__ . '/_manual_match_scores.php';
+        $manualScores = neptune_manual_scores_row($pdo,$org,$eventId,$matchId);
+    } catch (Throwable $ignored) { $manualScores = null; }
 
     $s = $pdo->prepare("SELECT mt.frc_team_number,mt.alliance,mt.station,et.nickname
         FROM match_teams mt
@@ -500,6 +510,38 @@ body.impact-modal-open{overflow:hidden!important}
   }
 }
 @media(prefers-reduced-motion:reduce){.impact-robot,.impact-tag span,.impact-tag span>i,.impact-tag span:after{transition:none}.impact-tag input:checked+span{animation:none}}
+
+/* Manual final scores are shared per match, not per robot. */
+.manual-scores-launch{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:9px 0 2px}
+.manual-scores-launch button{padding:10px 14px;border:1px solid var(--module-trident,var(--accent));border-radius:12px;background:color-mix(in srgb,var(--module-trident,var(--accent)) 12%,var(--panel));color:var(--text);font-weight:900;cursor:pointer}
+.manual-scores-launch button:hover{filter:brightness(1.16)}
+.manual-score-caption{font-size:.76rem;color:var(--muted);line-height:1.5}
+.manual-score-dialog{border:1px solid var(--line);background:var(--panel,#101b29);color:var(--text,#fff);border-radius:20px;width:min(94vw,480px);max-height:calc(100dvh - 32px);overflow:auto;padding:22px;box-shadow:0 30px 100px rgba(0,0,0,.7);box-sizing:border-box}
+.manual-score-dialog::backdrop{background:rgba(1,8,19,.82)}
+.manual-score-dialog h3{margin:4px 0 10px;font-size:1.55rem}
+.manual-score-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:17px 0}
+.manual-score-fields label{font-size:.83rem;font-weight:900;display:grid;gap:8px}
+.manual-score-fields input{width:100%;box-sizing:border-box;min-height:54px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:1.25rem;font-weight:950;background:var(--panel2,var(--panel));color:var(--text)}
+.manual-score-fields label:first-child{color:#ff6b83}.manual-score-fields label:last-child{color:#73a0ff}
+.manual-score-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.manual-score-actions button{min-height:46px;padding:10px 16px;border-radius:12px;font-weight:900;cursor:pointer;background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+.manual-score-actions button[type=submit]{background:var(--module-trident,var(--accent));color:#fff}
+.manual-score-actions button:disabled{opacity:.5;cursor:wait}
+.manual-score-status{font-size:.82rem;line-height:1.45;min-height:20px;margin:12px 0;color:var(--muted)}
+.manual-score-status.error{color:#ff7b89}.manual-score-status.good{color:var(--good,#70e5a9)}
+.manual-score-conflict{border:1px solid #c98d3e;border-radius:12px;padding:10px;margin:10px 0;font-size:.82rem;line-height:1.5}
+.manual-score-conflict[hidden]{display:none}
+.manual-official-box{margin-top:14px;padding:13px;border:1px solid var(--line);border-radius:14px;background:var(--panel2,var(--panel));}
+.manual-official-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.manual-official-header strong{font-size:.85rem}
+.manual-official-source{font-size:.72rem;font-weight:900;letter-spacing:.04em;border:1px solid var(--module-trident,var(--accent));border-radius:999px;padding:4px 9px;color:var(--text)}
+.manual-official-scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.manual-official-score{border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
+.manual-official-score span{display:block;font-size:.77rem;font-weight:800;color:var(--muted)}
+.manual-official-score b{display:block;font-size:1.45rem;margin-top:3px;line-height:1.2}
+.manual-official-score.red b{color:#ff778b}.manual-official-score.blue b{color:#7ba7ff}
+.manual-official-score .unavailable{font-size:.85rem;font-weight:700;color:var(--muted)}
+.manual-official-note{font-size:.76rem;color:var(--muted);line-height:1.5;margin:9px 0 0}
 </style>
 <div class="impact-shell">
   <?=tag_unified_tabs_html('match',$eventId,$selectedTeam)?>
@@ -593,6 +635,11 @@ body.impact-modal-open{overflow:hidden!important}
             <div class="impact-slider score inactive" data-rating="scoring_contribution" data-block-count="21" data-active="0"><div class="impact-slider-top"><span class="impact-slider-title"><i class="fa-solid fa-chart-pie"></i> Scoring Contribution</span><span class="impact-rating-actions"><span class="impact-value" data-output="scoring_contribution">Not rated</span><button type="button" class="impact-clear" data-clear-rating="scoring_contribution">Clear</button></span></div><div class="impact-block-control"><div class="impact-blocks" aria-hidden="true"></div><input type="range" name="scoring_contribution" min="0" max="100" step="1" value="0" aria-label="Scoring Contribution"></div><div class="impact-slider-scale"><span>0%</span><span>50%</span><span>100%</span></div><div class="impact-rating-help">Estimate this robot's share of its alliance scoring. Leave it unrated if you were not confident.</div></div>
           </div>
 
+          <div class="manual-scores-launch">
+            <button type="button" id="manualScoresOpen"><i class="fa-solid fa-pen-to-square"></i> Enter alliance scores</button>
+            <span class="manual-score-caption" id="manualScoresSummary">Scores belong to this match · All scouts may edit</span>
+          </div>
+
           <div class="impact-section-label">Optional note</div>
           <div class="impact-note"><textarea name="note" maxlength="500" placeholder="Only add a note if the tags don't tell the story."></textarea></div>
           <div class="impact-auto-note"><i class="fa-solid fa-cloud-arrow-up"></i> No submit button. Changes are saved on this device immediately and synced automatically.</div>
@@ -623,6 +670,35 @@ body.impact-modal-open{overflow:hidden!important}
       </aside>
     </div>
   <?php endif;?>
+
+    <dialog class="manual-score-dialog" id="manualScoresDialog" aria-labelledby="manualScoresTitle">
+      <form id="manualScoresForm" autocomplete="off">
+        <div class="impact-kicker">MANUAL FINAL RESULT · <?=e($match ? impact_match_label($match) : 'MATCH')?></div>
+        <h3 id="manualScoresTitle">Alliance final scores</h3>
+        <div class="manual-score-caption">Manual scores are shared with every scout in your organization. You can enter or correct them even when an official result has already arrived; official scores always take precedence in analytics.</div>
+        <div class="manual-official-box" role="group" aria-label="Current official match scores">
+          <div class="manual-official-header"><strong>Official match result</strong><span class="manual-official-source" id="manualOfficialSource">Checking…</span></div>
+          <div class="manual-official-scores">
+            <div class="manual-official-score red"><span>Red alliance</span><b id="manualOfficialRed">—</b></div>
+            <div class="manual-official-score blue"><span>Blue alliance</span><b id="manualOfficialBlue">—</b></div>
+          </div>
+          <p class="manual-official-note" id="manualOfficialNotice">Checking for imported scores…</p>
+        </div>
+        <div class="manual-score-fields">
+          <label>Red alliance <input type="number" id="manualRedScore" min="0" max="2000" step="1" required inputmode="numeric"></label>
+          <label>Blue alliance <input type="number" id="manualBlueScore" min="0" max="2000" step="1" required inputmode="numeric"></label>
+        </div>
+        <div class="manual-score-status" id="manualScoresStatus" role="status" aria-live="polite"></div>
+        <div class="manual-score-conflict" id="manualScoresConflict" hidden>
+          <div id="manualScoresConflictText"></div>
+          <button type="button" id="manualScoresOverwrite">Use my scores instead</button>
+        </div>
+        <div class="manual-score-actions">
+          <button type="button" id="manualScoresCancel">Cancel</button>
+          <button type="submit" id="manualScoresSave">Save final scores</button>
+        </div>
+      </form>
+    </dialog>
 
     <div class="impact-weight-modal" id="impactWeightModal" role="dialog" aria-modal="true" aria-labelledby="impactWeightTitle" aria-hidden="true" hidden>
       <section class="impact-weight-card">
@@ -671,9 +747,14 @@ body.impact-modal-open{overflow:hidden!important}
   const TAG_COUNTS = <?=json_encode($tagConsensusForJs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)?>;
   const TAG_CATALOG = <?=json_encode($tagCatalog, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)?>;
   const BINARY_TAGS = new Set(['no_auton','no_defense','failed_endgame']);
+  const MANUAL_API = <?=json_encode(base_url('scout/manual-scores-api.php'))?>;
+  const MANUAL_SERVER = <?=json_encode($manualScores ? ['red_score'=>(int)$manualScores['red_score'],'blue_score'=>(int)$manualScores['blue_score'],'revision'=>(int)$manualScores['revision']] : null)?>;
+  let OFFICIAL_SCORES = <?=json_encode($officialScores, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)?>;
+
 
   const DB_NAME = 'neptune-impact-scouting';
-  const DB_VERSION = 4;
+  const DB_VERSION = 5;
+  const MANUAL_STORE = 'manual_scores';
   const STORE = 'impact_states';
   const PREF_STORE = 'impact_preferences';
   const form = document.getElementById('impactForm');
@@ -782,6 +863,7 @@ body.impact-modal-open{overflow:hidden!important}
           store.createIndex('dirty', 'dirty', { unique: false });
           store.createIndex('updatedAt', 'updatedAt', { unique: false });
         }
+        if (!d.objectStoreNames.contains(MANUAL_STORE)) d.createObjectStore(MANUAL_STORE, {keyPath:'key'});
         if (!d.objectStoreNames.contains(PREF_STORE)) {
           d.createObjectStore(PREF_STORE, { keyPath: 'key' });
         }
@@ -1387,6 +1469,183 @@ body.impact-modal-open{overflow:hidden!important}
   document.addEventListener('visibilitychange', () => { if (!document.hidden) syncPending(); });
   window.addEventListener('pagehide', () => { if (uiHasChanges()) saveCurrentLocal().catch(()=>{}); });
 
+
+  // Separate offline queue: scores are match-wide, never part of a robot's Tag observation.
+  const scoreDialog = document.getElementById('manualScoresDialog');
+  const scoreOpen = document.getElementById('manualScoresOpen');
+  const scoreForm = document.getElementById('manualScoresForm');
+  const scoreRed = document.getElementById('manualRedScore');
+  const scoreBlue = document.getElementById('manualBlueScore');
+  const scoreStatus = document.getElementById('manualScoresStatus');
+  const scoreSummary = document.getElementById('manualScoresSummary');
+  const scoreOfficial = document.getElementById('manualOfficialNotice');
+  const officialProvider = document.getElementById('manualOfficialSource');
+  const officialRed = document.getElementById('manualOfficialRed');
+  const officialBlue = document.getElementById('manualOfficialBlue');
+  const scoreConflict = document.getElementById('manualScoresConflict');
+  const scoreConflictText = document.getElementById('manualScoresConflictText');
+  const scoreOverwrite = document.getElementById('manualScoresOverwrite');
+  const scoreSave = document.getElementById('manualScoresSave');
+  const scoreKey = [CONFIG.orgId,CONFIG.eventId,CONFIG.matchId,CONFIG.userId].join(':');
+  let scoreRevision = Number(MANUAL_SERVER?.revision || 0);
+  let scoreConflictServer = null;
+  let scoreSyncBusy = false;
+  let scoreQueued = null;
+  function scoreNotify(text,kind='') {
+    scoreStatus.textContent = text;
+    scoreStatus.className = 'manual-score-status' + (kind ? ' '+kind : '');
+  }
+  function manualDbGet() {
+    if(!db || !db.objectStoreNames.contains(MANUAL_STORE))return Promise.resolve(null);
+    return new Promise((resolve,reject)=>{
+      const request=db.transaction(MANUAL_STORE,'readonly').objectStore(MANUAL_STORE).get(scoreKey);
+      request.onsuccess=()=>resolve(request.result || null);
+      request.onerror=()=>reject(request.error);
+    });
+  }
+  function manualDbPut(record) {
+    if(!db || !db.objectStoreNames.contains(MANUAL_STORE))return Promise.reject(new Error('Device storage is unavailable.'));
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(MANUAL_STORE,'readwrite');tx.objectStore(MANUAL_STORE).put(record);
+      tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);
+    });
+  }
+  function manualDefault() {
+    return {key:scoreKey,orgId:CONFIG.orgId,eventId:CONFIG.eventId,matchId:CONFIG.matchId,
+      userId:CONFIG.userId,red:MANUAL_SERVER?.red_score ?? null,blue:MANUAL_SERVER?.blue_score ?? null,
+      revision:Number(MANUAL_SERVER?.revision || 0),dirty:false,conflict:false,updatedAt:0};
+  }
+  function showManualRecord(r) {
+    if(r?.red !== null && r?.red !== undefined)scoreRed.value=String(r.red);
+    if(r?.blue !== null && r?.blue !== undefined)scoreBlue.value=String(r.blue);
+    scoreRevision=Number(r?.revision || 0);
+    if(r?.conflict){scoreNotify('Another scout updated this match. Review both scores before overwriting.','error');}
+    else if(r?.dirty){scoreNotify('Saved on this device · awaiting server sync.');}
+    else if(r?.red !== null && r?.red !== undefined){scoreNotify('Shared scores loaded · anyone on your team can edit.','good');}
+    else scoreNotify('Enter the final score for each alliance.');
+    if(r?.red !== null && r?.red !== undefined)scoreSummary.textContent='Manual: Red '+r.red+' · Blue '+r.blue+(r?.dirty?' · Waiting to sync':'');
+    else scoreSummary.textContent='No manual final scores yet · All scouts may edit';
+    renderOfficialScores();
+  }
+  function renderOfficialScores() {
+    const present = OFFICIAL_SCORES.red !== null || OFFICIAL_SCORES.blue !== null;
+    officialProvider.textContent = present ? String(OFFICIAL_SCORES.provider || 'Official') + ' final' : 'Not available';
+    officialRed.textContent = OFFICIAL_SCORES.red !== null ? String(OFFICIAL_SCORES.red) : 'Awaiting score';
+    officialBlue.textContent = OFFICIAL_SCORES.blue !== null ? String(OFFICIAL_SCORES.blue) : 'Awaiting score';
+    officialRed.classList.toggle('unavailable', OFFICIAL_SCORES.red === null);
+    officialBlue.classList.toggle('unavailable', OFFICIAL_SCORES.blue === null);
+    if(OFFICIAL_SCORES.red !== null && OFFICIAL_SCORES.blue !== null){
+      scoreOfficial.textContent = 'An official final is already available. Manual edits are saved as backup and will not override it.';
+    }else if(present){
+      scoreOfficial.textContent = 'Only part of the official result is available. A manual score is used for an alliance only if its official score is missing.';
+    }else{
+      scoreOfficial.textContent = 'No official final score imported yet. Manual scores will be used until FIRST/TBA results arrive.';
+    }
+  }
+  async function getFreshManual() {
+    const params=new URLSearchParams({event_id:String(CONFIG.eventId),match_id:String(CONFIG.matchId)});
+    const response=await fetch(MANUAL_API+'?'+params.toString(),{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('Score server unavailable');
+    const data=await response.json();if(!data.ok)throw new Error(data.error || 'Score server unavailable');
+    if(data.official && typeof data.official === 'object'){
+      OFFICIAL_SCORES = {
+        red: data.official.red ?? null,
+        blue: data.official.blue ?? null,
+        provider: String(data.official.provider || 'Official'),
+      };
+      renderOfficialScores();
+    }
+    return { ...manualDefault(),red:data.manual?.red_score ?? null,blue:data.manual?.blue_score ?? null,revision:Number(data.manual?.revision || 0)};
+  }
+  async function openManualScores() {
+    scoreConflict.hidden=true;
+    let current=await manualDbGet().catch(()=>null);
+    if(!current)current=manualDefault();
+    showManualRecord(current);
+    scoreDialog.showModal();
+    try{
+      const remote=await getFreshManual();
+      if(current.dirty){
+        // Refresh official finals without discarding a queued offline edit.
+        showManualRecord(current);
+      }else{
+        await manualDbPut(remote).catch(()=>{});
+        showManualRecord(remote);
+      }
+    }catch(_){
+      if(!current.dirty)scoreNotify('Server not reachable. Enter scores and save on this device.');
+    }
+  }
+  async function syncManualPending() {
+    if(scoreSyncBusy || !db)return;
+    const record=await manualDbGet().catch(()=>null);
+    if(!record?.dirty || record.conflict)return;
+    scoreSyncBusy=true;
+    try{
+      const fd=new FormData();
+      fd.set('csrf',document.getElementById('impactCsrf').value);
+      fd.set('event_id',String(record.eventId));fd.set('match_id',String(record.matchId));
+      fd.set('red_score',String(record.red));fd.set('blue_score',String(record.blue));
+      fd.set('expected_revision',String(record.revision));
+      const response=await fetch(MANUAL_API,{method:'POST',body:fd,credentials:'same-origin'});
+      const payload=await response.json();
+      if(response.status===409 && payload.conflict){
+        record.conflict=true;scoreConflictServer=payload.current?.manual || null;
+        await manualDbPut(record);
+        if(scoreDialog.open){
+          scoreNotify('Edit conflict · your values are safe on this device.','error');
+          scoreConflictText.textContent='Another scout saved Red '+(scoreConflictServer?.red_score ?? '—')+' · Blue '+(scoreConflictServer?.blue_score ?? '—')+'. Your values: Red '+record.red+' · Blue '+record.blue+'.';
+          scoreConflict.hidden=false;
+        }
+        return;
+      }
+      if(!response.ok || !payload.ok)throw new Error(payload.error || 'Sync failed');
+      const latest=await manualDbGet();
+      if(latest){
+        latest.revision=Number(payload.manual?.revision || record.revision+1);
+        if(latest.updatedAt===record.updatedAt){latest.dirty=false;latest.conflict=false;}
+        // If edited again during the HTTP request, retain the newer draft and
+        // advance its expected revision so it cannot conflict with itself.
+        await manualDbPut(latest);
+        if(scoreDialog.open)showManualRecord(latest);
+        else scoreSummary.textContent='Manual: Red '+latest.red+' · Blue '+latest.blue+(latest.dirty?' · Waiting to sync':'');
+      }
+    }catch(_){if(scoreDialog.open)scoreNotify('Saved on this device; will retry when server is reachable.');}
+    finally{scoreSyncBusy=false;}
+  }
+  async function saveManualScores(event){
+    event.preventDefault();
+    const red=Number(scoreRed.value),blue=Number(scoreBlue.value);
+    if(!Number.isInteger(red)||!Number.isInteger(blue)||red<0||blue<0||red>2000||blue>2000||scoreRed.value===''||scoreBlue.value===''){
+      scoreNotify('Enter two whole-number scores between 0 and 2000.','error');return;
+    }
+    scoreSave.disabled=true;
+    try{
+      const previous=await manualDbGet().catch(()=>null) || manualDefault();
+      const next={...previous,red,blue,revision:scoreRevision,dirty:true,conflict:false,updatedAt:Date.now()};
+      if(!db){
+        if(navigator.onLine===false)throw new Error('Offline device storage unavailable. Scores were not saved.');
+        throw new Error('Device storage unavailable. Please reload before entering scores.');
+      }
+      await manualDbPut(next);
+      scoreConflict.hidden=true;showManualRecord(next);
+      await syncManualPending();
+    }catch(err){scoreNotify(err.message || 'Device save failed.','error');}
+    finally{scoreSave.disabled=false;}
+  }
+  scoreOpen?.addEventListener('click',openManualScores);
+  document.getElementById('manualScoresCancel')?.addEventListener('click',()=>scoreDialog.close());
+  scoreForm?.addEventListener('submit',saveManualScores);
+  scoreOverwrite?.addEventListener('click',async()=>{
+    if(!scoreConflictServer)return;
+    // Requires a deliberate second action; never silently overwrite a teammate.
+    scoreRevision=Number(scoreConflictServer.revision || 0);
+    scoreConflict.hidden=true;
+    await saveManualScores({preventDefault(){}});
+  });
+  window.addEventListener('online',syncManualPending);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncManualPending();});
+
   ensureBlocks();
   paintSliderOutputs();
 
@@ -1398,7 +1657,8 @@ body.impact-modal-open{overflow:hidden!important}
       await markLocalCards();
       await selectRobot(currentTeam, false);
       await syncPending();
-      setInterval(() => syncPending(), 5000);
+      await syncManualPending();
+      setInterval(() => {syncPending();syncManualPending();}, 5000);
     } catch (err) {
       cacheAvailable = false;
       try { await setAdvancedMode(localStorage.getItem('neptune-' + ADVANCED_PREF_KEY) === '1', false); } catch (_) {}
