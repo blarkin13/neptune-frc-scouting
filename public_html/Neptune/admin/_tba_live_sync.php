@@ -47,7 +47,7 @@ function neptune_tba_refresh_linked_event(PDO $pdo,int $organizationId,int $even
               (organization_id,event_id,game_id,tba_match_key,comp_level,set_number,match_number,field_id,scheduled_time,red_score,blue_score,winning_alliance,state)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON DUPLICATE KEY UPDATE
-              tba_match_key=VALUES(tba_match_key),scheduled_time=VALUES(scheduled_time),red_score=VALUES(red_score),blue_score=VALUES(blue_score),winning_alliance=VALUES(winning_alliance),
+              tba_match_key=COALESCE(VALUES(tba_match_key),tba_match_key),scheduled_time=COALESCE(VALUES(scheduled_time),scheduled_time),red_score=COALESCE(VALUES(red_score),red_score),blue_score=COALESCE(VALUES(blue_score),blue_score),winning_alliance=IF(VALUES(red_score) IS NOT NULL AND VALUES(blue_score) IS NOT NULL,VALUES(winning_alliance),winning_alliance),
               state=IF(VALUES(red_score) IS NOT NULL AND VALUES(blue_score) IS NOT NULL,'ended',state)");
         $findMatch=$pdo->prepare("SELECT id FROM matches WHERE organization_id=? AND event_id=? AND comp_level=? AND set_number=? AND match_number=? AND field_id=1 LIMIT 1");
         $upStation=$pdo->prepare("INSERT INTO match_teams(match_id,frc_team_number,alliance,station) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE frc_team_number=VALUES(frc_team_number)");

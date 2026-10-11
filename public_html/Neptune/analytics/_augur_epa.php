@@ -985,7 +985,21 @@ function augur_epa_rating_map(PDO $pdo,int $org,array $event,array $teams,?array
     if(!augur_epa_tables_ready($pdo))return [];
     $key=trim((string)($event['tba_event_key']??''));
     $year=(int)($event['season_year']??0);
-    if($key===''||$year<1)return [];
+    if($year<1)return [];
+    // Prefer the official TBA public archive whenever ratings exist. For a
+    // manually linked FIRST-only/offseason event, use separate provisional
+    // event-local ratings without polluting the season-wide public archive.
+    $useFirst=($key==='');
+    if(!$useFirst){
+        $q=$pdo->prepare('SELECT 1 FROM augur_epa_event_ratings WHERE tba_event_key=? LIMIT 1');
+        $q->execute([$key]);$useFirst=!(bool)$q->fetchColumn();
+    }
+    if($useFirst){
+        require_once dirname(__DIR__).'/admin/_first_epa_local.php';
+        $fallback=neptune_first_epa_rating_map($pdo,$org,$event,$teams,$cutoffMatch);
+        if($fallback)return $fallback;
+    }
+    if($key==='')return [];
     $eventStart=(string)($event['start_date']??'')?:null;
     $out=[];
     foreach(array_values(array_unique(array_map('intval',$teams))) as $team){
