@@ -45,6 +45,36 @@ $s=$pdo->prepare("SELECT m.id,m.tba_match_key,m.comp_level,m.set_number,m.match_
  ORDER BY FIELD(m.comp_level,'qm','ef','qf','sf','f','legacy'),m.set_number,m.match_number");
 $s->execute([$team,$org,$eventId,$team,$team,$org,$eventId]);$matches=$s->fetchAll();
 
+// The public AUGUR match archive is TBA-keyed. FIRST-only qualification
+// matches have no TBA key, so show their separate event-local provisional
+// rating changes without touching season-wide or historical ratings.
+$firstMatchEpa=[];
+try {
+    $tableCheck=$pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?");
+    $tableCheck->execute(['augur_first_match_ratings']);
+    if ((int)$tableCheck->fetchColumn()>0) {
+        $firstQuery=$pdo->prepare('SELECT match_number,pre_rating,post_rating,pre_auto_rating,post_auto_rating FROM augur_first_match_ratings WHERE organization_id=? AND event_id=? AND frc_team_number=?');
+        $firstQuery->execute([$org,$eventId,$team]);
+        foreach ($firstQuery->fetchAll(PDO::FETCH_ASSOC) as $firstRating) {
+            $firstMatchEpa[(int)$firstRating['match_number']]=$firstRating;
+        }
+    }
+} catch (PDOException $e) {
+    // The FIRST provisional tables are optional in older deployments.
+    // Preserve the original TBA detail view if they are unavailable.
+}
+foreach ($matches as &$match) {
+    $match['epa_source']=is_numeric($match['epa_delta'])?'TBA official':'';
+    $match['first_epa_snapshot']=null;
+    if ($match['epa_source']!=='' || (string)$match['comp_level']!=='qm')continue;
+    $firstRating=$firstMatchEpa[(int)$match['match_number']]??null;
+    if (!$firstRating)continue;
+    $match['epa_delta']=(float)$firstRating['post_rating']-(float)$firstRating['pre_rating'];
+    $match['epa_source']='FIRST provisional';
+    $match['first_epa_snapshot']=$firstRating;
+}
+unset($match);
+
 function detail_value(mixed $v): string {
     if(is_array($v)) return implode(', ',array_map('strval',$v));
     return trim((string)$v);
@@ -200,7 +230,7 @@ $logo=!empty($logoInfo['exists'])?(string)$logoInfo['path']:'';
               <div><span>Scout pts</span><b><?=number_format((float)$m['scout_points'],0)?></b></div>
               <div><span>Offense</span><b><?=$rate!==null?number_format($rate,0).'%':'—'?></b></div>
               <div><span>Defense</span><b><?=e((int)$m['defense_actions'])?></b></div>
-              <div><span>EPA Δ</span><b class="<?=is_numeric($m['epa_delta'])&&((float)$m['epa_delta'])>0?'positive':(is_numeric($m['epa_delta'])&&((float)$m['epa_delta'])<0?'negative':'')?>"><?=is_numeric($m['epa_delta'])?(((float)$m['epa_delta']>0?'+':'').number_format((float)$m['epa_delta'],1)):'—'?></b></div>
+              <div><span title="EPA rating change after this match<?=($m['epa_source']??'')==='FIRST provisional'?' (event-local provisional, not official season EPA)':''?>">EPA Δ<?=($m['epa_source']??'')==='FIRST provisional'?' · FIRST':''?></span><b class="<?=is_numeric($m['epa_delta'])&&((float)$m['epa_delta'])>0?'positive':(is_numeric($m['epa_delta'])&&((float)$m['epa_delta'])<0?'negative':'')?>"><?=is_numeric($m['epa_delta'])?(((float)$m['epa_delta']>0?'+':'').number_format((float)$m['epa_delta'],1)):'—'?></b></div>
               <i class="fa-solid fa-chevron-down robot-match-chevron"></i>
             </summary>
             <div class="robot-match-detail-grid">
@@ -209,6 +239,15 @@ $logo=!empty($logoInfo['exists'])?(string)$logoInfo['path']:'';
               <div><span>Offense attempts</span><b><?=e($attempts)?></b></div>
               <div><span>Successful offense</span><b><?=e((int)$m['offense_success'])?></b></div>
               <?php if($m['red_score']!==null):?><div><span>Official score</span><b><?=e($m['red_score'])?>–<?=e($m['blue_score'])?></b></div><?php endif;?>
+              <?php if(($m['epa_source']??'')==='FIRST provisional'&&is_array($m['first_epa_snapshot'])):$ep=$m['first_epa_snapshot']; ?>
+                <div><span>EPA source</span><b>FIRST · Provisional</b></div>
+                <div><span>EPA before</span><b><?=number_format((float)$ep['pre_rating'],1)?></b></div>
+                <div><span>EPA after</span><b><?=number_format((float)$ep['post_rating'],1)?></b></div>
+                <?php if($ep['pre_auto_rating']!==null&&$ep['post_auto_rating']!==null):?>
+                  <div><span>Auto EPA before</span><b><?=number_format((float)$ep['pre_auto_rating'],1)?></b></div>
+                  <div><span>Auto EPA after</span><b><?=number_format((float)$ep['post_auto_rating'],1)?></b></div>
+                <?php endif; ?>
+              <?php endif;?>
               <?php if(trim((string)($m['tba_match_key']??''))!==''):?><div class="robot-match-video-cell" data-tba-match-key="<?=e($m['tba_match_key'])?>" hidden><span>Video</span><a class="btn secondary compact robot-match-video" href="#" target="_blank" rel="noopener"><i class="fa-brands fa-youtube"></i> YouTube</a></div><?php endif;?>
             </div>
           </details>
