@@ -24,6 +24,27 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         try{
             require_once dirname(__DIR__,3).'/neptune_secure/portable-sync-client.php';
             $syncSummary=neptune_portable_sync_to_cloud($pdo,$config);
+            // The portable client predates manual alliance scores. Send these as a
+            // separate event-scoped section; conflicts abort sync rather than overwrite.
+            if(neptune_portable_table_exists($pdo,'tag_manual_alliance_scores')){
+                $manualSettings=neptune_portable_local_settings($config);
+                $manualOrg=(int)$manualSettings['organization_id'];
+                $manualEventStmt=$pdo->prepare('SELECT id FROM events WHERE organization_id=? ORDER BY id');
+                $manualEventStmt->execute([$manualOrg]);
+                foreach($manualEventStmt->fetchAll(PDO::FETCH_COLUMN) as $manualEvent){
+                    $manualSettings['event_id']=(int)$manualEvent;
+                    $syncSummary['manual_scores'][]=neptune_portable_send_section(
+                        $pdo,$manualSettings,'manual_scores',
+                        'SELECT s.organization_id,s.event_id,s.match_id,s.red_score,s.blue_score,s.revision,s.updated_by,s.updated_at,
+                                m.comp_level AS match_comp_level,m.set_number AS match_set_number,
+                                m.match_number,m.field_id AS match_field_id
+                         FROM tag_manual_alliance_scores s
+                         JOIN matches m ON m.id=s.match_id AND m.organization_id=s.organization_id AND m.event_id=s.event_id
+                         WHERE s.organization_id=? AND s.event_id=? ORDER BY s.match_id',
+                        [$manualOrg,(int)$manualEvent]
+                    );
+                }
+            }
             // Record only fully successful organization-wide uploads.
             try {
                 $pdo->exec('CREATE TABLE IF NOT EXISTS portable_sync_tracking (organization_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, last_success_utc DATETIME NOT NULL)');

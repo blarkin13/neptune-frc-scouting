@@ -16,7 +16,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_augur_prediction_model.php';
 
-const TAG_SCOUTING_ANALYTICS_MODEL_VERSION = 'tag-analytics-v1';
+const TAG_SCOUTING_ANALYTICS_MODEL_VERSION = 'tag-analytics-v2-official-first';
 const TAG_SCOUTING_SYNTHETIC_USER_ID = 900000001;
 
 function tag_scouting_analytics_table_exists(PDO $pdo, string $table): bool {
@@ -53,10 +53,12 @@ function tag_scouting_analytics_install(PDO $pdo): void {
 
         official_score DECIMAL(10,3) NULL,
         modeled_score DECIMAL(10,3) NULL,
+        manual_score DECIMAL(10,3) NULL,
+        estimated_manual_points DECIMAL(10,3) NULL,
         estimated_official_points DECIMAL(10,3) NULL,
         estimated_modeled_points DECIMAL(10,3) NULL,
         estimated_points DECIMAL(10,3) NULL,
-        point_source ENUM('modeled','official','none') NOT NULL DEFAULT 'none',
+        point_source ENUM('modeled','official','manual','none') NOT NULL DEFAULT 'none',
 
         tags_consensus_json LONGTEXT NOT NULL,
         tag_weights_consensus_json LONGTEXT NULL,
@@ -78,6 +80,18 @@ function tag_scouting_analytics_install(PDO $pdo): void {
         KEY idx_tag_metric_match (organization_id,match_id),
         KEY idx_tag_metric_depa (organization_id,event_id,defense_status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Upgrade existing derived cache without changing or overwriting any raw observations.
+    foreach(['manual_score'=>'DECIMAL(10,3) NULL','estimated_manual_points'=>'DECIMAL(10,3) NULL'] as $column=>$type){
+        $q=$pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?');
+        $q->execute(['tag_scouting_match_metrics',$column]);
+        if(!(int)$q->fetchColumn())$pdo->exec("ALTER TABLE tag_scouting_match_metrics ADD COLUMN `$column` $type");
+    }
+    $q=$pdo->query("SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tag_scouting_match_metrics' AND COLUMN_NAME='point_source'");
+    $sourceType=(string)$q->fetchColumn();
+    if(!str_contains($sourceType,"'manual'")){
+        $pdo->exec("ALTER TABLE tag_scouting_match_metrics MODIFY COLUMN point_source ENUM('modeled','official','manual','none') NOT NULL DEFAULT 'none'");
+    }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS augur_tag_event_ratings (
         organization_id BIGINT UNSIGNED NOT NULL,
@@ -197,19 +211,27 @@ function tag_scouting_analytics_raw_depa(
 
 function tag_scouting_analytics_match_scores(PDO $pdo,array $match): array {
     $out=[
-        'Red'=>['official'=>$match['red_score']===null?null:(float)$match['red_score'],'modeled'=>null],
-        'Blue'=>['official'=>$match['blue_score']===null?null:(float)$match['blue_score'],'modeled'=>null],
+        'Red'=>['official'=>$match['red_score']===null?null:(float)$match['red_score'],'modeled'=>null,'manual'=>null],
+        'Blue'=>['official'=>$match['blue_score']===null?null:(float)$match['blue_score'],'modeled'=>null,'manual'=>null],
     ];
     $key=trim((string)($match['tba_match_key']??''));
-    if($key==='' || !tag_scouting_analytics_table_exists($pdo,'augur_epa_alliance_samples')) return $out;
-    $s=$pdo->prepare("SELECT alliance,official_score,modeled_score
-        FROM augur_epa_alliance_samples WHERE tba_match_key=?");
-    $s->execute([$key]);
-    foreach($s->fetchAll() as $r){
-        $a=(string)$r['alliance'];
-        if(!isset($out[$a])) continue;
-        if(is_numeric($r['official_score']??null)) $out[$a]['official']=(float)$r['official_score'];
-        if(is_numeric($r['modeled_score']??null)) $out[$a]['modeled']=(float)$r['modeled_score'];
+    if($key!=='' && tag_scouting_analytics_table_exists($pdo,'augur_epa_alliance_samples')){
+        $s=$pdo->prepare("SELECT alliance,official_score,modeled_score FROM augur_epa_alliance_samples WHERE tba_match_key=?");
+        $s->execute([$key]);
+        foreach($s->fetchAll() as $r){
+            $a=(string)$r['alliance'];
+            if(!isset($out[$a]))continue;
+            if(is_numeric($r['official_score']??null))$out[$a]['official']=(float)$r['official_score'];
+            if(is_numeric($r['modeled_score']??null))$out[$a]['modeled']=(float)$r['modeled_score'];
+        }
+    }
+    if(tag_scouting_analytics_table_exists($pdo,'tag_manual_alliance_scores')){
+        $s=$pdo->prepare('SELECT red_score,blue_score FROM tag_manual_alliance_scores WHERE organization_id=? AND event_id=? AND match_id=? LIMIT 1');
+        $s->execute([(int)$match['organization_id'],(int)$match['event_id'],(int)$match['id']]);
+        if($manual=$s->fetch(PDO::FETCH_ASSOC)){
+            $out['Red']['manual']=(float)$manual['red_score'];
+            $out['Blue']['manual']=(float)$manual['blue_score'];
+        }
     }
     return $out;
 }
@@ -391,11 +413,11 @@ function tag_scouting_analytics_rebuild_match(PDO $pdo,int $org,int $matchId,boo
         (organization_id,event_id,match_id,tba_match_key,comp_level,match_number,frc_team_number,alliance,station,
          observer_count,synthetic_observer_count,score_estimate_count,
          raw_share_avg,raw_share_median,share_stddev,alliance_score_robot_count,alliance_raw_share_total,normalized_share,effective_share,
-         official_score,modeled_score,estimated_official_points,estimated_modeled_points,estimated_points,point_source,
+         official_score,modeled_score,manual_score,estimated_manual_points,estimated_official_points,estimated_modeled_points,estimated_points,point_source,
          tags_consensus_json,tag_weights_consensus_json,
          defense_status,defense_support_count,no_defense_support_count,defense_strength,raw_depa,
          confidence_score,latest_observation_at,model_version,calculated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP())");
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP())");
 
     $written=0;
     foreach($summary as $team=>$r){
@@ -409,10 +431,15 @@ function tag_scouting_analytics_rebuild_match(PDO $pdo,int $org,int $matchId,boo
 
         $official=$scores[$a]['official']??null;
         $modeled=$scores[$a]['modeled']??null;
+        $manual=$scores[$a]['manual']??null;
+        $estManual=($effective!==null&&$manual!==null)?$manual*$effective/100.0:null;
         $estOfficial=($effective!==null&&$official!==null)?$official*$effective/100.0:null;
         $estModeled=($effective!==null&&$modeled!==null)?$modeled*$effective/100.0:null;
-        if($estModeled!==null){$estPoints=$estModeled;$pointSource='modeled';}
-        elseif($estOfficial!==null){$estPoints=$estOfficial;$pointSource='official';}
+        // Official alliance scores take precedence over modeled estimates.
+        // Keep modeled values as a fallback only when no official score exists.
+        if($estOfficial!==null){$estPoints=$estOfficial;$pointSource='official';}
+        elseif($estManual!==null){$estPoints=$estManual;$pointSource='manual';}
+        elseif($estModeled!==null){$estPoints=$estModeled;$pointSource='modeled';}
         else{$estPoints=null;$pointSource='none';}
 
         $obsFactor=min(1.0,$r['observers']/3.0);
@@ -439,7 +466,7 @@ function tag_scouting_analytics_rebuild_match(PDO $pdo,int $org,int $matchId,boo
             (string)$match['comp_level'],(int)$match['match_number'],$team,$a,$r['station'],
             $r['observers'],$r['synthetic'],$r['share_count'],
             $r['share_avg'],$r['share_median'],$r['share_sd'],$meta['rated_count'],$meta['raw_total'],$normalized,$effective,
-            $official,$modeled,$estOfficial,$estModeled,$estPoints,$pointSource,
+            $official,$modeled,$manual,$estManual,$estOfficial,$estModeled,$estPoints,$pointSource,
             $tagsJson,$weightsJson,
             $r['defense_status'],$r['defense_support'],$r['no_defense_support'],$r['defense_strength'],$rawDepa,
             $confidence,$r['latest'],TAG_SCOUTING_ANALYTICS_MODEL_VERSION
@@ -482,13 +509,15 @@ function tag_scouting_analytics_rebuild_event_ratings(PDO $pdo,int $org,int $eve
 
     $written=0;
     foreach($byTeam as $team=>$rows){
-        $points=[];$matchConf=[];$allRaw=[];$verified=[];$possible=[];$none=[];
+        $points=[];$matchConf=[];$pointEvidence=[];$allRaw=[];$verified=[];$possible=[];$none=[];
         $verifiedConf=[];
 
         foreach($rows as $r){
             if($r['estimated_points']!==null && is_numeric($r['estimated_points'])){
                 $points[]=(float)$r['estimated_points'];
                 $matchConf[]=(float)$r['confidence_score'];
+                $pointEvidence[]=['points_source'=>'tag_estimate',
+                    'tag_confidence_pct'=>$r['confidence_score']];
             }
             if($r['raw_depa']!==null && is_numeric($r['raw_depa'])){
                 $raw=(float)$r['raw_depa'];$allRaw[]=$raw;
@@ -500,7 +529,7 @@ function tag_scouting_analytics_rebuild_event_ratings(PDO $pdo,int $org,int $eve
         }
 
         $publicEpa=tag_scouting_analytics_public_epa($pdo,$eventKey,$team);
-        $blend=augur_prediction_offense_blend($points,$publicEpa,$settings);
+        $blend=augur_prediction_offense_blend($points,$publicEpa,$settings,$pointEvidence);
 
         $avgConf=tag_scouting_analytics_mean($matchConf)??0.0;
         $sampleFactor=$points?min(1.0,0.45+count($points)*0.15):0.0;
@@ -577,6 +606,10 @@ function tag_scouting_analytics_ensure_event(PDO $pdo,int $org,int $eventId): ar
             FROM tag_scouting_match_data WHERE organization_id=? AND event_id=?");
         $s->execute([$org,$eventId]);$latestSource=max($latestSource,(int)$s->fetchColumn());
     }
+    if(tag_scouting_analytics_table_exists($pdo,'tag_manual_alliance_scores')){
+        $s=$pdo->prepare('SELECT UNIX_TIMESTAMP(MAX(updated_at)) FROM tag_manual_alliance_scores WHERE organization_id=? AND event_id=?');
+        $s->execute([$org,$eventId]);$latestSource=max($latestSource,(int)$s->fetchColumn());
+    }
     $s=$pdo->prepare("SELECT UNIX_TIMESTAMP(last_tba_sync_at) FROM events
         WHERE id=? AND organization_id=? LIMIT 1");
     $s->execute([$eventId,$org]);$latestSource=max($latestSource,(int)$s->fetchColumn());
@@ -591,11 +624,14 @@ function tag_scouting_analytics_ensure_event(PDO $pdo,int $org,int $eventId): ar
         }
     }
 
-    $s=$pdo->prepare("SELECT UNIX_TIMESTAMP(MAX(calculated_at))
+    $s=$pdo->prepare("SELECT UNIX_TIMESTAMP(MAX(calculated_at)) AS last_calc,
+            MAX(model_version) AS model_version
         FROM augur_tag_event_ratings WHERE organization_id=? AND event_id=?");
-    $s->execute([$org,$eventId]);$latestCalc=(int)$s->fetchColumn();
+    $s->execute([$org,$eventId]);$calc=$s->fetch()?:[];
+    $latestCalc=(int)($calc['last_calc']??0);
+    $modelVersion=(string)($calc['model_version']??'');
 
-    if($latestCalc===0 || $latestSource>$latestCalc){
+    if($latestCalc===0 || $latestSource>$latestCalc || $modelVersion!==TAG_SCOUTING_ANALYTICS_MODEL_VERSION){
         return tag_scouting_analytics_rebuild_event($pdo,$org,$eventId)+['rebuilt'=>true];
     }
     return ['event_id'=>$eventId,'rebuilt'=>false,'model_version'=>TAG_SCOUTING_ANALYTICS_MODEL_VERSION];

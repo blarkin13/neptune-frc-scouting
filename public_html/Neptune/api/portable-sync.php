@@ -96,6 +96,12 @@ function nps_enum(string $v,array $allowed,string $fallback): string {
     return in_array($v,$allowed,true)?$v:$fallback;
 }
 
+if($section==='manual_scores'){
+    require_once dirname(__DIR__).'/scout/_manual_match_scores.php';
+    try { neptune_manual_scores_ensure_schema($pdo); }
+    catch(Throwable $e){error_log('[Portable manual score schema] '.$e->getMessage());nps_json(['ok'=>false,'error'=>'Manual score tables are unavailable on the destination.'],503);}
+}
+
 $counts=['processed'=>0,'inserted'=>0,'updated'=>0,'existing'=>0,'skipped'=>0];
 
 try{
@@ -147,7 +153,8 @@ try{
             $update=$pdo->prepare(
                 'UPDATE matches SET
                     tba_match_key=?,scheduled_time=?,started_at=?,ended_at=?,paused_at=?,
-                    total_pause_seconds=?,run_number=?,red_score=?,blue_score=?,winning_alliance=?,state=?
+                    total_pause_seconds=?,run_number=?,red_score=COALESCE(red_score,?),blue_score=COALESCE(blue_score,?),
+                    winning_alliance=CASE WHEN winning_alliance=\'Unknown\' THEN ? ELSE winning_alliance END,state=?
                  WHERE id=? AND organization_id=? AND event_id=?'
             );
             foreach($rows as $r){
@@ -470,6 +477,32 @@ try{
                 if($tid<=0){$counts['skipped']++;continue;}
                 $up->execute([$oid,$tid,isset($r['weight'])&&$r['weight']!==''?(int)$r['weight']:null]);
                 $counts['processed']++;$counts['updated']++;
+            }
+            break;
+
+        case 'manual_scores':
+            // One shared result per match, not one per robot or scout. A different
+            // destination result is a conflict requiring deliberate review.
+            $select=$pdo->prepare('SELECT red_score,blue_score,revision FROM tag_manual_alliance_scores WHERE organization_id=? AND event_id=? AND match_id=? FOR UPDATE');
+            $insert=$pdo->prepare('INSERT INTO tag_manual_alliance_scores (organization_id,event_id,match_id,red_score,blue_score,revision,updated_by) VALUES(?,?,?,?,?,?,?)');
+            $history=$pdo->prepare('INSERT INTO tag_manual_alliance_score_history (organization_id,event_id,match_id,revision,red_score,blue_score,changed_by) VALUES(?,?,?,?,?,?,?)');
+            foreach($rows as $row){
+                if(!is_array($row)){ $counts['skipped']++;continue; }
+                $mid=nps_match_id($pdo,$org,$event,$row);
+                $red=$row['red_score']??null;$blue=$row['blue_score']??null;
+                if(!$mid||!is_numeric($red)||!is_numeric($blue)||!ctype_digit((string)$red)||!ctype_digit((string)$blue)
+                   ||(int)$red>2000||(int)$blue>2000){$counts['skipped']++;continue;}
+                $select->execute([$org,$event,$mid]);
+                $existing=$select->fetch(PDO::FETCH_ASSOC);
+                if($existing){
+                    if((int)$existing['red_score']===(int)$red && (int)$existing['blue_score']===(int)$blue){$counts['existing']++;continue;}
+                    throw new RuntimeException('Manual alliance score conflict on match '.$mid.'. Cloud and portable values differ; neither was overwritten.');
+                }
+                $revision=max(1,(int)($row['revision']??1));
+                $uid=nps_user($pdo,(int)($row['updated_by']??0),$org);
+                $insert->execute([$org,$event,$mid,(int)$red,(int)$blue,$revision,$uid]);
+                $history->execute([$org,$event,$mid,$revision,(int)$red,(int)$blue,$uid]);
+                $counts['inserted']++;$counts['processed']++;
             }
             break;
 

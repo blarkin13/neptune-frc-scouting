@@ -153,7 +153,7 @@ function strategy_prematch_robot_stats(PDO $pdo,int $org,int $eventId,array $tar
         $candidateRows[]=$r;
     }
 
-    $priorActions=[];$seen=[];$scoreTimes=[];
+    $priorActions=[];$seen=[];$scoredTeamMatches=[];$scoreTimes=[];
     foreach($candidateRows as $r){
         $n=(int)$r['frc_team_number'];
         $key=$n.':'.(int)$r['match_id'];
@@ -161,6 +161,7 @@ function strategy_prematch_robot_stats(PDO $pdo,int $org,int $eventId,array $tar
         $priorActions[]=$r;
         if(!isset($stats[$n]))$stats[$n]=['team'=>$n,'nickname'=>'','matches'=>0,'points'=>0.0,'ppm'=>0.0,'successes'=>0,'failures'=>0,'success_rate'=>0.0,'defense'=>0,'defense_per_match'=>0.0,'cycle_time'=>null,'actions'=>0,'pit_status'=>null,'pit_data'=>[]];
         $seen[$key]=true;
+        if((($r['action_type']??'')==='offense'&&in_array($r['result'],['Success','Failure'],true))||(float)$r['points']!=0.0)$scoredTeamMatches[$n][(int)$r['match_id']]=true;
         $stats[$n]['actions']++;
         $stats[$n]['points']+=(float)$r['points'];
         if(($r['action_type']??'')==='defense'&&($r['result']??'')==='Success')$stats[$n]['defense']++;
@@ -173,6 +174,29 @@ function strategy_prematch_robot_stats(PDO $pdo,int $org,int $eventId,array $tar
         $n=(int)explode(':',$key,2)[0];
         $stats[$n]['matches']++;
     }
+    // Reuse the shared offense fallback, restricted to matches strictly before
+    // the target. Actual recorded zeros remain authoritative.
+    $priorIds=[];
+    $p=$pdo->prepare("SELECT id,comp_level,set_number,match_number,field_id,scheduled_time,started_at,ended_at,state
+        FROM matches WHERE organization_id=? AND event_id=? AND comp_level='qm'");
+    $p->execute([$org,$eventId]);
+    foreach($p->fetchAll() as $candidate){
+        if(strategy_match_is_prior($candidate,$targetMatch))$priorIds[]=(int)$candidate['id'];
+    }
+    $existingTeamMatch=[];
+    foreach(array_keys($seen) as $key){
+        $parts=explode(':',$key,3);
+        $existingTeamMatch[(int)$parts[0]][(int)$parts[1]]=true;
+    }
+    foreach(neptune_scoring_tag_match_points($pdo,$org,$eventId,$priorIds) as $n=>$matchRows){
+        if(!isset($stats[$n]))continue;
+        foreach($matchRows as $matchId=>$tag){
+            if(isset($scoredTeamMatches[$n][$matchId]))continue;
+            if(!isset($existingTeamMatch[$n][$matchId]))$stats[$n]['matches']++;
+            $stats[$n]['points']+=(float)$tag['points'];
+            $stats[$n]['tag_estimated_matches']=($stats[$n]['tag_estimated_matches']??0)+1;
+        }
+    }
     $cycles=[];
     foreach($scoreTimes as $key=>$times){
         sort($times);
@@ -180,10 +204,14 @@ function strategy_prematch_robot_stats(PDO $pdo,int $org,int $eventId,array $tar
         for($i=1;$i<count($times);$i++) if($times[$i]>$times[$i-1]) $cycles[$n][]=$times[$i]-$times[$i-1];
     }
     foreach($stats as $n=>&$x){
-        $x['ppm']=$x['matches']?$x['points']/$x['matches']:0;
+        $offenseMatches=count($scoredTeamMatches[(int)$x['team']]??[])+(int)($x['tag_estimated_matches']??0);
+        $x['ppm']=$offenseMatches?$x['points']/$offenseMatches:0;
+        $x['has_scoring_data']=!empty($scoredTeamMatches[(int)$x['team']])||!empty($x['tag_estimated_matches']);
+        $x['points_source']=($x['tag_estimated_matches']??0)>0?'tag_estimate_or_mixed':'traditional';
         $tries=$x['successes']+$x['failures'];
         $x['success_rate']=$tries?($x['successes']/$tries*100):0;
-        $x['defense_per_match']=$x['matches']?$x['defense']/$x['matches']:0;
+        $traditionalMatches=$x['matches']-($x['tag_estimated_matches']??0);
+        $x['defense_per_match']=$traditionalMatches?$x['defense']/$traditionalMatches:0;
         if(!empty($cycles[$n]))$x['cycle_time']=array_sum($cycles[$n])/count($cycles[$n]);
     }unset($x);
 
@@ -626,9 +654,9 @@ include dirname(__DIR__).'/partials_header.php';
               <button type="button" class="strategy-team robot-detail-trigger <?=$n===$teamNumber?'ours':''?>" data-event-id="<?=$eventId?>" data-team="<?=$n?>">
                 <strong>#<?=e($n)?></strong><span class="team-name"><?=e($t['nickname']?:'FRC Team '.$n)?></span>
                 <div class="strategy-mini-stats">
-                  <div><span>PPM</span><b><?=$hasScoutData?number_format((float)$r['ppm'],1):'No data'?></b></div>
+                  <div><span><?=!empty($r['tag_estimated_matches'])?'Est. PPM':'PPM'?></span><b><?=!empty($r['has_scoring_data'])?number_format((float)$r['ppm'],1):'—'?></b></div>
                   <div><span>Cycle</span><b><?=$hasScoutData&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':($hasScoutData?'—':'No data')?></b></div>
-                  <div><span>Success</span><b><?=$hasScoutData?number_format((float)$r['success_rate'],0).'%':'No data'?></b></div>
+                  <div><span>Success</span><b><?=((int)($r['successes']??0)+(int)($r['failures']??0)>0)?number_format((float)$r['success_rate'],0).'%':'—'?></b></div>
                   <div><span>Prior matches</span><b><?=e((int)($r['matches']??0))?></b></div>
                 </div>
                 <?php $pm=$predictionMetricsByTeam[$n]??[];if(!$hasScoutData&&!empty($pm['baseline_source'])&&$pm['baseline_source']!=='no baseline'):?>
@@ -660,7 +688,7 @@ include dirname(__DIR__).'/partials_header.php';
       <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="action" value="save_strategy"><input type="hidden" name="event_id" value="<?=$eventId?>"><input type="hidden" name="team" value="<?=$teamNumber?>"><input type="hidden" name="match_id" value="<?=$matchId?>">
 
       <section class="card strategy-section">
-        <div class="strategy-section-head"><div><h2><i class="fa-solid fa-people-group"></i> Alliance Roles</h2><p>AUGUR suggests roles from observed scoring and defense. Strategy can override them.</p></div></div>
+        <div class="strategy-section-head"><div><h2><i class="fa-solid fa-people-group"></i> Alliance Roles</h2><p>AUGUR suggests roles from traditional scouting or estimated Tag scoring, and observed defense. Strategy can override them.</p></div></div>
         <div class="strategy-role-grid">
           <?php foreach($allianceTeams as $t):
             $n=(int)$t['frc_team_number'];
@@ -678,16 +706,16 @@ include dirname(__DIR__).'/partials_header.php';
             <div class="strategy-role-card">
               <h3>#<?=e($n)?> <?=e($t['nickname']?:'')?></h3>
               <div class="strategy-role-suggest">
-                <span>Observed role:</span><b><?=e($suggested??'Not enough data')?></b>
+                <span>Suggested role:</span><b><?=e($suggested??'Not enough data')?></b>
                 <?php if(trim((string)$rawPitRole)!==''):?><span class="pill">Pit: <?=e((string)$rawPitRole)?></span><?php endif;?>
               </div>
               <details class="strategy-why">
                 <summary>Why?</summary>
                 <div class="strategy-why-content">
                   <?php if($matchesSeen<$projectionMinMatches):?>
-                    AUGUR needs at least <b><?=e($projectionMinMatches)?> prior scouted matches</b> before it suggests an observed role. This robot has <b><?=e($matchesSeen)?></b>.
+                    AUGUR needs at least <b><?=e($projectionMinMatches)?> prior scored/observed matches</b> before suggesting a role. This robot has <b><?=e($matchesSeen)?></b>.
                   <?php else:?>
-                    Based on <b><?=e($matchesSeen)?> prior matches</b>: <?=number_format((float)($r['ppm']??0),1)?> PPM, <?=number_format((float)($r['defense_per_match']??0),1)?> successful defense actions/match, and <?=number_format((float)($r['success_rate']??0),0)?>% offensive success.
+                    Based on <b><?=e($matchesSeen)?> prior matches</b>: <?=number_format((float)($r['ppm']??0),1)?> <?=$r['tag_estimated_matches']??0?'estimated':'recorded'?> PPM, <?=number_format((float)($r['defense_per_match']??0),1)?> recorded defense actions/match, and <?=($r['successes']??0)+($r['failures']??0)>0?number_format((float)($r['success_rate']??0),0).'% recorded offensive success':'no measured offensive success rate'?>.
                   <?php endif;?>
                   <?php if(trim((string)$rawPitRole)!==''):?><br>Pit scouting currently reports: <b><?=e((string)$rawPitRole)?></b>.<?php endif;?>
                 </div>
@@ -696,9 +724,9 @@ include dirname(__DIR__).'/partials_header.php';
               <div class="strategy-metric-group">
                 <div class="strategy-metric-group-label"><i class="fa-solid fa-bullseye"></i> Offense</div>
                 <div class="strategy-metric-row">
-                  <div class="strategy-metric"><span>PPM</span><b><?=$matchesSeen?number_format((float)($r['ppm']??0),1):'No data'?></b></div>
+                  <div class="strategy-metric"><span><?=!empty($r['tag_estimated_matches'])?'Est. PPM':'PPM'?></span><b><?=!empty($r['has_scoring_data'])?number_format((float)$r['ppm'],1):'—'?></b></div>
                   <div class="strategy-metric"><span>Cycle</span><b><?=$matchesSeen?(isset($r['cycle_time'])&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'):'No data'?></b></div>
-                  <div class="strategy-metric"><span>Success</span><b><?=$matchesSeen?number_format((float)($r['success_rate']??0),0).'%':'No data'?></b></div>
+                  <div class="strategy-metric"><span>Success</span><b><?=(($r['successes']??0)+($r['failures']??0)>0)?number_format((float)$r['success_rate'],0).'%':'—'?></b></div>
                   <div class="strategy-metric"><span>EPA</span><b><?=$publicEpa!==null?number_format($publicEpa,1):'—'?></b></div>
                   <div class="strategy-metric"><span>Nep. EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
                 </div>
@@ -747,9 +775,9 @@ include dirname(__DIR__).'/partials_header.php';
               <div class="strategy-metric-group">
                 <div class="strategy-metric-group-label"><i class="fa-solid fa-bullseye"></i> Offense</div>
                 <div class="strategy-metric-row">
-                  <div class="strategy-metric"><span>PPM</span><b><?=$oppMatches?number_format((float)($r['ppm']??0),1):'No data'?></b></div>
+                  <div class="strategy-metric"><span><?=!empty($r['tag_estimated_matches'])?'Est. PPM':'PPM'?></span><b><?=!empty($r['has_scoring_data'])?number_format((float)$r['ppm'],1):'—'?></b></div>
                   <div class="strategy-metric"><span>Cycle</span><b><?=$oppMatches?(isset($r['cycle_time'])&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'):'No data'?></b></div>
-                  <div class="strategy-metric"><span>Success</span><b><?=$oppMatches?number_format((float)($r['success_rate']??0),0).'%':'No data'?></b></div>
+                  <div class="strategy-metric"><span>Success</span><b><?=(($r['successes']??0)+($r['failures']??0)>0)?number_format((float)$r['success_rate'],0).'%':'—'?></b></div>
                   <div class="strategy-metric"><span>EPA</span><b><?=$publicEpa!==null?number_format($publicEpa,1):'—'?></b></div>
                   <div class="strategy-metric"><span>Nep. EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
                 </div>

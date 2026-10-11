@@ -121,6 +121,7 @@ $s=$pdo->prepare(
     "SELECT m.id,m.comp_level,m.set_number,m.match_number,m.state,m.run_number,m.red_score,m.blue_score,m.winning_alliance,m.scheduled_time,mt.alliance,mt.station,
      COALESCE(SUM(CASE WHEN sa.match_run_number=m.run_number THEN sa.points ELSE 0 END),0) scout_points,
      COUNT(CASE WHEN sa.match_run_number=m.run_number THEN sa.id END) action_count,
+     SUM(CASE WHEN sa.match_run_number=m.run_number AND ((sa.action_type='offense' AND sa.result IN ('Success','Failure')) OR sa.points<>0) THEN 1 ELSE 0 END) scoring_events,
      SUM(CASE WHEN sa.match_run_number=m.run_number AND sa.action_type='offense' AND sa.result='Success' THEN 1 ELSE 0 END) offense_success,
      SUM(CASE WHEN sa.match_run_number=m.run_number AND sa.action_type='offense' AND sa.result IN ('Success','Failure') THEN 1 ELSE 0 END) offense_attempts,
      SUM(CASE WHEN sa.match_run_number=m.run_number AND sa.action_type='defense' AND sa.result='Success' THEN 1 ELSE 0 END) defense_actions
@@ -145,6 +146,7 @@ foreach($s->fetchAll() as $m){
         'station'=>(int)$m['station'],
         'scout_points'=>round((float)$m['scout_points'],1),
         'actions'=>(int)$m['action_count'],
+        'scoring_events'=>(int)$m['scoring_events'],
         'offense_rate'=>$attempts>0?round((int)$m['offense_success']*100/$attempts,1):null,
         'defense'=>(int)$m['defense_actions'],
         'red_score'=>$m['red_score']===null?null:(int)$m['red_score'],
@@ -168,17 +170,25 @@ foreach($ss->fetchAll() as $row){
     $scoutedRuns[(int)$row['match_id'].':'.(int)$row['match_run_number']]=(int)$row['sessions'];
 }
 
+// Share-based points can fill match history when no traditional action was recorded.
+// The match's official alliance score and human observers are verified by the shared helper.
+$tagScoreMap=neptune_scoring_tag_match_points($pdo,$org,$eventId);
 $qualificationTrend=[];
 foreach($matches as &$matchRow){
     $key=(int)$matchRow['id'].':'.(int)($matchRow['run_number']??0);
     $matchRow['scouted']=isset($scoutedRuns[$key]) || (int)$matchRow['actions']>0;
-    if((string)$matchRow['comp_level']!=='qm' || !$matchRow['scouted']) continue;
+    $tagEstimate=$tagScoreMap[$team][(int)$matchRow['id']]??null;
+    $matchRow['tag_estimated']=(int)$matchRow['scoring_events']===0 && $tagEstimate!==null;
+    if((string)$matchRow['comp_level']!=='qm' || (!$matchRow['scouted'] && !$matchRow['tag_estimated'])) continue;
     $qualificationTrend[]=[
         'match_id'=>(int)$matchRow['id'],
         'match_number'=>(int)$matchRow['match_number'],
         'label'=>(string)$matchRow['label'],
-        'points_per_match'=>(float)$matchRow['scout_points'],
-        'defense_actions'=>(int)$matchRow['defense'],
+        'points_per_match'=>$matchRow['tag_estimated']?(float)$tagEstimate['points']:(float)$matchRow['scout_points'],
+        'points_source'=>$matchRow['tag_estimated']?'tag_estimate':'traditional',
+        'tag_confidence_pct'=>$matchRow['tag_estimated']?($tagEstimate['confidence_pct']??null):null,
+        'offense_observed'=>$matchRow['tag_estimated'] || (int)$matchRow['scoring_events']>0,
+        'defense_actions'=>$matchRow['scouted']?(int)$matchRow['defense']:null,
         'offense_success_rate'=>$matchRow['offense_rate'],
     ];
 }
@@ -189,17 +199,19 @@ function alliance_rolling_average(array $values,int $span=3): array {
     foreach($values as $i=>$value){
         $start=max(0,$i-$span+1);
         $slice=array_slice($values,$start,$i-$start+1);
-        $out[]=count($slice)?array_sum($slice)/count($slice):0;
+        $values=array_values(array_filter($slice,'is_numeric'));
+        $out[]=$values?array_sum($values)/count($values):null;
     }
     return $out;
 }
-$offenseValues=array_map(static fn($r)=>(float)$r['points_per_match'],$qualificationTrend);
-$defenseValues=array_map(static fn($r)=>(float)$r['defense_actions'],$qualificationTrend);
+$scoringTrendRows=array_values(array_filter($qualificationTrend,static fn($r)=>!empty($r['offense_observed'])));
+$offenseValues=array_map(static fn($r)=>(float)$r['points_per_match'],$scoringTrendRows);
+$defenseValues=array_map(static fn($r)=>is_numeric($r['defense_actions'])?(float)$r['defense_actions']:null,$qualificationTrend);
 $offenseRolling=alliance_rolling_average($offenseValues,3);
 $defenseRolling=alliance_rolling_average($defenseValues,3);
 foreach($qualificationTrend as $i=>&$trendRow){
     $trendRow['points_rolling_3']=round((float)($offenseRolling[$i]??0),2);
-    $trendRow['defense_rolling_3']=round((float)($defenseRolling[$i]??0),2);
+    $trendRow['defense_rolling_3']=isset($defenseRolling[$i])?round((float)$defenseRolling[$i],2):null;
 }
 unset($trendRow);
 
@@ -230,6 +242,9 @@ if(augur_epa_tables_ready($pdo)){
     try{
         $map=augur_epa_rating_map($pdo,$org,$event,[$team],null);
         $base=$map[$team]??[];
+        $displayMap=augur_epa_robot_display_map($pdo,$org,$event,[$team]);
+        $displayRating=$displayMap[$team]??[];
+        $isFirstProvisional=($displayRating['source']??'')==='FIRST provisional';
         $eventKey=trim((string)($event['tba_event_key']??''));
         $eventRating=$eventKey!==''?augur_epa_event_rating($pdo,$eventKey,$team):null;
         $seasonRating=augur_epa_season_rating($pdo,(int)$event['season_year'],$team);
@@ -239,8 +254,10 @@ if(augur_epa_tables_ready($pdo)){
                 $q=$pdo->prepare('SELECT 1+COUNT(*) FROM augur_epa_event_ratings WHERE tba_event_key=? AND rating>?');
                 $q->execute([$eventKey,(float)$eventRating['rating']]);$rank=(int)$q->fetchColumn();
             }
-            $r=$eventRating?:$seasonRating?:[];
-            $record=$r?(int)($r['wins']??0).'-'.(int)($r['losses']??0).'-'.(int)($r['ties']??0):'—';
+            $r=$eventRating?:($isFirstProvisional?[]:($seasonRating?:[]));
+            $localRecord=$displayRating['record']??null;
+            $record=is_array($localRecord)?(int)($localRecord['wins']??0).'-'.(int)($localRecord['losses']??0).'-'.(int)($localRecord['ties']??0):($r?(int)($r['wins']??0).'-'.(int)($r['losses']??0).'-'.(int)($r['ties']??0):'—');
+            if($rank===null && isset($displayRating['rank']))$rank=(int)$displayRating['rank'];
             $settings=augur_prediction_default_settings();
             try{
                 if(alliance_schema_ready($pdo)){
@@ -249,13 +266,17 @@ if(augur_epa_tables_ready($pdo)){
                 }
             }catch(Throwable $ignored){}
             $plainEpa=isset($base['epa'])&&is_numeric($base['epa'])?(float)$base['epa']:null;
-            $blend=augur_prediction_offense_blend($offenseValues,$plainEpa,$settings);
+            $blend=augur_prediction_offense_blend($offenseValues,$plainEpa,$settings,array_map(
+                static fn($r)=>['points_source'=>$r['points_source'],
+                    'tag_confidence_pct'=>$r['tag_confidence_pct']??null],$scoringTrendRows));
             $epaRating=[
                 'epa'=>$plainEpa,'auto'=>$base['auto']??null,'teleop'=>$base['teleop']??null,'endgame'=>$base['endgame']??null,
                 'augur_epa'=>$blend['weight_total']>0?$blend['augur_epa']:null,
                 'scouting_matches'=>count($offenseValues),'scouting_influence'=>round((float)$blend['scouting_influence']*100,1),
-                'confidence'=>$r['confidence']??null,'sigma'=>$r['sigma']??null,'trend'=>$r['trend']??null,'matches'=>$r['matches_played']??0,
-                'record'=>$record,'rank'=>$rank,'model_version'=>$r['model_version']??AUGUR_EPA_MODEL_VERSION,'updated_at'=>$r['updated_at']??null,
+                'confidence'=>$r['confidence']??$base['confidence']??null,'sigma'=>$r['sigma']??$base['sigma']??null,'trend'=>$displayRating['trend_per_match']??$r['trend']??null,'matches'=>$displayRating['rated_matches']??$r['matches_played']??0,
+                'record'=>$record,'rank'=>$rank,'rank_total'=>$displayRating['rank_total']??null,
+                'source'=>$displayRating['source']??($isFirstProvisional?'FIRST provisional':'TBA public'),
+                'model_version'=>$isFirstProvisional?'FIRST event-local provisional':($r['model_version']??AUGUR_EPA_MODEL_VERSION),'updated_at'=>$r['updated_at']??null,
             ];
         }
     }catch(Throwable $e){$epaRatingError=$e->getMessage();}
@@ -631,10 +652,13 @@ json_response([
     ],
     'event_stats'=>[
         'matches'=>(int)($stats['matches']??0),
+        'tag_estimated_matches'=>(int)($stats['tag_estimated_matches']??0),
+        'scoring_matches'=>(int)($stats['scoring_matches']??0),
+        'points_source'=>(string)($stats['points_source']??'traditional'),
         'points'=>round((float)($stats['points']??0),1),
-        'ppm'=>round((float)($stats['ppm']??0),1),
-        'success_rate'=>round((float)($stats['success_rate']??0),1),
-        'defense_per_match'=>round((float)($stats['defense_per_match']??0),2),
+        'ppm'=>!empty($stats['has_scoring_data'])?round((float)$stats['ppm'],1):null,
+        'success_rate'=>(($stats['successes']??0)+($stats['failures']??0))>0?round((float)$stats['success_rate'],1):null,
+        'defense_per_match'=>!empty($stats['scouted_matches'])?round((float)$stats['defense_per_match'],2):null,
         'cycle_time'=>isset($stats['cycle_time'])&&$stats['cycle_time']!==null?round((float)$stats['cycle_time'],1):null,
         'actions'=>(int)($stats['actions']??0),
         'successes'=>(int)($stats['successes']??0),
@@ -651,7 +675,7 @@ json_response([
     'tba_matches_error'=>$tbaMatchesError,
     'trends'=>[
         'qualification'=>$qualificationTrend,
-        'source'=>'Neptune scouting',
+        'source'=>'Neptune scouting; Tag-estimated offense on unscouted matches',
         'offense_metric'=>'points_per_match',
         'defense_metric'=>'successful_defensive_actions_per_match',
     ],

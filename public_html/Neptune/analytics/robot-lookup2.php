@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once __DIR__.'/_scoring_source.php';
 require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
 require_once __DIR__.'/_team_logo_cache.php';
 
@@ -429,6 +430,7 @@ if($team>0){
             a.game_id,a.event_id,g.name game_name,g.season_year,e.name event_name,e.start_date,
             COUNT(*) action_count,
             COUNT(DISTINCT a.match_id) match_count,
+            SUM(CASE WHEN (a.action_type='offense' AND a.result IN ('Success','Failure')) OR a.points<>0 THEN 1 ELSE 0 END) scoring_events,
             SUM(CASE WHEN a.result='Success' THEN 1 ELSE 0 END) success_count,
             SUM(CASE WHEN a.result='Failure' THEN 1 ELSE 0 END) failure_count,
             COALESCE(SUM(a.points),0) total_points,
@@ -446,6 +448,9 @@ if($team>0){
     $s=$pdo->prepare($sql);
     $s->execute([$team,$org,$org]);
     $eventSummary=$s->fetchAll();
+    // Local tag-derived point estimates are shown only where measured scoring is absent.
+    try{$eventSummary=neptune_scoring_tag_lookup_events($pdo,$org,$team,$eventSummary);}
+    catch(Throwable $ex){error_log('Robot Lookup Tag fallback: '.$ex->getMessage());}
 
     $sql="SELECT
             a.game_id,a.event_id,a.action_code,
@@ -809,7 +814,7 @@ include dirname(__DIR__).'/partials_header.php';
         <div><div class="module-eyebrow"><span>MATCH DATA</span><small>Game + Event</small></div><h2>Scouting Summary</h2></div>
       </div>
       <?php if(!$eventSummary):?>
-        <div class="notice">No match scouting actions are available for team #<?=e($team)?>.</div>
+        <div class="notice">No match scoring observations are available for team #<?=e($team)?>.</div>
       <?php else:?>
         <?php foreach($eventSummary as $summary):
           $key=(int)$summary['game_id'].':'.(int)$summary['event_id'];
@@ -819,11 +824,11 @@ include dirname(__DIR__).'/partials_header.php';
           <div class="robot-lookup-event">
             <div class="toolbar" style="justify-content:space-between;margin-bottom:8px">
               <div><b><?=e($summary['season_year'].' · '.$summary['game_name'])?></b><div class="muted"><?=e($summary['event_name'])?></div></div>
-              <span class="pill"><?=e($summary['match_count'])?> matches</span>
+              <span class="pill"><?=e($summary['match_count'])?> <?=!empty($summary['tag_estimated_matches'])?'scored, tagged':'scouted'?> matches<?php if(!empty($summary['tag_estimated_matches'])&&is_numeric($summary['tag_confidence_pct']??null)):?> · <?=number_format((float)$summary['tag_confidence_pct'],0)?>% evidence confidence<?php endif;?></span>
             </div>
             <div class="robot-lookup-kpis">
-              <div class="robot-lookup-kpi"><b><?=rl_num($summary['total_points'],1)?></b><span class="muted">Scout points</span></div>
-              <div class="robot-lookup-kpi"><b><?=rl_num($ppm,1)?></b><span class="muted">Points / match</span></div>
+              <div class="robot-lookup-kpi"><b><?=rl_num($summary['total_points'],1)?></b><span class="muted"><?=!empty($summary['tag_estimated_matches'])?'Tag-estimated points':'Scout points'?></span></div>
+              <div class="robot-lookup-kpi"><b><?=rl_num($ppm,1)?></b><span class="muted"><?=!empty($summary['tag_estimated_matches'])?'Est. points / match':'Points / match'?></span></div>
               <div class="robot-lookup-kpi"><b><?=rl_pct((int)$summary['success_count'],$decisions)?></b><span class="muted">Action success</span></div>
               <div class="robot-lookup-kpi"><b><?=e($summary['action_count'])?></b><span class="muted">Recorded actions</span></div>
             </div>

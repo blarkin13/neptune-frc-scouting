@@ -1067,3 +1067,114 @@ function augur_epa_archive_summary(PDO $pdo): array {
     $out['rated_events']=(int)$pdo->query("SELECT COUNT(*) FROM augur_epa_archive_events WHERE ratings_calculated_at IS NOT NULL")->fetchColumn();
     return $out;
 }
+
+
+/**
+ * Present stored event-local FIRST or TBA EPA to AUGUR Robot Intelligence.
+ * READ ONLY. This is NOT a new EPA model and never produces scouting actions.
+ * Results are scoped to an authorized organization/event and requested teams.
+ */
+function augur_epa_robot_display_map(PDO $pdo,int $org,array $event,array $teams): array {
+    $eventId=(int)($event['id']??0);
+    $eventOrg=(int)($event['organization_id']??$org);
+    if($org<1||$eventId<1||$eventOrg!==$org)return [];
+    $requested=[];
+    foreach($teams as $team){$n=(int)$team;if($n>0)$requested[$n]=true;}
+    if(!$requested)return [];
+    $key=trim((string)($event['tba_event_key']??''));
+    $pool=[];$ratings=[];$source='';
+    try {
+        // TBA event ratings win when available; FIRST is a provisional fallback.
+        if($key!==''){
+            $stmt=$pdo->prepare('SELECT frc_team_number,rating,wins,losses,ties FROM augur_epa_event_ratings WHERE tba_event_key=?');
+            $stmt->execute([$key]);
+            foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $row)$pool[(int)$row['frc_team_number']]=$row;
+            if($pool)$source='TBA public';
+        }
+        if(!$pool){
+            $stmt=$pdo->prepare('SELECT frc_team_number,rating,matches_played FROM augur_first_event_ratings WHERE organization_id=? AND event_id=?');
+            $stmt->execute([$org,$eventId]);
+            foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $row)$pool[(int)$row['frc_team_number']]=$row;
+            if($pool)$source='FIRST provisional';
+        }
+    } catch(PDOException $e){return [];}
+    if(!$pool)return [];
+    $ordered=[];
+    foreach($pool as $n=>$row)$ordered[$n]=(float)$row['rating'];
+    arsort($ordered,SORT_NUMERIC);
+    $position=0;$rank=0;$previous=null;$ranks=[];
+    foreach($ordered as $n=>$value){
+        ++$position;
+        if($previous===null||$value!==$previous)$rank=$position;
+        $ranks[(int)$n]=$rank;$previous=$value;
+    }
+    $out=[];
+    foreach($requested as $n=>$_){
+        if(!isset($pool[$n]))continue;
+        $row=$pool[$n];
+        $record=$source==='TBA public'?['wins'=>(int)$row['wins'],'losses'=>(int)$row['losses'],'ties'=>(int)$row['ties']]:null;
+        $out[$n]=['source'=>$source,'rank'=>$ranks[$n], 'rank_total'=>count($pool),
+            'record'=>$record,'trajectory'=>[], 'rated_matches'=>0,
+            'recent_epa_avg'=>null,'epa_p75'=>null,'trend_per_match'=>null,'sigma_epa'=>null];
+    }
+    if(!$out)return [];
+    try {
+        if($source==='FIRST provisional'){
+            $stmt=$pdo->prepare('SELECT frc_team_number,match_number,post_rating FROM augur_first_match_ratings WHERE organization_id=? AND event_id=? ORDER BY frc_team_number,match_number');
+            $stmt->execute([$org,$eventId]);
+        } else {
+            $stmt=$pdo->prepare('SELECT frc_team_number,match_number,post_rating FROM augur_epa_match_ratings WHERE tba_event_key=? ORDER BY frc_team_number,match_number,id');
+            $stmt->execute([$key]);
+        }
+        foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $row){
+            $n=(int)$row['frc_team_number'];$m=(int)$row['match_number'];
+            if(!isset($out[$n])||$m<1||!is_numeric($row['post_rating']))continue;
+            // On duplicate TBA snapshots, use the latest calculation for a match.
+            $out[$n]['trajectory'][$m]=['match_number'=>$m,'post_rating'=>(float)$row['post_rating']];
+        }
+        foreach($out as &$item){
+            ksort($item['trajectory'],SORT_NUMERIC);
+            $item['trajectory']=array_values($item['trajectory']);
+            $item['rated_matches']=count($item['trajectory']);
+            $values=array_column($item['trajectory'],'post_rating');
+            $recent=array_slice($values,-6);
+            if($recent){
+                $item['recent_epa_avg']=array_sum($recent)/count($recent);
+                $orderedRecent=$recent;sort($orderedRecent,SORT_NUMERIC);
+                $q=(count($orderedRecent)-1)*0.75;$lo=(int)floor($q);$hi=(int)ceil($q);
+                $item['epa_p75']=$orderedRecent[$lo]+($orderedRecent[$hi]-$orderedRecent[$lo])*($q-$lo);
+                if(count($recent)>=2){
+                    // A rate of EPA change per match; not a score or model adjustment.
+                    $item['trend_per_match']=augur_epa_slope($recent);
+                    $mean=$item['recent_epa_avg'];$variance=0.0;
+                    foreach($recent as $v)$variance+=($v-$mean)**2;
+                    $item['sigma_epa']=sqrt($variance/count($recent));
+                }
+            }
+        }
+        unset($item);
+        if($source==='FIRST provisional'){
+            // FIRST provisional ratings have no W/L/T columns. Derive the record
+            // from scored qualification matches, not from scouting actions.
+            $stmt=$pdo->prepare("SELECT mt.frc_team_number,mt.alliance,m.red_score,m.blue_score
+                FROM matches m JOIN match_teams mt ON mt.match_id=m.id
+                WHERE m.organization_id=? AND m.event_id=? AND m.comp_level='qm'
+                  AND m.red_score IS NOT NULL AND m.blue_score IS NOT NULL
+                  AND m.red_score>=0 AND m.blue_score>=0");
+            $stmt->execute([$org,$eventId]);
+            foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $row){
+                $n=(int)$row['frc_team_number'];
+                if(!isset($out[$n]))continue;
+                $alliance=strtolower((string)$row['alliance']);
+                if($alliance!=='red'&&$alliance!=='blue')continue;
+                $out[$n]['record']??=['wins'=>0,'losses'=>0,'ties'=>0];
+                $red=(float)$row['red_score'];$blue=(float)$row['blue_score'];
+                $keyRecord=$red===$blue?'ties':(($alliance==='red'&&$red>$blue)||($alliance==='blue'&&$blue>$red)?'wins':'losses');
+                $out[$n]['record'][$keyRecord]++;
+            }
+        }
+    } catch(PDOException $e){
+        // Keep available EPA/rank even if optional history tables are unavailable.
+    }
+    return $out;
+}
