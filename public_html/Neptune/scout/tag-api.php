@@ -42,12 +42,62 @@ if($_SERVER['REQUEST_METHOD']==='GET'){
         ]);
     }
 
+    if($action==='robot_history'){
+        $team=(int)($_GET['team']??0);
+        $context=(string)($_GET['context']??'pit');
+        $eventId=(int)($_GET['event_id']??0);
+        if($team<=0||!in_array($context,['pit','team'],true))json_response(['status'=>'error','message'=>'Invalid team or context.'],422);
+        $rows=tagobs_observation_rows($pdo,$org,$eventId?:null,$team,200,false);
+        $rows=array_values(array_filter($rows,static fn($row)=>(string)$row['context']===$context));
+        $media=tagobs_media_for_observations($pdo,$org,array_column($rows,'id'));
+        foreach($rows as &$row)$row['media']=$media[$row['id']]??[];unset($row);
+        json_response(['status'=>'success','rows'=>$rows]);
+    }
+
     if($action==='matches'){
         $eventId=(int)($_GET['event_id']??0);
         if($eventId<=0)json_response(['status'=>'error','message'=>'Event is required.'],422);
         $s=$pdo->prepare('SELECT id FROM events WHERE id=? AND organization_id=? LIMIT 1');$s->execute([$eventId,$org]);
         if(!(int)$s->fetchColumn())json_response(['status'=>'error','message'=>'Event not found.'],404);
         json_response(['status'=>'success','matches'=>tagobs_matches_for_event($pdo,$org,$eventId)]);
+    }
+
+    // Team Lookup-compatible robot information. Event membership and tenant scope are enforced.
+    if($action==='robot_details'){
+        $eventId=(int)($_GET['event_id']??0);
+        $number=(int)($_GET['team']??0);
+        if($eventId<=0||$number<=0)json_response(['status'=>'error','message'=>'An event and team are required.'],422);
+        $s=$pdo->prepare("SELECT et.frc_team_number,et.nickname,et.city,et.state_prov,et.country,e.game_id
+            FROM event_teams et JOIN events e ON e.id=et.event_id AND e.organization_id=?
+            WHERE et.event_id=? AND et.frc_team_number=? LIMIT 1");
+        $s->execute([$org,$eventId,$number]);$row=$s->fetch(PDO::FETCH_ASSOC);
+        if(!$row)json_response(['status'=>'error','message'=>'Robot not found in this event.'],404);
+        $details=['team'=>$number,'nickname'=>(string)($row['nickname']??''),'city'=>(string)($row['city']??''),
+          'state_prov'=>(string)($row['state_prov']??''),'country'=>(string)($row['country']??''),
+          'rookie_year'=>null,'school_name'=>'','motto'=>'','website'=>'','full_name'=>''];
+        // Team Lookup stores public TBA details in robot_season_profiles.tba_json.
+        try{
+            $s=$pdo->prepare('SELECT tba_json FROM robot_season_profiles WHERE organization_id=? AND game_id=? AND frc_team_number=? LIMIT 1');
+            $s->execute([$org,(int)$row['game_id'],$number]);$cached=json_decode((string)($s->fetchColumn()?:''),true);
+            if(is_array($cached)&&is_array($cached['team']??null)){
+                foreach(['nickname','city','state_prov','country','rookie_year','school_name','motto','website','name'] as $field){
+                    $destination=$field==='name'?'full_name':$field;
+                    if(!empty($cached['team'][$field]))$details[$destination]=$cached['team'][$field];
+                }
+            }
+        }catch(Throwable $e){ /* optional cache unavailable */ }
+        // Same TBA client/cache used by Team Lookup; failure must not prevent offline/cached details.
+        try{
+            require_once dirname(__DIR__,3).'/neptune_secure/tba.php';
+            if(function_exists('tba_get')){
+                $tba=tba_get('team/frc'.$number,86400);
+                if(is_array($tba))foreach(['nickname','city','state_prov','country','rookie_year','school_name','motto','website','name'] as $field){
+                    $destination=$field==='name'?'full_name':$field;
+                    if(!empty($tba[$field]))$details[$destination]=$tba[$field];
+                }
+            }
+        }catch(Throwable $e){ /* use the locally cached team information */ }
+        json_response(['status'=>'success','team'=>$details]);
     }
 
     if($action==='event_teams'){
@@ -75,6 +125,24 @@ if($_SERVER['REQUEST_METHOD']==='GET'){
             'team'=>(int)$r['frc_team_number'],
             'nickname'=>(string)($r['nickname']??''),
         ],$s->fetchAll());
+        // Reuse the same on-disk logo cache as Match Scouting. No third-party fetches.
+        if($eventId>0 && $teams){
+            $yearStmt=$pdo->prepare('SELECT g.season_year FROM events e JOIN games g ON g.id=e.game_id WHERE e.id=? AND e.organization_id=? LIMIT 1');
+            $yearStmt->execute([$eventId,$org]);
+            $year=(int)($yearStmt->fetchColumn()?:date('Y'));
+            $logoHelper=dirname(__DIR__).'/analytics/_team_logo_cache.php';
+            if(is_file($logoHelper)){
+                require_once $logoHelper;
+                if(function_exists('neptune_team_logo_map')){
+                    $logoMap=neptune_team_logo_map($org,$year,array_column($teams,'team'));
+                    foreach($teams as &$team){
+                        $logo=$logoMap[$team['team']]??[];
+                        $team['logo']=(!empty($logo['exists'])&&!empty($logo['path']))?base_url((string)$logo['path']):'';
+                    }
+                    unset($team);
+                }
+            }
+        }
         json_response(['status'=>'success','teams'=>$teams]);
     }
 
@@ -162,6 +230,9 @@ if($action!=='save')json_response(['status'=>'error','message'=>'Unknown Tag Sco
 tagobs_csrf_or_fail((string)($_POST['csrf']??''));
 $context=(string)($_POST['context']??'team');
 if(!in_array($context,['match','pit','team'],true))$context='team';
+$evidenceSource=(string)($_POST['evidence_source']??'');
+if($context==='pit' && !in_array($evidenceSource,['observed','team_reported'],true))json_response(['status'=>'error','message'=>'Choose Observed or Team Reported for this Pit observation.'],422);
+if($context!=='pit')$evidenceSource=null;
 $entryMode=(string)($_POST['entry_mode']??'manual');
 if(!in_array($entryMode,['auto','manual'],true))$entryMode='manual';
 $eventId=(int)($_POST['event_id']??0);
@@ -228,14 +299,24 @@ if(count($uploads)+count($stagedVideoTokens)>8)json_response(['status'=>'error',
 if(!$tags && $note==='' && !$uploads && !$stagedVideoTokens)json_response(['status'=>'error','message'=>'Choose a tag, write a note, or attach a photo/video.'],422);
 
 $severity=tagobs_highest_severity($tags);
-$uuid=uuidv4();
+$uuid=trim((string)($_POST['uuid']??''));
+if($uuid==='')$uuid=uuidv4();
+if(!preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i',$uuid))json_response(['status'=>'error','message'=>'Invalid submission identifier.'],422);
+// Idempotent uploads: a retry returns the first receipt without inserting a duplicate.
+$existing=$pdo->prepare('SELECT id,frc_team_number,context FROM tag_scouting_observations WHERE uuid=? AND organization_id=? LIMIT 1');
+$existing->execute([$uuid,$org]);
+$prior=$existing->fetch(PDO::FETCH_ASSOC);
+if($prior){
+    if((int)$prior['frc_team_number']!==$team||(string)$prior['context']!==$context)json_response(['status'=>'error','message'=>'Submission ID belongs to another observation.'],409);
+    json_response(['status'=>'success','observation_id'=>(int)$prior['id'],'uuid'=>$uuid,'duplicate'=>true]);
+}
 $storedFiles=[];
 try{
     $pdo->beginTransaction();
     $s=$pdo->prepare("INSERT INTO tag_scouting_observations
-      (uuid,organization_id,event_id,match_id,field_id,frc_team_number,context,entry_mode,note,severity,status,created_by,created_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,'open',?,NOW())");
-    $s->execute([$uuid,$org,$eventId?:null,$matchId?:null,$fieldId,$team,$context,$entryMode,$note!==''?$note:null,$severity,$userId]);
+      (uuid,organization_id,event_id,match_id,field_id,frc_team_number,context,entry_mode,evidence_source,note,severity,status,created_by,created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,'open',?,NOW())");
+    $s->execute([$uuid,$org,$eventId?:null,$matchId?:null,$fieldId,$team,$context,$entryMode,$evidenceSource,$note!==''?$note:null,$severity,$userId]);
     $observationId=(int)$pdo->lastInsertId();
 
     if($tags){

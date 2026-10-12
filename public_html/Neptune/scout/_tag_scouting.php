@@ -60,17 +60,30 @@ function tagobs_highest_severity(array $tags): string {
 }
 
 function tagobs_visible_tags(PDO $pdo,int $org,bool $includeInactive=false): array {
-    $sql="SELECT t.*,
-        CASE WHEN t.organization_id IS NULL THEN 'global' ELSE 'organization' END scope,
-        COALESCE(v.active,t.active) effective_active
+    $sql="SELECT t.*, CASE WHEN t.organization_id IS NULL THEN 'global' ELSE 'organization' END scope,
+      COALESCE(v.active,t.active) effective_active,
+      COALESCE(o.label,t.label) effective_label,COALESCE(o.category,t.category) effective_category,
+      COALESCE(o.icon,t.icon) effective_icon,COALESCE(o.severity,t.severity) effective_severity,
+      COALESCE(o.match_enabled,t.match_enabled) effective_match_enabled,
+      COALESCE(o.pit_enabled,t.pit_enabled) effective_pit_enabled,
+      COALESCE(o.team_enabled,t.team_enabled) effective_team_enabled,
+      COALESCE(o.sort_order,t.sort_order) effective_sort_order,
+      COALESCE(o.description,t.description) effective_description,
+      COALESCE(o.when_to_use,t.when_to_use) effective_when_to_use,
+      COALESCE(o.why_important,t.why_important) effective_why_important
       FROM tag_scouting_tags t
       LEFT JOIN tag_scouting_tag_visibility v ON v.tag_id=t.id AND v.organization_id=?
+      LEFT JOIN tag_scouting_tag_overrides o ON o.tag_id=t.id AND o.organization_id=?
       WHERE (t.organization_id IS NULL OR t.organization_id=?)";
     if(!$includeInactive)$sql.=' AND COALESCE(v.active,t.active)=1';
-    $sql.=" ORDER BY FIELD(t.category,'Performance','Discipline','Reliability','Pit','Strategy','General'),t.category,t.sort_order,t.label";
-    $s=$pdo->prepare($sql);$s->execute([$org,$org]);
-    $rows=$s->fetchAll();
-    foreach($rows as &$row)$row['active']=(int)$row['effective_active'];unset($row);
+    $s=$pdo->prepare($sql);$s->execute([$org,$org,$org]);$rows=$s->fetchAll();
+    foreach($rows as &$row){
+        foreach(['active','label','category','icon','severity','match_enabled','pit_enabled','team_enabled','sort_order','description','when_to_use','why_important'] as $field){
+            $row[$field]=$row['effective_'.$field];
+        }
+        foreach(['active','match_enabled','pit_enabled','team_enabled','sort_order'] as $field)$row[$field]=(int)$row[$field];
+    }unset($row);
+    usort($rows,static fn($a,$b)=>strcmp((string)$a['category'],(string)$b['category']) ?: ((int)$a['sort_order']<=>(int)$b['sort_order']) ?: strcmp((string)$a['label'],(string)$b['label']));
     return $rows;
 }
 
@@ -517,4 +530,34 @@ function tagobs_delete_stored_relpath(string $rel): void {
     if(!$root)return;
     $path=realpath($root.'/'.$rel);
     if($path && str_starts_with($path,$root.DIRECTORY_SEPARATOR) && is_file($path))@unlink($path);
+}
+
+
+/** Sort the already-filtered tag rows for one organization and observation context.
+ * Order tables are an opt-in migration. Existing order remains the fallback. */
+function tagobs_ordered_tags(PDO $pdo,int $org,string $context,array $rows): array {
+    if(!in_array($context,['match','pit','team'],true))return $rows;
+    try {
+        // Organization 0 is the shared, immutable baseline. Per-organization
+        // positions override these defaults without changing other organizations.
+        $st=$pdo->prepare('SELECT organization_id,category,sort_order FROM tag_scouting_category_order WHERE organization_id IN (0,?) AND context=? ORDER BY organization_id');
+        $st->execute([$org,$context]);$cats=[];
+        foreach($st->fetchAll(PDO::FETCH_ASSOC) as $r)$cats[$r['category']]=(int)$r['sort_order'];
+        $st=$pdo->prepare('SELECT organization_id,tag_id,sort_order FROM tag_scouting_tag_order WHERE organization_id IN (0,?) AND context=? ORDER BY organization_id');
+        $st->execute([$org,$context]);$ranks=[];
+        foreach($st->fetchAll(PDO::FETCH_ASSOC) as $r)$ranks[(int)$r['tag_id']]=(int)$r['sort_order'];
+        $fallback=['match'=>['Autonomous','Scoring','Defense','Reliability','Endgame','Alliance Play'],'pit'=>[],'team'=>[]];
+        $default=array_flip($fallback[$context]);
+        usort($rows,static function($a,$b)use($cats,$ranks,$default){
+            $ca=(string)$a['category'];$cb=(string)$b['category'];
+            $oa=$cats[$ca]??(isset($default[$ca])?100+$default[$ca]*100:20000);
+            $ob=$cats[$cb]??(isset($default[$cb])?100+$default[$cb]*100:20000);
+            if($oa!==$ob)return $oa<=>$ob;
+            if($ca!==$cb)return strcmp($ca,$cb);
+            $ta=$ranks[(int)$a['id']]??(int)$a['sort_order'];
+            $tb=$ranks[(int)$b['id']]??(int)$b['sort_order'];
+            return ($ta<=>$tb)?:strcmp((string)$a['label'],(string)$b['label']);
+        });
+    }catch(PDOException $e){ /* Migration hasn't been applied; retain previous ordering. */ }
+    return $rows;
 }

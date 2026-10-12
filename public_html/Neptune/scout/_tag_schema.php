@@ -53,6 +53,20 @@ function tag_unified_match_tag_seed_catalog(): array {
       'penalty_risk'=>['Penalty Risk','Discipline','fa-solid fa-triangle-exclamation','warning',1,0,1,250],
       'mechanical_issues'=>['Mechanical Issues','Reliability','fa-solid fa-screwdriver-wrench','critical',1,1,1,260],
       'disabled'=>['Disabled / Dead','Reliability','fa-solid fa-power-off','critical',1,1,1,270],
+      'auto_no_attempt'=>['No Attempt','Autonomous','fa-solid fa-ban','info',1,0,0,500],
+      'auto_completed'=>['Completed Successfully','Autonomous','fa-solid fa-circle-check','info',1,0,0,510],
+      'auto_partial'=>['Partial Completion','Autonomous','fa-solid fa-circle-half-stroke','info',1,0,0,520],
+      'auto_failed'=>['Failed','Autonomous','fa-solid fa-circle-xmark','warning',1,0,0,530],
+      'scoring'=>['Scoring','Scoring','fa-solid fa-bullseye','info',1,0,0,540],
+      'slow_cycles'=>['Slow Cycles','Scoring','fa-solid fa-turtle','warning',1,0,0,550],
+      'no_scoring'=>['No Scoring','Scoring','fa-solid fa-ban','warning',1,0,0,560],
+      'attempted_defense'=>['Attempted Defense','Defense','fa-solid fa-shield','info',1,0,0,570],
+      'recovered'=>['Recovered','Reliability','fa-solid fa-rotate','info',1,0,0,580],
+      'end_no_attempt'=>['No Attempt','Endgame','fa-solid fa-ban','info',1,0,0,590],
+      'end_completed'=>['Completed Successfully','Endgame','fa-solid fa-circle-check','info',1,0,0,600],
+      'end_partial'=>['Partial Completion','Endgame','fa-solid fa-circle-half-stroke','info',1,0,0,610],
+      'end_failed'=>['Failed','Endgame','fa-solid fa-circle-xmark','warning',1,0,0,620],
+      'strong_support'=>['Strong Support','Alliance Play','fa-solid fa-handshake','info',1,0,0,630],
     ];
 }
 function tag_unified_ensure_schema(PDO $pdo): void {
@@ -193,7 +207,7 @@ function tag_unified_sync_match_observation(PDO $pdo,array $row,array $selectedT
 }
 
 function tag_unified_tabs_html(string $active,int $eventId=0,int $team=0): string {
-    $tabs=['match'=>['Match','fa-solid fa-hashtag'],'pit'=>['Pit','fa-solid fa-screwdriver-wrench'],'team'=>['Team','fa-solid fa-binoculars']];
+    $tabs=['match'=>['Match','fa-solid fa-hashtag'],'pit'=>['Pit','fa-solid fa-screwdriver-wrench'],'team'=>['Alliance','fa-solid fa-handshake']];
     $html='<nav class="tag-unified-tabs" aria-label="Tag Scouting context">';
     foreach($tabs as $key=>[$label,$icon]){$q=['tab'=>$key];if($eventId>0)$q['event_id']=$eventId;if($team>0)$q['team']=$team;$url=base_url('scout/tag.php?'.http_build_query($q));$html.='<a class="tag-unified-tab'.($active===$key?' active':'').'" href="'.e($url).'"'.($active===$key?' aria-current="page"':'').'><i class="'.e($icon).'"></i> '.e($label).'</a>';}
     return $html.'</nav>';
