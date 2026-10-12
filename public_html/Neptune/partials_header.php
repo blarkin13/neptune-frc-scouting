@@ -24,12 +24,54 @@ $hideChrome=$hideChrome??false;
 $bodyClass=trim((string)($bodyClass??''));
 $moduleName=strtoupper(trim((string)($moduleName??'')));
 
-$activeSection=match($moduleName){
+/*
+ * Canonical page navigation ownership (not the PHP directory and not the
+ * visual module branding). Keep the route overrides here until Neptune's
+ * shared navigation library can be extracted during a planned refactor.
+ *
+ * Each page may optionally declare $navigationSection before the header:
+ * 'home', 'scouting', 'analytics', or 'command'. This covers future pages
+ * without adding one-off breadcrumb conditionals.
+ */
+$neptuneNavParents=[
+    'home'=>['label'=>'Home','url'=>'dashboard/index.php'],
+    'scouting'=>['label'=>'Scouting','url'=>'scouting.php'],
+    'analytics'=>['label'=>'Analytics & Strategy','url'=>'analytics/index.php'],
+    'command'=>['label'=>'Command Center','url'=>'admin/index.php'],
+];
+$neptuneRoutePath=str_replace('\\','/',(string)($_SERVER['SCRIPT_NAME']??''));
+$neptuneRouteRelative=preg_replace('~^.*?/Neptune/~i','',$neptuneRoutePath)??$neptuneRoutePath;
+$neptuneRouteRelative=ltrim($neptuneRouteRelative,'/');
+// Explicit semantic owners for pages physically stored in a different module.
+$neptuneRouteOwners=[
+    'scout/tag-manage-tags.php'=>'command',
+    'dashboard/data.php'=>'analytics',
+];
+$neptuneRouteSection=$neptuneRouteOwners[$neptuneRouteRelative]??null;
+if($neptuneRouteSection===null){
+    $neptuneRouteSection=match(true){
+        $neptuneRouteRelative==='dashboard/index.php'=>'home',
+        $neptuneRouteRelative==='scouting.php',str_starts_with($neptuneRouteRelative,'scout/'),str_starts_with($neptuneRouteRelative,'pit/'),str_starts_with($neptuneRouteRelative,'prescout/'),str_starts_with($neptuneRouteRelative,'spot/')=>'scouting',
+        str_starts_with($neptuneRouteRelative,'analytics/')=>'analytics',
+        str_starts_with($neptuneRouteRelative,'admin/')=>'command',
+        default=>null,
+    };
+}
+$neptuneNavigationOverride=$navigationSection??null;
+if($neptuneNavigationOverride!==null&&!array_key_exists((string)$neptuneNavigationOverride,$neptuneNavParents)){
+    // An invalid page hint should never activate a nonexistent menu section.
+    $neptuneNavigationOverride=null;
+}
+$neptuneModuleSection=match($moduleName){
     'TRIDENT'=>'scouting',
     'AUGUR'=>'analytics',
     'SATURN','VULCAN','SALT'=>'command',
     default=>'home',
 };
+$activeSection=$neptuneNavigationOverride??$neptuneRouteSection??$neptuneModuleSection;
+// A section inferred only from module branding should not add new breadcrumb
+// ancestors to unrelated legacy routes (compatibility with existing pages).
+$neptuneBreadcrumbParent=$neptuneNavigationOverride??$neptuneRouteSection;
 
 $appCssVersion=@filemtime(__DIR__.'/assets/css/app.css')?:1;
 $neptuneCssVersion=@filemtime(__DIR__.'/assets/css/neptune-ui.css')?:1;
@@ -264,18 +306,7 @@ $homeStructuredData=[
                 <a class="<?=$activeSection==='command'?'active':''?>" href="<?=e(base_url('admin/index.php'))?>"><i class="fa-solid fa-tower-broadcast"></i><span>Command Center</span></a>
             <?php endif; ?>
 
-            <?php if($tbaLiveAvailable): ?>
-                <button
-                    class="tba-live-toggle neptune-nav-utility <?=$tbaLiveEnabled?'is-on':''?>"
-                    type="button"
-                    id="tbaLiveToggle"
-                    data-endpoint="<?=e(base_url('api/tba-live-toggle.php'))?>"
-                    data-csrf="<?=e(csrf_token())?>"
-                    data-enabled="<?=$tbaLiveEnabled?'1':'0'?>"
-                    title="Refresh the current event from TBA every <?=e($tbaLiveInterval)?> minutes"
-                    aria-pressed="<?=$tbaLiveEnabled?'true':'false'?>"
-                ><i class="fa-solid fa-satellite-dish"></i><span>At Event Live</span><small><?=$tbaLiveEnabled?'ON':'OFF'?></small></button>
-            <?php endif; ?>
+
             <button class="theme-toggle neptune-nav-utility" type="button" id="themeToggle" aria-label="Toggle day/night mode"><i class="fa-solid fa-moon"></i><span class="theme-label">Night mode</span></button>
             <a class="logout-link neptune-nav-utility" href="<?=e(base_url('logout.php'))?>" title="Logout" aria-label="Log out"><i class="fa-solid fa-right-from-bracket"></i><span class="nav-logout">Logout</span></a>
         </nav>
@@ -286,34 +317,7 @@ $homeStructuredData=[
     <?php endif; ?>
 </header>
 <?php endif;?>
-<?php if($tbaLiveAvailable&&!$hideChrome):?>
-<script>
-(()=>{
-  const btn=document.getElementById('tbaLiveToggle');
-  if(!btn)return;
-  btn.addEventListener('click',async()=>{
-    if(btn.disabled)return;
-    const next=btn.dataset.enabled!=='1';
-    btn.disabled=true;
-    try{
-      const body=new URLSearchParams({csrf:btn.dataset.csrf||'',enabled:next?'1':'0'});
-      const res=await fetch(btn.dataset.endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body});
-      const data=await res.json().catch(()=>({}));
-      if(!res.ok||!data.ok)throw new Error(data.message||'Could not change Event Live mode.');
-      btn.dataset.enabled=data.enabled?'1':'0';
-      btn.classList.toggle('is-on',!!data.enabled);
-      btn.setAttribute('aria-pressed',data.enabled?'true':'false');
-      const badge=btn.querySelector('small');if(badge)badge.textContent=data.enabled?'ON':'OFF';
-      const msg=data.enabled
-        ?('At Event Live is on'+(data.event?.name?' for '+data.event.name:'')+'. TBA refreshes every '+data.interval_minutes+' minutes.')
-        :'At Event Live is off.';
-      window.NeptuneUI?.toast(msg,'good',{title:'TBA At Event Live'});
-    }catch(err){window.NeptuneUI?.toast(err?.message||'Could not change Event Live mode.','bad',{title:'TBA At Event Live'});}
-    finally{btn.disabled=false;}
-  });
-})();
-</script>
-<?php endif;?>
+
 
 <main class="wrap <?=$hideChrome?'wrap-wide':''?>">
 <?php
@@ -325,12 +329,13 @@ if($u && !$hideChrome && !$hideBreadcrumbs && !$isLiveMatchScouting):
     $isHome=(bool)preg_match('~/dashboard/index\.php$~',$scriptPath);
     $crumbs[]=['Home',$isHome?null:base_url('dashboard/index.php')];
 
-    if(str_ends_with($scriptPath,'/scouting.php') || preg_match('~/(scout|pit|prescout|spot)/~',$scriptPath)){
-        if(!str_ends_with($scriptPath,'/scouting.php')) $crumbs[]=['Scouting',base_url('scouting.php')];
-    } elseif(preg_match('~/analytics/~',$scriptPath) || str_ends_with($scriptPath,'/dashboard/data.php')){
-        if(!str_ends_with($scriptPath,'/analytics/index.php')) $crumbs[]=['Analytics & Strategy',base_url('analytics/index.php')];
-    } elseif(preg_match('~/admin/~',$scriptPath)){
-        if(!str_ends_with($scriptPath,'/admin/index.php')) $crumbs[]=['Command Center',base_url('admin/index.php')];
+    // The same resolved owner drives BOTH breadcrumbs and active top navigation.
+    // Keep primary hubs as two-level navigation (Home > Scouting, etc.).
+    if($neptuneBreadcrumbParent!==null && $neptuneBreadcrumbParent!=='home'){
+        $parent=$neptuneNavParents[$neptuneBreadcrumbParent];
+        if($neptuneRouteRelative!==$parent['url']){
+            $crumbs[]=[$parent['label'],base_url($parent['url'])];
+        }
     }
 
     $lastLabel=$pageTitle?:'Neptune';
