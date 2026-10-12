@@ -310,7 +310,7 @@ include dirname(__DIR__).'/partials_header.php';
 .spot-selected-avatar{width:52px;height:52px;flex:0 0 52px;display:grid;place-items:center;border:1px solid var(--line);border-radius:14px;background:var(--panel2);overflow:hidden;font-size:26px;color:var(--accent)}
 .spot-selected-avatar img,.spot-floating-avatar img,.spot-roster-avatar img{width:100%;height:100%;object-fit:contain}
 .spot-floating-robot{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:85;pointer-events:none}
-#spotFindTeam{pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:88px;height:88px;border-radius:50%;padding:7px;background:var(--panel);border:3px solid var(--module-trident,var(--accent));color:var(--text);box-shadow:0 4px 0 var(--panel2),0 12px 32px rgba(0,0,0,.45);cursor:pointer;font-size:.8rem;font-weight:950}
+#spotFindTeam{pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:88px;height:88px;border-radius:50%;padding:7px;background:var(--panel);border:3px solid var(--module-trident,var(--accent));color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.24);cursor:pointer;font-size:.8rem;font-weight:950}
 .spot-floating-avatar{display:grid;place-items:center;overflow:hidden;width:48px;height:48px;color:var(--module-trident,var(--accent));font-size:30px;border-radius:50%}
 #spotRosterDialog{width:min(620px,calc(100vw - 24px));max-width:620px;max-height:min(88dvh,900px);border-radius:20px;overflow:hidden}
 #spotRosterDialog .spot-dialog-head{position:sticky;top:0;background:var(--panel);z-index:2;padding:15px 18px}

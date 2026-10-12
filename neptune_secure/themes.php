@@ -18,6 +18,7 @@ $defaults = [
 
 $presets=[
  'Neptune Default'=>[],
+ 'Neptune Classic'=>[],
  'Deep Ocean'=>['c1-blue'=>'#166B8F','accent'=>'#1685B5','bg'=>'#071019','bg2'=>'#0A151F','panel'=>'#0D1B27','panel2'=>'#122432','line'=>'#294354','text'=>'#F2F7FA','muted'=>'#91A7B5','bg-glow'=>'#0D3550','ready'=>'#42B8D8','alliance-blue'=>'#166B8F','alliance-blue-deep'=>'#125A78','module-trident'=>'#1685B5','module-augur'=>'#7167B2','module-saturn'=>'#987039','module-vulcan'=>'#A85B49','module-system'=>'#6B7F8F','module-org'=>'#3F816A','module-ops'=>'#1685B5'],
  'Steel Blue'=>['c1-blue'=>'#526D82','accent'=>'#6E91AA','bg'=>'#0B1117','bg2'=>'#101820','panel'=>'#151F28','panel2'=>'#1B2934','line'=>'#344A59','text'=>'#EDF3F6','muted'=>'#9AABB5','bg-glow'=>'#183041','ready'=>'#7FB3D5','alliance-blue'=>'#526D82','alliance-blue-deep'=>'#405A6F','module-trident'=>'#6E91AA','module-augur'=>'#737699','module-saturn'=>'#8D7551','module-vulcan'=>'#956456','module-system'=>'#71828F','module-org'=>'#58796F','module-ops'=>'#6E91AA'],
  'Teal'=>['c1-blue'=>'#167D7F','accent'=>'#2BA8A0','bg'=>'#071211','bg2'=>'#0B1918','panel'=>'#0F211F','panel2'=>'#142B29','line'=>'#2C4C49','text'=>'#F0F7F6','muted'=>'#92AAA7','bg-glow'=>'#0B3A39','ready'=>'#42C2B8','alliance-blue'=>'#167D7F','alliance-blue-deep'=>'#115F61','module-trident'=>'#2BA8A0','module-augur'=>'#756DB1','module-saturn'=>'#9A753C','module-vulcan'=>'#A95D4B','module-system'=>'#607E7B','module-org'=>'#3E816A','module-ops'=>'#2BA8A0'],
@@ -30,7 +31,10 @@ $presets=[
  'Obsidian'=>['c1-blue'=>'#F5F5F5','solid-text'=>'#050505','accent'=>'#FFFFFF','c1-green'=>'#AFAFAF','good'=>'#6FD08C','bad'=>'#FF6B6B','warn'=>'#E6B85C','ready'=>'#FFFFFF','bg'=>'#000000','bg2'=>'#030303','panel'=>'#070707','panel2'=>'#0E0E0E','line'=>'#2A2A2A','text'=>'#FFFFFF','muted'=>'#A6A6A6','bg-glow'=>'#111111','alliance-blue'=>'#BFC7D5','alliance-blue-deep'=>'#7E8795','module-trident'=>'#FFFFFF','module-augur'=>'#D8D8D8','module-saturn'=>'#BEBEBE','module-vulcan'=>'#A8A8A8','module-system'=>'#8F8F8F','module-org'=>'#D0D0D0','module-ops'=>'#FFFFFF','access-strategy'=>'#9F9F9F','access-admin'=>'#C8C8C8','access-owner'=>'#FFFFFF'],
 
 ];
-$presets['Neptune Default']=$defaults['dark'];
+// Keep the existing neptune-default key stable: organizations using the default
+// automatically receive the Navy + Cyan palette. Retain the previous default.
+$presets['Neptune Classic']=$defaults['dark'];
+$presets['Neptune Default']=array_replace($defaults['dark'],$presets['Navy + Cyan']);
 // Each preset gets a dedicated Game Builder palette derived from colors already present in that preset.
 // This keeps the action palette coordinated without inventing an unrelated second theme.
 foreach($presets as $presetName=>$presetValues){
@@ -63,8 +67,12 @@ $presetLight=[
 
 
 ];
+// Preserve the original day mode as Classic; new Default shares Navy + Cyan day mode.
+$presetLight['Neptune Classic']=$defaults['light'];
+$presetLight['Neptune Default']=$presetLight['Navy + Cyan'];
 $presetMeta=[
- 'Neptune Default'=>'Original Neptune palette',
+ 'Neptune Default'=>'Standard Neptune palette - Navy + Cyan',
+ 'Neptune Classic'=>'Original Neptune palette',
  'Deep Ocean'=>'Richer ocean blues',
  'Steel Blue'=>'Subdued and professional',
  'Teal'=>'Modern teal system',
@@ -99,6 +107,9 @@ function neptune_theme_normalize(array $palette): array {
     return $out;
 }
 function neptune_theme_builtin(string $key): ?array {
+    // Previously saved navy-cyan preferences remain valid without displaying
+    // duplicate palettes in the built-in theme picker.
+    if($key==='navy-cyan')$key='neptune-default';
     $c=neptune_theme_catalog();
     foreach($c['presets'] as $name=>$dark){
         if(neptune_theme_slugify($name)!==$key) continue;
@@ -111,7 +122,10 @@ function neptune_theme_builtin(string $key): ?array {
 }
 function neptune_theme_builtins(): array {
     $c=neptune_theme_catalog(); $out=[];
-    foreach(array_keys($c['presets']) as $name){ $k=neptune_theme_slugify($name); $t=neptune_theme_builtin($k); if($t)$out[$k]=$t; }
+    foreach(array_keys($c['presets']) as $name){
+        if($name==='Navy + Cyan')continue; // compatibility alias for Neptune Default
+        $k=neptune_theme_slugify($name);$t=neptune_theme_builtin($k);if($t)$out[$k]=$t;
+    }
     return $out;
 }
 function neptune_theme_ensure_schema(PDO $pdo): void {

@@ -638,6 +638,10 @@ body.impact-modal-open{overflow:hidden!important}
 .impact-nav-status{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
 .impact-round-badge{font-size:.66rem;font-weight:950;letter-spacing:.09em;text-transform:uppercase;border-radius:100px;padding:4px 9px;background:color-mix(in srgb,var(--accent) 13%,var(--panel2));color:var(--text);border:1px solid color-mix(in srgb,var(--accent) 36%,var(--line))}
 .impact-round-badge.playoff{background:color-mix(in srgb,var(--warn) 13%,var(--panel2));color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+/* v62: Match classification belongs with the selector, not between swipe arrows. */
+.impact-match-selector-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0}
+.impact-match-selector-heading .impact-round-badge{display:inline-flex;align-items:center;justify-content:center;flex:none;padding:3px 9px;font-size:.59rem;letter-spacing:.06em;line-height:1.2}
+.impact-match-nav .impact-nav-status{min-height:16px}
 .impact-match-progress{color:var(--muted);font-size:.72rem;font-weight:800}.impact-match-now strong{font-size:clamp(1.3rem,3vw,1.8rem);line-height:1.2;color:var(--text);letter-spacing:-.035em}.impact-round-hint{font-size:.7rem;color:var(--muted)}
 .impact-bracket-note{margin-top:9px;padding:10px 13px;border-radius:12px;border:1px solid color-mix(in srgb,var(--warn) 47%,var(--line));color:var(--text);background:color-mix(in srgb,var(--warn) 10%,var(--panel));font-size:.77rem;line-height:1.4;display:flex;align-items:center;gap:9px}
 .impact-shell .impact-alliance-grid{gap:12px;margin-top:14px}.impact-shell .impact-alliance{border-radius:18px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
@@ -654,6 +658,10 @@ body.impact-modal-open{overflow:hidden!important}
 .impact-category-rail button.active{background:var(--c1-blue);border-color:var(--c1-blue);color:var(--solid-text);box-shadow:0 4px 18px var(--shadow)}
 .impact-shell .impact-tag-groups{gap:10px}.impact-shell .impact-tag-group{background:var(--panel2);border:1px solid var(--line);border-radius:15px}.impact-tag-group[hidden]{display:none!important}.impact-shell .impact-tag-group-head{color:var(--muted)}.impact-shell .impact-tag-group-head i{color:var(--accent)}.impact-shell .impact-tag span{border-radius:12px;min-height:54px}
 .impact-shell .impact-section-label{color:var(--muted)}.impact-shell .impact-save-state{border-radius:12px}
+/* v63: Retry is optional; a dirty observation remains in IndexedDB until HTTP confirms it. */
+.impact-retry-sync{border:1px solid var(--line);border-radius:9px;min-height:34px;padding:6px 10px;background:var(--panel);color:var(--text);font-weight:850;font-size:.73rem;cursor:pointer}
+.impact-retry-sync[hidden]{display:none!important}
+.impact-retry-sync:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .impact-shell .impact-consensus{background:linear-gradient(170deg,color-mix(in srgb,var(--accent) 6%,var(--panel)),var(--panel))}
 .impact-shell .impact-robot:focus-visible,.impact-nav-arrow:focus-visible,.impact-category-rail button:focus-visible,.impact-robot-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .impact-tag:focus-within span{outline:2px solid var(--accent);outline-offset:2px}
@@ -959,7 +967,8 @@ body.impact-modal-open{overflow:hidden!important}
           <?=neptune_event_options_html($events,$eventId)?>
         </select>
       </label>
-      <label>Match
+      <label>
+        <span class="impact-match-selector-heading"><span>Match</span><?php if($match):?><span class="impact-round-badge <?=$activeRound==='Qualification'?'qual':'playoff'?>"><?=e($activeRound)?></span><?php endif;?></span>
         <select id="impactMatch" <?=$eventId?'':'disabled'?>>
           <?php $lastMatchGroup='';foreach($matches as $m):$group=(string)$m['comp_level']==='qm'?'Qualifications':'Playoffs';if($group!==$lastMatchGroup):if($lastMatchGroup!==''):?></optgroup><?php endif;?><optgroup label="<?=e($group)?>"><?php $lastMatchGroup=$group;endif;?><option value="<?=(int)$m['id']?>" <?=$matchId===(int)$m['id']?'selected':''?>><?=e(impact_match_label($m))?><?=!empty($m['field_id'])?' · Field '.e($m['field_id']):''?></option><?php endforeach;if($lastMatchGroup!==''):?></optgroup><?php endif;?>
         </select>
@@ -971,7 +980,7 @@ body.impact-modal-open{overflow:hidden!important}
   <nav class="impact-match-nav" id="impactMatchGesture" aria-label="Match navigation">
     <a class="impact-nav-arrow <?=$prevMatch?'':'disabled'?>" href="<?=e($matchPageUrl($prevMatch))?>" data-impact-match-step="-1" <?=$prevMatch?'':'aria-disabled="true" tabindex="-1"'?> aria-label="Previous match"><i class="fa-solid fa-chevron-left"></i><span>Previous</span></a>
     <div class="impact-match-now">
-      <div class="impact-nav-status"><span class="impact-round-badge <?=$activeRound==='Qualification'?'qual':'playoff'?>"><?=e($activeRound)?></span><span class="impact-match-progress"><?=($activeMatchIndex+1)?> of <?=count($matches)?> matches</span></div>
+      <div class="impact-nav-status"><span class="impact-match-progress"><?=($activeMatchIndex+1)?> of <?=count($matches)?> matches</span></div>
       <strong><?=e(impact_match_label($match))?></strong>
       <div class="impact-round-hint"><i class="fa-solid fa-arrows-left-right"></i> Swipe here to change matches <span aria-hidden="true">·</span> <?=$qualificationCount?> quals <span aria-hidden="true">·</span> <?=$playoffCount?> playoffs</div>
     </div>
@@ -1005,7 +1014,7 @@ body.impact-modal-open{overflow:hidden!important}
         </div>
 
 
-        <div class="impact-save-state local" id="impactSaveState"><i class="fa-solid fa-circle"></i><b id="impactSaveText">Opening device cache…</b><span class="pending" id="impactPendingText"></span></div>
+        <div class="impact-save-state local" id="impactSaveState" role="status" aria-live="polite"><i class="fa-solid fa-circle" aria-hidden="true"></i><b id="impactSaveText">Opening device cache…</b><span class="pending" id="impactPendingText"></span><button class="impact-retry-sync" id="impactRetrySync" type="button" hidden><i class="fa-solid fa-rotate" aria-hidden="true"></i> Retry sync</button></div>
 
         <form method="post" id="impactForm" autocomplete="off">
           <input type="hidden" name="csrf" id="impactCsrf" value="<?=e(csrf_token())?>">
@@ -1172,6 +1181,7 @@ body.impact-modal-open{overflow:hidden!important}
     </div>
 </div>
 <?php if($robots):?>
+<script src="<?=e(base_url('assets/js/neptune-realtime-v2.js'))?>?v=20261006-2"></script>
 <script>
 (() => {
   'use strict';
@@ -1211,6 +1221,7 @@ body.impact-modal-open{overflow:hidden!important}
   const statusEl = document.getElementById('impactSaveState');
   const statusText = document.getElementById('impactSaveText');
   const pendingText = document.getElementById('impactPendingText');
+  const retrySyncButton = document.getElementById('impactRetrySync');
   const robotButtons = [...document.querySelectorAll('[data-impact-team]')];
   const sliderInputs = [...form.querySelectorAll('.impact-slider input[type="range"]')];
   const clearRatingButtons = [...form.querySelectorAll('[data-clear-rating]')];
@@ -1250,6 +1261,9 @@ body.impact-modal-open{overflow:hidden!important}
   let currentTeam = Number(CONFIG.selectedTeam || robotButtons[0]?.dataset.impactTeam || 0);
   let selectionToken = 0;
   let syncTimer = 0;
+  let syncInProgress = false;
+  let lastSyncFailure = null;
+  let syncSocket = null;
   let noteTimer = 0;
   let db = null;
   let cacheAvailable = true;
@@ -1582,13 +1596,17 @@ body.impact-modal-open{overflow:hidden!important}
     loadedFingerprint = fingerprint({ ...state, tag_weights: tagWeights });
   }
 
-  function setStatus(kind, text, pending = null) {
+  function setStatus(kind, text, pending = null, detail = '') {
     statusEl.classList.remove('synced','local','offline','error');
     statusEl.classList.add(kind);
     const icon = statusEl.querySelector('i');
-    if (icon) icon.className = kind === 'synced' ? 'fa-solid fa-circle-check' : kind === 'error' ? 'fa-solid fa-triangle-exclamation' : kind === 'offline' ? 'fa-solid fa-wifi' : 'fa-solid fa-mobile-screen';
+    if (icon) icon.className = kind === 'synced' ? 'fa-solid fa-circle-check' : kind === 'error' ? 'fa-solid fa-triangle-exclamation' : kind === 'offline' ? 'fa-solid fa-wifi-slash' : 'fa-solid fa-mobile-screen';
     statusText.textContent = text;
-    if (pending !== null) pendingText.textContent = pending > 0 ? pending + ' change' + (pending === 1 ? '' : 's') + ' waiting' : '';
+    if (pending !== null) {
+      pendingText.textContent = pending > 0 ? pending + ' change' + (pending === 1 ? '' : 's') + ' waiting' : '';
+      retrySyncButton.hidden = pending < 1 || !cacheAvailable;
+    }
+    statusEl.title = detail ? detail.slice(0,300) : '';
   }
 
   async function pendingCount() {
@@ -1600,10 +1618,9 @@ body.impact-modal-open{overflow:hidden!important}
   async function refreshStatus(fallbackKind = null, fallbackText = null) {
     const pending = await pendingCount().catch(() => 0);
     if (!cacheAvailable) return setStatus('error', 'Device cache unavailable', pending);
-    if (pending > 0) {
-      if (navigator.onLine === false) return setStatus('offline', 'Offline · saved on this device', pending);
-      return setStatus(fallbackKind || 'local', fallbackText || 'Saved locally · syncing…', pending);
-    }
+    // navigator.onLine is only a browser hint, not proof that this server is
+    // unreachable. A queued record is never marked synced until an HTTP ACK.
+    if (pending > 0) return setStatus(fallbackKind || 'local', fallbackText || 'Saved on device · awaiting server confirmation', pending);
     setStatus('synced', 'Synced with Neptune', 0);
   }
 
@@ -1632,21 +1649,48 @@ body.impact-modal-open{overflow:hidden!important}
     return fd;
   }
 
+  // Neptune's MERCURY WebSocket carries notifications, not database writes.
+  // A ready/poke event can wake the queue; authenticated HTTP POST is the
+  // only success acknowledgement that can remove a durable local record.
+  function startSyncSocket() {
+    if (syncSocket || !window.NeptuneRealtime?.create) return;
+    try {
+      syncSocket = window.NeptuneRealtime.create({
+        url: <?=json_encode(base_url('rr-realtime'))?>,
+        authUrl: <?=json_encode(base_url('api/realtime-token.php'))?>,
+        room: '',
+        onStatus: status => { if (status === 'socket') scheduleSync(0); },
+        onPoke: () => scheduleSync(0)
+      });
+    } catch (_) { /* HTTP retry remains available without MERCURY. */ }
+  }
+
   async function syncRecord(record) {
     if (!record?.dirty) return true;
-    if (navigator.onLine === false) return false;
+    // Even if Chrome reports offline, attempt the real POST. Some mobile
+    // browsers have a stale navigator.onLine flag during a working session.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
     try {
       const response = await fetch(location.pathname, {
-        method: 'POST',
-        body: formDataFor(record),
-        credentials: 'same-origin',
+        method: 'POST', body: formDataFor(record), credentials: 'same-origin',
+        cache: 'no-store', signal: controller.signal,
         headers: { 'Accept':'application/json', 'X-Requested-With':'TagScouting' }
       });
       const type = response.headers.get('content-type') || '';
-      if (!response.ok || !type.includes('application/json')) throw new Error('Neptune sync failed.');
-      const payload = await response.json();
-      if (!payload.ok) throw new Error(payload.error || 'Neptune sync failed.');
+      const payload = type.includes('application/json') ? await response.json().catch(() => null) : null;
+      if (!response.ok || !payload?.ok) {
+        const detail = String(payload?.error || ('HTTP '+ response.status));
+        const sessionProblem = response.status === 401 || response.status === 403 ||
+          response.redirected || (!type.includes('application/json') && response.ok) ||
+          /csrf|session|login|authentication/i.test(detail);
+        lastSyncFailure = sessionProblem
+          ? {kind:'error',text:'Session needs attention · saved on this device',detail}
+          : {kind:'error',text:'Server rejected sync · saved on this device',detail};
+        return false;
+      }
 
+      // Commit only if no newer edit was made while the POST was in flight.
       const latest = await idbGet(record.key);
       if (latest && Number(latest.updatedAt) === Number(record.updatedAt)) {
         latest.dirty = false;
@@ -1661,25 +1705,37 @@ body.impact-modal-open{overflow:hidden!important}
       if (Number(currentTeam) === Number(record.team)) renderConsensus(record.team);
       return true;
     } catch (err) {
+      lastSyncFailure = {
+        kind: 'offline',
+        text: 'Connection failed · saved on this device',
+        detail: err?.name === 'AbortError' ? 'Neptune did not respond within 12 seconds.' : String(err?.message || 'Network request failed.')
+      };
       return false;
-    }
+    } finally { clearTimeout(timer); }
   }
 
   async function syncPending() {
-    if (!db) return;
-    const all = await idbAll();
-    const pending = all.filter(r => r && r.dirty && Number(r.orgId) === Number(CONFIG.orgId) && Number(r.userId) === Number(CONFIG.userId));
-    if (!pending.length) return refreshStatus();
-    if (navigator.onLine === false) return refreshStatus('offline','Offline · saved on this device');
-    setStatus('local','Saved locally · syncing…', pending.length);
-    let failed = false;
-    for (const record of pending) if (!(await syncRecord(record))) failed = true;
-    markLocalCards();
-    if (failed) {
-      const count = await pendingCount().catch(() => pending.length);
-      return setStatus('offline','Connection unavailable · saved on this device',count);
-    }
-    await refreshStatus();
+    if (!db || syncInProgress) return;
+    syncInProgress = true;
+    try {
+      const all = await idbAll();
+      const pending = all.filter(r => r && r.dirty && Number(r.orgId) === Number(CONFIG.orgId) && Number(r.userId) === Number(CONFIG.userId));
+      if (!pending.length) { lastSyncFailure = null; return await refreshStatus(); }
+      lastSyncFailure = null;
+      setStatus('local','Saved on device · contacting Neptune…',pending.length);
+      let failed = false;
+      for (const record of pending) if (!(await syncRecord(record))) failed = true;
+      await markLocalCards();
+      if (failed) {
+        const remaining = await pendingCount().catch(() => pending.length);
+        const reason = lastSyncFailure || {kind:'offline',text:'Sync not confirmed · saved on this device',detail:''};
+        return setStatus(reason.kind,reason.text,remaining,reason.detail);
+      }
+      await refreshStatus();
+    } catch (err) {
+      const count = await pendingCount().catch(() => 0);
+      setStatus('error', 'Sync queue needs attention · device data retained',count,String(err?.message || 'Local sync queue error.'));
+    } finally { syncInProgress = false; }
   }
 
   function scheduleSync(delay = 250) {
@@ -2388,10 +2444,16 @@ body.impact-modal-open{overflow:hidden!important}
     noteTimer = setTimeout(() => saveAndSchedule(700), 120);
   });
   form.addEventListener('submit', e => e.preventDefault());
-  window.addEventListener('online', () => syncPending());
-  window.addEventListener('offline', () => refreshStatus('offline','Offline · saved on this device'));
+  retrySyncButton?.addEventListener('click', () => { scheduleSync(0); });
+  window.addEventListener('online', () => scheduleSync(0));
+  // Offline events are advisory; HTTP reachability still decides delivery.
+  window.addEventListener('offline', () => scheduleSync(0));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) syncPending(); });
-  window.addEventListener('pagehide', () => { if (uiHasChanges()) saveCurrentLocal().catch(()=>{}); });
+  window.addEventListener('pagehide', () => {
+    if (uiHasChanges()) saveCurrentLocal().catch(()=>{});
+    syncSocket?.close(); syncSocket = null;
+  });
+  window.addEventListener('pageshow', event => { if (event.persisted) { startSyncSocket(); scheduleSync(0); } });
 
 
   // Separate offline queue: scores are match-wide, never part of a robot's Tag observation.
@@ -2595,6 +2657,7 @@ body.impact-modal-open{overflow:hidden!important}
       }
       await syncPending();
       await syncManualPending();
+      startSyncSocket();
       setInterval(() => {syncPending();syncManualPending();}, 5000);
     } catch (err) {
       cacheAvailable = false;
