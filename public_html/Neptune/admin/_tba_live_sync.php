@@ -12,7 +12,13 @@ function neptune_tba_live_optional(string $path,int $ttl=0): array {
     }
 }
 
-function neptune_tba_refresh_linked_event(PDO $pdo,int $organizationId,int $eventId): array {
+/**
+ * Import official TBA event data. $updateDerivedMetrics=false makes an on-demand
+ * web refresh finish after committing the authoritative roster/matches/scores;
+ * compute-heavy public ratings remain the responsibility of scheduled analytics.
+ * The scheduled TBA/FIRST runners use the default true behavior unchanged.
+ */
+function neptune_tba_refresh_linked_event(PDO $pdo,int $organizationId,int $eventId,bool $updateDerivedMetrics=true): array {
     $s=$pdo->prepare("SELECT e.*,g.season_year FROM events e JOIN games g ON g.id=e.game_id WHERE e.id=? AND e.organization_id=? LIMIT 1");
     $s->execute([$eventId,$organizationId]);$event=$s->fetch();
     if(!$event)throw new RuntimeException('Current Neptune event was not found.');
@@ -82,6 +88,18 @@ function neptune_tba_refresh_linked_event(PDO $pdo,int $organizationId,int $even
         $pdo->prepare('UPDATE events SET last_tba_sync_at=UTC_TIMESTAMP() WHERE id=?')->execute([$eventId]);
         $pdo->commit();
     }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
+
+    // The manual HTTP action can return success immediately after the official
+    // data commit, without waiting for expensive season-wide EPA/OPR rebuilds.
+    // This does NOT claim the derived ratings were refreshed.
+    if(!$updateDerivedMetrics){
+        return [
+            'event_id'=>$eventId,'event_key'=>$eventKey,'event_name'=>(string)$event['name'],
+            'teams'=>$teamCount,'matches'=>$matchCount,'scored_matches'=>$scoreCount,
+            'epa_source_changed'=>false,'epa'=>null,'epa_season'=>null,'opr'=>null,'depa'=>null,
+            'derived_metrics_recalculated'=>false,
+        ];
+    }
 
     // Rebuild Public EPA from the full TBA match payload. Rebuild D-EPA only
     // when the event source actually changed, which avoids an expensive

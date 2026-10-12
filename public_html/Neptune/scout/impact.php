@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 3) . '/neptune_secure/bootstrap.php';
 require_once __DIR__ . '/_tag_scouting.php';
 require_once dirname(__DIR__) . '/_event_selection.php';
+require_once dirname(__DIR__) . '/analytics/_team_logo_cache.php';
 $u = require_login();
 $org = (int)($u['organization_id'] ?? 0);
 $userId = (int)($u['id'] ?? 0);
@@ -28,36 +29,12 @@ function impact_match_label(array $m): string {
         : $level . ' ' . (int)$m['set_number'] . '-' . (int)$m['match_number'];
 }
 
+function impact_default_tag_keys(): array {
+    return array_fill_keys(['auto_no_attempt','auto_partial','auto_completed','auto_failed','no_scoring','scoring','slow_cycles','fast_cycles','no_defense','attempted_defense','mechanical_issues','disabled','recovered','end_no_attempt','end_partial','end_completed','end_failed','strong_support','penalty_risk'],true);
+}
 function impact_tags(): array {
-    return [
-        'scoring_a_lot'      => ['Scoring a Lot', 'fa-solid fa-bolt'],
-        'fast_cycles'        => ['Fast Cycles', 'fa-solid fa-gauge-high'],
-        'hard_to_defend'     => ['Hard to Defend', 'fa-solid fa-shield-halved'],
-        'impressive_auton'   => ['Impressive Auton', 'fa-solid fa-rocket'],
-        'consistent_auton'   => ['Consistent Auton', 'fa-solid fa-repeat'],
-        'no_auton'           => ['No Auton', 'fa-solid fa-circle-xmark'],
-        'good_defense'       => ['Good Defense', 'fa-solid fa-shield'],
-        'elite_defense'      => ['Elite Defense', 'fa-solid fa-user-shield'],
-        'counter_defense'    => ['Good Counter-Defense', 'fa-solid fa-person-running'],
-        'no_defense'         => ['No Defense', 'fa-solid fa-circle-xmark'],
-        'smart_driver'       => ['Smart Driver', 'fa-solid fa-brain'],
-        'smooth_driver'      => ['Smooth Driver', 'fa-solid fa-route'],
-        'great_partner'      => ['Great Alliance Partner', 'fa-solid fa-people-group'],
-        'feeder_support'     => ['Strong Feeder / Support', 'fa-solid fa-arrows-turn-to-dots'],
-        'strong_endgame'     => ['Strong Endgame', 'fa-solid fa-trophy'],
-        'reliable_endgame'   => ['Reliable Endgame', 'fa-solid fa-flag-checkered'],
-        'slow_endgame'       => ['Slow Endgame', 'fa-solid fa-hourglass-half'],
-        'failed_endgame'     => ['Failed Endgame', 'fa-solid fa-circle-xmark'],
-        'clutch'             => ['Clutch', 'fa-solid fa-fire'],
-        'consistent'         => ['Consistent', 'fa-solid fa-circle-check'],
-        'versatile'          => ['Versatile', 'fa-solid fa-shuffle'],
-        'inconsistent'       => ['Inconsistent', 'fa-solid fa-wave-square'],
-        'penalty_risk'       => ['Penalty Risk', 'fa-solid fa-triangle-exclamation'],
-        'mechanical_issues'  => ['Mechanical Issues', 'fa-solid fa-screwdriver-wrench'],
-        'disabled'           => ['Disabled / Dead', 'fa-solid fa-power-off'],
-        'weak_auton'         => ['Weak Auton', 'fa-solid fa-forward-step'],
-        'struggles_defense'  => ['Struggles Under Defense', 'fa-solid fa-shield-virus'],
-    ];
+    global $tagCatalog;
+    return $tagCatalog;
 }
 
 function impact_ajax_response(array $payload, int $status = 200): never {
@@ -68,7 +45,34 @@ function impact_ajax_response(array $payload, int $status = 200): never {
     exit;
 }
 
-$tagCatalog = impact_tags();
+// Legacy approved tags retain their original database seed keys and IDs.
+// Resolve them to the stable Match observation codes rather than discarding them.
+function impact_match_row_key(array $row): string {
+    $seed=(string)($row['seed_key']??'');
+    $slug=(string)($row['slug']??'');
+    $legacy=['fast-cycles'=>'fast_cycles','slow-cycles'=>'slow_cycles',
+             'recovered'=>'recovered','penalty-risk'=>'penalty_risk'];
+    if(isset($legacy[$seed]))return $legacy[$seed];
+    if($seed==='local:auto_failed' || $slug==='structured-auto-failed')return 'auto_failed';
+    if(str_starts_with($seed,'match:'))return substr($seed,6);
+    // Organization-created tags are supported without requiring a global seed.
+    if(($row['organization_id']??null)!==null && $seed==='')return str_replace('-','_',$slug);
+    return '';
+}
+$settingsCatalog=tagobs_visible_tags($pdo,$org,false);
+$matchTagRows=array_values(array_filter(tagobs_visible_tags($pdo,$org),static function($t){
+    if((int)$t['match_enabled']!==1)return false;
+    $key=impact_match_row_key($t);
+    return $key!=='' && (isset(impact_default_tag_keys()[$key]) || (($t['organization_id']??null)!==null && (string)($t['seed_key']??'')===''));
+}));
+$tagCatalog=[];$matchTagByKey=[];
+$matchTagRows=tagobs_ordered_tags($pdo,$org,'match',$matchTagRows);
+foreach($matchTagRows as $tagRow){
+    $key=impact_match_row_key($tagRow);
+    if($key===''||isset($tagCatalog[$key]))continue;
+    $tagCatalog[$key]=[(string)$tagRow['label'],(string)$tagRow['icon']];
+    $matchTagByKey[$key]=$tagRow;
+}
 $message = '';
 $error = '';
 $isAjax = ($_SERVER['REQUEST_METHOD'] === 'POST') && ((string)($_POST['impact_ajax'] ?? '') === '1');
@@ -180,24 +184,38 @@ $validEventIds = array_map(static fn($x)=>(int)$x['id'], $events);
 if ($eventId && !in_array($eventId, $validEventIds, true)) $eventId = 0;
 if (!$eventId && $events) $eventId = (int)$events[0]['id'];
 
+// Both TBA and FIRST populate the same scoped matches/match_teams tables.
+// Keep every qualification match with robots, but do not offer playoff fixtures
+// to Tag scouts until all six station assignments have actually been published.
 $matches = [];
+$pendingPlayoffs = 0;
 if ($eventId) {
-    $s = $pdo->prepare("SELECT id,event_id,game_id,comp_level,set_number,match_number,field_id,state,scheduled_time,tba_match_key,red_score,blue_score
-        FROM matches WHERE event_id=?
-        ORDER BY CASE comp_level WHEN 'qm' THEN 1 WHEN 'ef' THEN 2 WHEN 'qf' THEN 3 WHEN 'sf' THEN 4 WHEN 'f' THEN 5 ELSE 6 END,
-                 set_number,match_number,field_id");
+    $s = $pdo->prepare("SELECT m.id,m.event_id,m.game_id,m.comp_level,m.set_number,m.match_number,m.field_id,m.state,m.scheduled_time,m.tba_match_key,m.red_score,m.blue_score,
+            (SELECT COUNT(*) FROM match_teams mt WHERE mt.match_id=m.id) AS assigned_stations,
+            (SELECT COUNT(DISTINCT mt.frc_team_number) FROM match_teams mt WHERE mt.match_id=m.id) AS assigned_robots
+        FROM matches m WHERE m.event_id=?
+        ORDER BY CASE m.comp_level WHEN 'qm' THEN 1 WHEN 'ef' THEN 2 WHEN 'qf' THEN 3 WHEN 'sf' THEN 4 WHEN 'f' THEN 5 ELSE 6 END,
+                 m.set_number,m.match_number,m.field_id");
     $s->execute([$eventId]);
-    $matches = $s->fetchAll();
+    foreach ($s->fetchAll() as $row) {
+        $isPlayoff = !in_array(strtolower((string)$row['comp_level']), ['qm','legacy'], true);
+        // A partly decided bracket should not be mistaken for a scoutable match.
+        if ($isPlayoff && ((int)$row['assigned_stations'] !== 6 || (int)$row['assigned_robots'] !== 6)) {
+            $pendingPlayoffs++;
+            continue;
+        }
+        if ((int)$row['assigned_stations'] < 1) continue;
+        $matches[] = $row;
+    }
 }
 
 $matchId = (int)($_GET['match_id'] ?? $_POST['match_id'] ?? 0);
 $validMatchIds = array_map(static fn($x)=>(int)$x['id'], $matches);
 if ($matchId && !in_array($matchId, $validMatchIds, true)) $matchId = 0;
 
-// With no explicit match selected, open the first match that is not fully covered.
-// Coverage is organization-wide: a robot counts as covered once any scout has a saved
-// observation row for that robot in that match. A partially scouted match therefore
-// remains the default until every scheduled robot has at least one observation.
+// Prefer an active match, then a remaining qualification, then a ready
+// playoff match. Do not strand a live playoff scout on an old incomplete qual.
+// Coverage remains organization-wide and never rewrites existing observations.
 if (!$matchId && $matches) {
     $coverageByMatch = [];
     $s = $pdo->prepare("SELECT m.id,
@@ -220,22 +238,41 @@ if (!$matchId && $matches) {
     }
 
     foreach ($matches as $m) {
-        $id = (int)$m['id'];
-        $coverage = $coverageByMatch[$id] ?? ['robot_count'=>0,'observed_count'=>0];
-        if ($coverage['robot_count'] > 0 && $coverage['observed_count'] < $coverage['robot_count']) {
-            $matchId = $id;
+        if (in_array((string)$m['state'], ['ready','running','paused'], true)) {
+            $matchId=(int)$m['id'];
             break;
         }
     }
-
-    // If every scheduled match is already covered, stay on the latest match with robots.
+    // Once qualifications have finished, prioritize playoff scouting over
+    // abandoned qualification gaps. Otherwise finish the current qualifiers.
     if (!$matchId) {
-        for ($i=count($matches)-1; $i>=0; $i--) {
-            $id = (int)$matches[$i]['id'];
-            if (($coverageByMatch[$id]['robot_count'] ?? 0) > 0) { $matchId = $id; break; }
+        $qualificationsOpen = false;
+        foreach ($matches as $m) {
+            if ((string)$m['comp_level']==='qm' && (string)$m['state']!=='ended') {
+                $qualificationsOpen = true;
+                break;
+            }
+        }
+        $candidatePhases = $qualificationsOpen ? [true,false] : [false,true];
+        foreach ($candidatePhases as $qualPhase) {
+            foreach ($matches as $m) {
+                if (((string)$m['comp_level']==='qm')!==$qualPhase) continue;
+                $id=(int)$m['id'];
+                $coverage=$coverageByMatch[$id]??['robot_count'=>0,'observed_count'=>0];
+                if ($coverage['robot_count']>0 && $coverage['observed_count']<$coverage['robot_count']) {
+                    $matchId=$id;
+                    break 2;
+                }
+            }
         }
     }
-    if (!$matchId) $matchId = (int)$matches[0]['id'];
+    if (!$matchId) {
+        for ($i=count($matches)-1;$i>=0;$i--) {
+            $id=(int)$matches[$i]['id'];
+            if (($coverageByMatch[$id]['robot_count']??0)>0) {$matchId=$id;break;}
+        }
+    }
+    if (!$matchId) $matchId=(int)$matches[0]['id'];
 }
 
 $robots = [];
@@ -309,12 +346,32 @@ if (!$selectedRobot) $selectedRobot = ['frc_team_number'=>0,'alliance'=>'','stat
 $robotSummary = $summaryByTeam[$selectedTeam] ?? ['observers'=>0,'scoring_ratings'=>0,'avg_scoring'=>null];
 $robotTagConsensus = $tagConsensus[$selectedTeam] ?? [];
 arsort($robotTagConsensus);
+$activeMatchIndex = -1;
+$qualificationCount = 0;
+$playoffCount = 0;
+foreach ($matches as $index=>$fixture) {
+    if ((int)$fixture['id']===$matchId) $activeMatchIndex=$index;
+    if ((string)$fixture['comp_level']==='qm') $qualificationCount++; else $playoffCount++;
+}
+$prevMatch = $activeMatchIndex>0 ? $matches[$activeMatchIndex-1] : null;
+$nextMatch = $activeMatchIndex>=0 && isset($matches[$activeMatchIndex+1]) ? $matches[$activeMatchIndex+1] : null;
+$activeRound = $match && (string)$match['comp_level']==='qm' ? 'Qualification' : 'Playoffs';
+$matchPageUrl = static function(?array $fixture) use ($eventId): string {
+    return $fixture ? '?'.http_build_query(['event_id'=>$eventId,'match_id'=>(int)$fixture['id']]) : '#';
+};
 
+// Use Neptune's existing cached team logos; do not make network requests while scouting.
+$impactLogoMap = neptune_team_logo_map($org, (int)($event['season_year'] ?? date('Y')), array_map(static fn($r)=>(int)$r['frc_team_number'], $robots));
+$impactLogoUrl = static function(int $team) use ($impactLogoMap): string {
+    $info = $impactLogoMap[$team] ?? [];
+    return !empty($info['exists']) && !empty($info['path']) ? base_url((string)$info['path']) : '';
+};
 $robotsForJs = [];
 foreach ($robots as $r) {
     $team = (int)$r['frc_team_number'];
     $robotsForJs[$team] = [
         'team' => $team,
+        'logo' => $impactLogoUrl($team),
         'alliance' => (string)$r['alliance'],
         'station' => (int)$r['station'],
         'nickname' => (string)($r['nickname'] ?: 'Robot '.$team),
@@ -331,16 +388,16 @@ foreach ($summaryByTeam as $team=>$row) {
 $tagConsensusForJs = [];
 foreach ($tagConsensus as $team=>$rows) $tagConsensusForJs[(int)$team] = $rows;
 
-$tagGroups = [
-    ['label'=>'Auto', 'icon'=>'fa-solid fa-rocket', 'tags'=>['impressive_auton','consistent_auton','weak_auton','no_auton']],
-    ['label'=>'Offense', 'icon'=>'fa-solid fa-bolt', 'tags'=>['scoring_a_lot','fast_cycles','hard_to_defend','struggles_defense']],
-    ['label'=>'Defense', 'icon'=>'fa-solid fa-shield-halved', 'tags'=>['good_defense','elite_defense','counter_defense','no_defense']],
-    ['label'=>'Endgame', 'icon'=>'fa-solid fa-flag-checkered', 'tags'=>['strong_endgame','reliable_endgame','slow_endgame','failed_endgame']],
-    ['label'=>'Driver', 'icon'=>'fa-solid fa-gamepad', 'tags'=>['smart_driver','smooth_driver','clutch','versatile']],
-    ['label'=>'Alliance', 'icon'=>'fa-solid fa-people-group', 'tags'=>['great_partner','feeder_support','consistent']],
-    ['label'=>'Watch Out', 'icon'=>'fa-solid fa-triangle-exclamation', 'tags'=>['inconsistent','penalty_risk','mechanical_issues','disabled']],
-];
-$negativeTags = ['weak_auton','no_auton','no_defense','struggles_defense','slow_endgame','failed_endgame','inconsistent','penalty_risk','mechanical_issues','disabled'];
+$defaultGroupIcons=['Autonomous'=>'fa-solid fa-rocket','Scoring'=>'fa-solid fa-bolt','Defense'=>'fa-solid fa-shield-halved','Reliability'=>'fa-solid fa-screwdriver-wrench','Endgame'=>'fa-solid fa-flag-checkered','Alliance Play'=>'fa-solid fa-people-group'];
+$tagGroups=[];
+foreach($matchTagByKey as $key=>$row){
+    $category=(string)$row['category'];
+    if(!isset($tagGroups[$category]))$tagGroups[$category]=['label'=>$category,'icon'=>$defaultGroupIcons[$category]??'fa-solid fa-tags','tags'=>[]];
+    $tagGroups[$category]['tags'][]=$key;
+}
+$tagGroups=array_values($tagGroups);
+
+$negativeTags = ['auto_no_attempt', 'auto_failed', 'no_scoring', 'no_defense', 'disabled', 'mechanical_issues', 'end_no_attempt', 'end_failed', 'penalty_risk'];
 
 $pageTitle = 'Tag Scouting';
 $moduleName = 'TRIDENT';
@@ -348,28 +405,28 @@ include dirname(__DIR__) . '/partials_header.php';
 ?>
 <style>
 html,body{max-width:100%;overflow-x:hidden}
-.tag-unified-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}.tag-unified-tab{display:flex;align-items:center;justify-content:center;gap:7px;min-height:46px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--muted);text-decoration:none;font-weight:900}.tag-unified-tab.active{color:var(--module-trident);border-color:var(--module-trident);background:color-mix(in srgb,var(--module-trident) 8%,var(--panel2));box-shadow:inset 0 0 0 1px var(--module-trident)}
-.impact-shell{--impact-red:#ff4d67;--impact-blue:#4f8cff;--impact-cyan:#38d7ff;--impact-glow:color-mix(in srgb,var(--module-trident,var(--accent,#6f7cff)) 42%,transparent);position:relative}
-.impact-hero{position:relative;overflow:hidden;padding:22px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,color-mix(in srgb,var(--panel,#111827) 86%,var(--module-trident,#0b79b7) 14%),var(--panel,#111827));box-shadow:0 18px 55px rgba(0,0,0,.14)}
+.tag-unified-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}.tag-unified-tab{display:flex;align-items:center;justify-content:center;gap:7px;min-height:46px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--muted);text-decoration:none;font-weight:900}.tag-unified-tab.active{color:var(--accent);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--panel2));box-shadow:inset 0 0 0 1px var(--accent)}
+.impact-shell{--impact-red:var(--c1-red);--impact-blue:var(--alliance-blue);--impact-cyan:var(--accent);--impact-glow:color-mix(in srgb,var(--accent) 42%,transparent);position:relative}
+.impact-hero{position:relative;overflow:hidden;padding:22px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,color-mix(in srgb,var(--panel) 86%,var(--accent) 14%),var(--panel));box-shadow:0 18px 55px var(--shadow)}
 .impact-hero:before,.impact-hero:after{content:"";position:absolute;border-radius:50%;pointer-events:none;filter:blur(3px)}.impact-hero:before{width:320px;height:320px;right:-110px;top:-180px;background:radial-gradient(circle,var(--impact-glow),transparent 68%)}.impact-hero:after{width:220px;height:220px;left:-120px;bottom:-160px;background:radial-gradient(circle,color-mix(in srgb,var(--impact-cyan) 26%,transparent),transparent 70%)}
 .impact-kicker{display:flex;align-items:center;gap:8px;font-size:.75rem;letter-spacing:.16em;font-weight:950;text-transform:uppercase;color:var(--muted)}
-.impact-title{font-size:clamp(2.15rem,7vw,4.8rem);line-height:.9;margin:10px 0 12px;letter-spacing:-.065em}.impact-title span{background:linear-gradient(90deg,var(--module-trident,var(--accent,#7c8cff)),var(--impact-cyan));-webkit-background-clip:text;background-clip:text;color:transparent}.impact-sub{max-width:820px;margin:0;color:var(--muted);font-size:1rem;line-height:1.55}
+.impact-title{font-size:clamp(2.15rem,7vw,4.8rem);line-height:.9;margin:10px 0 12px;letter-spacing:-.065em}.impact-title span{background:linear-gradient(90deg,var(--accent),var(--impact-cyan));-webkit-background-clip:text;background-clip:text;color:transparent}.impact-sub{max-width:820px;margin:0;color:var(--muted);font-size:1rem;line-height:1.55}
 .impact-selectors{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:19px}.impact-selectors label{display:grid;gap:7px;font-weight:900;font-size:.76rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}.impact-selectors select{width:100%;min-height:54px;border-radius:15px;font-size:1rem;font-weight:850}
-.impact-alliance-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}.impact-alliance{border:1px solid var(--line);border-radius:22px;padding:14px;background:color-mix(in srgb,var(--panel,#111827) 95%,transparent)}.impact-alliance.red{box-shadow:inset 0 4px 0 var(--impact-red)}.impact-alliance.blue{box-shadow:inset 0 4px 0 var(--impact-blue)}.impact-alliance-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.impact-alliance-head b{font-size:.84rem;letter-spacing:.12em;text-transform:uppercase}.impact-robots{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;align-items:stretch;gap:10px}
-.impact-robot{display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;text-decoration:none;text-align:left;font:inherit;color:inherit;border:1px solid var(--line);border-radius:19px;padding:14px;min-height:154px;background:linear-gradient(180deg,color-mix(in srgb,var(--panel,#111827) 95%,white 5%),var(--panel,#111827));transition:.16s transform,.16s border-color,.16s box-shadow,.16s background;position:relative;overflow:hidden;cursor:pointer;touch-action:manipulation}.impact-robot:before{content:"";position:absolute;inset:0;opacity:0;background:linear-gradient(135deg,color-mix(in srgb,var(--module-trident,var(--accent)) 17%,transparent),transparent 58%);transition:.16s opacity}.impact-robot:hover,.impact-robot.active{transform:translateY(-2px);border-color:var(--module-trident,var(--accent,#7c8cff));box-shadow:0 14px 38px rgba(0,0,0,.18),0 0 0 2px var(--impact-glow)}.impact-robot.active:before{opacity:1}.impact-robot.active:after{content:"ACTIVE";position:absolute;right:9px;top:9px;font-size:.58rem;letter-spacing:.09em;font-weight:1000;padding:4px 6px;border-radius:999px;background:var(--module-trident,var(--accent,#7c8cff));color:var(--solid-text,#fff)}
+.impact-alliance-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}.impact-alliance{border:1px solid var(--line);border-radius:22px;padding:14px;background:color-mix(in srgb,var(--panel) 95%,transparent)}.impact-alliance.red{box-shadow:inset 0 4px 0 var(--impact-red)}.impact-alliance.blue{box-shadow:inset 0 4px 0 var(--impact-blue)}.impact-alliance-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.impact-alliance-head b{font-size:.84rem;letter-spacing:.12em;text-transform:uppercase}.impact-robots{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;align-items:stretch;gap:10px}
+.impact-robot{display:flex;flex-direction:column;width:100%;height:100%;box-sizing:border-box;text-decoration:none;text-align:left;font:inherit;color:inherit;border:1px solid var(--line);border-radius:19px;padding:14px;min-height:154px;background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 95%,var(--text) 5%),var(--panel));transition:.16s transform,.16s border-color,.16s box-shadow,.16s background;position:relative;overflow:hidden;cursor:pointer;touch-action:manipulation}.impact-robot:before{content:"";position:absolute;inset:0;opacity:0;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 17%,transparent),transparent 58%);transition:.16s opacity}.impact-robot:hover,.impact-robot.active{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 14px 38px var(--shadow),0 0 0 2px var(--impact-glow)}.impact-robot.active:before{opacity:1}.impact-robot.active:after{content:"ACTIVE";position:absolute;right:9px;top:9px;font-size:.58rem;letter-spacing:.09em;font-weight:1000;padding:4px 6px;border-radius:999px;background:var(--accent);color:var(--solid-text)}
 .impact-team{position:relative;font-size:clamp(1.55rem,3vw,2.35rem);font-weight:1000;letter-spacing:-.05em}.impact-nick{position:relative;font-size:.77rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.impact-meta{position:relative;display:flex;gap:6px;flex-wrap:wrap;align-content:flex-start;margin-top:auto;padding-top:11px;min-height:62px}.impact-mini{font-size:.68rem;border:1px solid var(--line);border-radius:999px;padding:5px 7px;color:var(--muted);font-weight:850}.impact-mini.local{display:none}.impact-robot.has-local .impact-mini.local{display:inline-flex;align-items:center;gap:4px;color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,var(--line));background:color-mix(in srgb,var(--good) 10%,transparent)}.impact-robot.has-pending .impact-mini.local{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 48%,var(--line));background:color-mix(in srgb,var(--warn) 10%,transparent)}
-.impact-main{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr);gap:16px;margin-top:16px}.impact-editor,.impact-consensus{border:1px solid var(--line);border-radius:22px;padding:18px;background:var(--panel,#111827)}.impact-editor{overflow:hidden}.impact-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.impact-editor-head h2{margin:2px 0 0;font-size:clamp(1.65rem,4vw,2.15rem);letter-spacing:-.035em}.impact-station{font-size:.8rem;color:var(--muted);margin-top:3px}
+.impact-main{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr);gap:16px;margin-top:16px}.impact-editor,.impact-consensus{border:1px solid var(--line);border-radius:22px;padding:18px;background:var(--panel)}.impact-editor{overflow:hidden}.impact-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.impact-editor-head h2{margin:2px 0 0;font-size:clamp(1.65rem,4vw,2.15rem);letter-spacing:-.035em}.impact-station{font-size:.8rem;color:var(--muted);margin-top:3px}
 .impact-save-state{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--line);border-radius:15px;padding:10px 12px;margin-bottom:16px;background:color-mix(in srgb,var(--panel2,var(--panel)) 84%,transparent);font-size:.8rem}.impact-save-state i{width:16px;text-align:center}.impact-save-state .pending{margin-left:auto;color:var(--muted);font-weight:850}.impact-save-state.synced i{color:var(--good)}.impact-save-state.local i,.impact-save-state.offline i{color:var(--warn)}.impact-save-state.error i{color:var(--bad)}
 .impact-section-label{margin:20px 0 10px;font-size:.72rem;font-weight:1000;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-.impact-tag-groups{display:grid;gap:12px}.impact-tag-group{border:1px solid var(--line);border-radius:18px;padding:12px;background:color-mix(in srgb,var(--panel2,var(--panel)) 42%,transparent)}.impact-tag-group-head{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;font-weight:1000;color:var(--muted)}.impact-tag-group-head i{color:var(--module-trident,var(--accent))}.impact-tag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px}
-.impact-tag{cursor:pointer;position:relative;min-width:0;touch-action:manipulation}.impact-tag input{position:absolute;opacity:0;pointer-events:none}.impact-tag span{position:relative;display:flex;align-items:center;gap:9px;min-height:58px;width:100%;border:1px solid var(--line);border-radius:15px;padding:10px 38px 10px 12px;font-size:.88rem;font-weight:900;line-height:1.15;transition:.14s transform,.14s border-color,.14s background,.14s box-shadow;background:color-mix(in srgb,var(--panel,#111827) 96%,white 4%);user-select:none}.impact-tag span>i{font-size:1rem;color:var(--muted);min-width:18px;text-align:center;transition:.14s color,.14s transform}.impact-tag span:after{content:"✓";position:absolute;right:10px;top:50%;transform:translateY(-50%) scale(.55);opacity:0;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:var(--module-trident,var(--accent));color:var(--solid-text,#fff);font-weight:1000;transition:.14s opacity,.14s transform}.impact-tag:active span{transform:scale(.975)}.impact-tag input:checked+span{border-color:var(--module-trident,var(--accent,#7c8cff));background:linear-gradient(135deg,color-mix(in srgb,var(--module-trident,var(--accent)) 22%,var(--panel,#111827)),color-mix(in srgb,var(--module-trident,var(--accent)) 8%,var(--panel,#111827)));box-shadow:0 0 0 2px var(--impact-glow),0 10px 24px rgba(0,0,0,.11);animation:impact-pop .18s ease-out}.impact-tag input:checked+span>i{color:var(--module-trident,var(--accent));transform:scale(1.08)}.impact-tag input:checked+span:after{opacity:1;transform:translateY(-50%) scale(1)}.impact-tag.danger input:checked+span{border-color:var(--bad);background:linear-gradient(135deg,color-mix(in srgb,var(--bad) 20%,var(--panel,#111827)),color-mix(in srgb,var(--bad) 7%,var(--panel,#111827)));box-shadow:0 0 0 2px color-mix(in srgb,var(--bad) 28%,transparent)}.impact-tag.danger input:checked+span>i{color:var(--bad)}.impact-tag.danger input:checked+span:after{background:var(--bad)}
+.impact-tag-groups{display:grid;gap:12px}.impact-tag-group{border:1px solid var(--line);border-radius:18px;padding:12px;background:color-mix(in srgb,var(--panel2,var(--panel)) 42%,transparent)}.impact-tag-group-head{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:.72rem;letter-spacing:.11em;text-transform:uppercase;font-weight:1000;color:var(--muted)}.impact-tag-group-head i{color:var(--accent)}.impact-tag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px}
+.impact-tag{cursor:pointer;position:relative;min-width:0;touch-action:manipulation}.impact-tag input{position:absolute;opacity:0;pointer-events:none}.impact-tag span{position:relative;display:flex;align-items:center;gap:9px;min-height:58px;width:100%;border:1px solid var(--line);border-radius:15px;padding:10px 38px 10px 12px;font-size:.88rem;font-weight:900;line-height:1.15;transition:.14s transform,.14s border-color,.14s background,.14s box-shadow;background:color-mix(in srgb,var(--panel) 96%,var(--text) 4%);user-select:none}.impact-tag span>i{font-size:1rem;color:var(--muted);min-width:18px;text-align:center;transition:.14s color,.14s transform}.impact-tag span:after{content:"✓";position:absolute;right:10px;top:50%;transform:translateY(-50%) scale(.55);opacity:0;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:var(--c1-blue);color:var(--solid-text);font-weight:1000;transition:.14s opacity,.14s transform}.impact-tag:active span{transform:scale(.975)}.impact-tag input:checked+span{border-color:var(--accent);background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 22%,var(--panel)),color-mix(in srgb,var(--accent) 8%,var(--panel)));box-shadow:0 0 0 2px var(--impact-glow),0 10px 24px var(--shadow);animation:impact-pop .18s ease-out}.impact-tag input:checked+span>i{color:var(--accent);transform:scale(1.08)}.impact-tag input:checked+span:after{opacity:1;transform:translateY(-50%) scale(1)}.impact-tag.danger input:checked+span{border-color:var(--bad);background:linear-gradient(135deg,color-mix(in srgb,var(--bad) 20%,var(--panel)),color-mix(in srgb,var(--bad) 7%,var(--panel)));box-shadow:0 0 0 2px color-mix(in srgb,var(--bad) 28%,transparent)}.impact-tag.danger input:checked+span>i{color:var(--bad)}.impact-tag.danger input:checked+span:after{background:var(--bad)}
 @keyframes impact-pop{0%{transform:scale(.97)}70%{transform:scale(1.018)}100%{transform:scale(1)}}
-.impact-sliders{display:grid;grid-template-columns:1fr;gap:12px}.impact-slider{--slider-color:var(--module-trident,var(--accent,#7c8cff));border:1px solid var(--line);border-radius:18px;padding:14px;background:linear-gradient(145deg,color-mix(in srgb,var(--panel2,var(--panel)) 52%,transparent),transparent);overflow:hidden;transition:.16s border-color,.16s box-shadow,.16s opacity}.impact-slider.score{--slider-color:var(--module-trident,var(--accent,#0b79b7))}.impact-slider:not(.inactive){border-color:color-mix(in srgb,var(--slider-color) 52%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--slider-color) 16%,transparent)}.impact-slider-top{display:flex;justify-content:space-between;gap:10px;align-items:center}.impact-slider-title{display:flex;align-items:center;gap:8px;font-weight:900;font-size:.9rem}.impact-slider-title i{color:var(--slider-color);font-size:1rem}.impact-rating-actions{display:flex;align-items:center;gap:6px}.impact-value{display:inline-flex;align-items:center;justify-content:center;min-width:88px;min-height:38px;border-radius:13px;padding:6px 9px;background:color-mix(in srgb,var(--slider-color) 16%,var(--panel,#111827));border:1px solid color-mix(in srgb,var(--slider-color) 42%,var(--line));font-size:1.2rem;font-weight:1000;letter-spacing:-.03em;box-shadow:0 0 22px color-mix(in srgb,var(--slider-color) 12%,transparent)}.impact-slider.inactive .impact-value{font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:color-mix(in srgb,var(--panel2,var(--panel)) 75%,transparent);border-color:var(--line);box-shadow:none}.impact-clear{border:1px solid var(--line);border-radius:11px;padding:7px 9px;background:transparent;color:var(--muted);font-size:.68rem;font-weight:950;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;opacity:1;transition:.14s opacity,.14s border-color,.14s color}.impact-slider.inactive .impact-clear{opacity:.38;pointer-events:none}.impact-clear:hover{color:var(--text);border-color:var(--slider-color)}
-.impact-block-control{position:relative;margin:15px 0 6px;padding:5px 0}.impact-blocks{display:grid;grid-template-columns:repeat(var(--blocks),1fr);gap:3px;height:34px;pointer-events:none}.impact-blocks span{border-radius:4px;background:color-mix(in srgb,var(--line) 72%,transparent);border:1px solid color-mix(in srgb,var(--line) 86%,transparent);transform:scaleY(.72);transition:.12s transform,.12s background,.12s box-shadow,.12s opacity}.impact-slider:not(.inactive) .impact-blocks span.on{background:var(--slider-color);border-color:var(--slider-color);transform:scaleY(1);box-shadow:0 0 10px color-mix(in srgb,var(--slider-color) 24%,transparent)}.impact-slider:not(.inactive) .impact-blocks span.current{transform:scaleY(1.18);box-shadow:0 0 0 2px color-mix(in srgb,var(--solid-text,#fff) 70%,transparent),0 0 16px color-mix(in srgb,var(--slider-color) 36%,transparent)}.impact-slider.inactive .impact-blocks span{opacity:.52}.impact-block-control input[type=range]{position:absolute;inset:-8px 0;width:100%;height:54px;margin:0;opacity:0;cursor:pointer;touch-action:pan-y}.impact-block-control:focus-within .impact-blocks{outline:2px solid color-mix(in srgb,var(--slider-color) 65%,transparent);outline-offset:4px;border-radius:6px}.impact-slider-scale{display:flex;justify-content:space-between;font-size:.65rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.impact-rating-help{margin-top:8px;font-size:.68rem;color:var(--muted);line-height:1.35}.impact-slider.inactive .impact-rating-help:before{content:"Tap or drag to rate · ";font-weight:900;color:var(--text)}
+.impact-sliders{display:grid;grid-template-columns:1fr;gap:12px}.impact-slider{--slider-color:var(--accent);border:1px solid var(--line);border-radius:18px;padding:14px;background:linear-gradient(145deg,color-mix(in srgb,var(--panel2,var(--panel)) 52%,transparent),transparent);overflow:hidden;transition:.16s border-color,.16s box-shadow,.16s opacity}.impact-slider.score{--slider-color:var(--accent)}.impact-slider:not(.inactive){border-color:color-mix(in srgb,var(--slider-color) 52%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--slider-color) 16%,transparent)}.impact-slider-top{display:flex;justify-content:space-between;gap:10px;align-items:center}.impact-slider-title{display:flex;align-items:center;gap:8px;font-weight:900;font-size:.9rem}.impact-slider-title i{color:var(--slider-color);font-size:1rem}.impact-rating-actions{display:flex;align-items:center;gap:6px}.impact-value{display:inline-flex;align-items:center;justify-content:center;min-width:88px;min-height:38px;border-radius:13px;padding:6px 9px;background:color-mix(in srgb,var(--slider-color) 16%,var(--panel));border:1px solid color-mix(in srgb,var(--slider-color) 42%,var(--line));font-size:1.2rem;font-weight:1000;letter-spacing:-.03em;box-shadow:0 0 22px color-mix(in srgb,var(--slider-color) 12%,transparent)}.impact-slider.inactive .impact-value{font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:color-mix(in srgb,var(--panel2,var(--panel)) 75%,transparent);border-color:var(--line);box-shadow:none}.impact-clear{border:1px solid var(--line);border-radius:11px;padding:7px 9px;background:transparent;color:var(--muted);font-size:.68rem;font-weight:950;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;opacity:1;transition:.14s opacity,.14s border-color,.14s color}.impact-slider.inactive .impact-clear{opacity:.38;pointer-events:none}.impact-clear:hover{color:var(--text);border-color:var(--slider-color)}
+.impact-block-control{position:relative;margin:15px 0 6px;padding:5px 0}.impact-blocks{display:grid;grid-template-columns:repeat(var(--blocks),1fr);gap:3px;height:34px;pointer-events:none}.impact-blocks span{border-radius:4px;background:color-mix(in srgb,var(--line) 72%,transparent);border:1px solid color-mix(in srgb,var(--line) 86%,transparent);transform:scaleY(.72);transition:.12s transform,.12s background,.12s box-shadow,.12s opacity}.impact-slider:not(.inactive) .impact-blocks span.on{background:var(--slider-color);border-color:var(--slider-color);transform:scaleY(1);box-shadow:0 0 10px color-mix(in srgb,var(--slider-color) 24%,transparent)}.impact-slider:not(.inactive) .impact-blocks span.current{transform:scaleY(1.18);box-shadow:0 0 0 2px color-mix(in srgb,var(--text) 70%,transparent),0 0 16px color-mix(in srgb,var(--slider-color) 36%,transparent)}.impact-slider.inactive .impact-blocks span{opacity:.52}.impact-block-control input[type=range]{position:absolute;inset:-8px 0;width:100%;height:54px;margin:0;opacity:0;cursor:pointer;touch-action:pan-y}.impact-block-control:focus-within .impact-blocks{outline:2px solid color-mix(in srgb,var(--slider-color) 65%,transparent);outline-offset:4px;border-radius:6px}.impact-slider-scale{display:flex;justify-content:space-between;font-size:.65rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.impact-rating-help{margin-top:8px;font-size:.68rem;color:var(--muted);line-height:1.35}.impact-slider.inactive .impact-rating-help:before{content:"Tap or drag to rate · ";font-weight:900;color:var(--text)}
 .impact-note textarea{width:100%;min-height:96px;border-radius:15px;resize:vertical;font-size:1rem;padding:12px}.impact-auto-note{margin-top:10px;font-size:.76rem;color:var(--muted);display:flex;align-items:center;gap:7px}
 
-.impact-section-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px}.impact-section-row .impact-section-label{margin:0}.impact-advanced-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;color:var(--muted);font-size:.72rem;font-weight:950;letter-spacing:.06em;text-transform:uppercase}.impact-advanced-toggle input{position:absolute;opacity:0;pointer-events:none}.impact-toggle-track{width:46px;height:26px;padding:3px;border-radius:999px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2,var(--panel)) 75%,transparent);transition:.16s background,.16s border-color,.16s box-shadow}.impact-toggle-knob{display:block;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:.16s transform,.16s background}.impact-advanced-toggle input:checked+.impact-toggle-track{border-color:var(--module-trident,var(--accent));background:color-mix(in srgb,var(--module-trident,var(--accent)) 18%,var(--panel));box-shadow:0 0 0 2px var(--impact-glow)}.impact-advanced-toggle input:checked+.impact-toggle-track .impact-toggle-knob{transform:translateX(20px);background:var(--module-trident,var(--accent))}.impact-advanced-hint{margin:-3px 0 10px;color:var(--muted);font-size:.74rem;line-height:1.4}.impact-advanced-hint[hidden]{display:none!important}
-.impact-tag-weight{display:none;position:absolute;right:38px;top:7px;min-width:24px;height:22px;padding:0 6px;border-radius:999px;align-items:center;justify-content:center;font-style:normal;font-size:.63rem;font-weight:1000;background:var(--module-trident,var(--accent));color:var(--solid-text,#fff);box-shadow:0 4px 12px rgba(0,0,0,.16)}.impact-tag-weight.unweighted{background:var(--muted);color:var(--panel,#111827)}.impact-shell.advanced-mode .impact-tag input:checked+span .impact-tag-weight:not([hidden]){display:inline-flex}
+.impact-section-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px}.impact-section-row .impact-section-label{margin:0}.impact-advanced-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;color:var(--muted);font-size:.72rem;font-weight:950;letter-spacing:.06em;text-transform:uppercase}.impact-advanced-toggle input{position:absolute;opacity:0;pointer-events:none}.impact-toggle-track{width:46px;height:26px;padding:3px;border-radius:999px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2,var(--panel)) 75%,transparent);transition:.16s background,.16s border-color,.16s box-shadow}.impact-toggle-knob{display:block;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:.16s transform,.16s background}.impact-advanced-toggle input:checked+.impact-toggle-track{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,var(--panel));box-shadow:0 0 0 2px var(--impact-glow)}.impact-advanced-toggle input:checked+.impact-toggle-track .impact-toggle-knob{transform:translateX(20px);background:var(--accent)}.impact-advanced-hint{margin:-3px 0 10px;color:var(--muted);font-size:.74rem;line-height:1.4}.impact-advanced-hint[hidden]{display:none!important}
+.impact-tag-weight{display:none;position:absolute;right:38px;top:7px;min-width:24px;height:22px;padding:0 6px;border-radius:999px;align-items:center;justify-content:center;font-style:normal;font-size:.63rem;font-weight:1000;background:var(--accent);color:var(--solid-text);box-shadow:0 4px 12px var(--shadow)}.impact-tag-weight.unweighted{background:var(--muted);color:var(--panel)}.impact-shell.advanced-mode .impact-tag input:checked+span .impact-tag-weight:not([hidden]){display:inline-flex}
 
 .impact-consensus-title{margin:6px 0 0;font-size:1.55rem;letter-spacing:-.025em}
 .impact-consensus-summary{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(0,1.2fr);gap:10px;margin-top:14px}
@@ -384,12 +441,12 @@ html,body{max-width:100%;overflow-x:hidden}
 .impact-consensus-label{margin-top:18px}
 .impact-consensus-tags{display:flex;flex-wrap:wrap;gap:7px}
 .impact-consensus-tag{display:inline-flex;align-items:center;gap:7px;max-width:100%;border:1px solid var(--line);border-radius:999px;padding:7px 8px 7px 10px;background:color-mix(in srgb,var(--panel2,var(--panel)) 62%,transparent);font-size:.76rem;font-weight:850;line-height:1.1}
-.impact-consensus-tag>i{color:var(--module-trident,var(--accent));flex:0 0 auto}
+.impact-consensus-tag>i{color:var(--accent);flex:0 0 auto}
 .impact-consensus-tag>span{min-width:0;overflow-wrap:anywhere}
-.impact-consensus-tag>b{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:color-mix(in srgb,var(--module-trident,var(--accent)) 17%,var(--panel,#111827));color:var(--text);font-size:.68rem;font-weight:1000}
+.impact-consensus-tag>b{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:color-mix(in srgb,var(--accent) 17%,var(--panel));color:var(--text);font-size:.68rem;font-weight:1000}
 .impact-consensus-empty{margin:0;color:var(--muted);font-size:.82rem;line-height:1.45}
 .impact-consensus-note{display:flex;gap:10px;align-items:flex-start;margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:15px;background:color-mix(in srgb,var(--panel2,var(--panel)) 55%,transparent)}
-.impact-consensus-note>i{color:var(--module-trident,var(--accent));margin-top:2px}.impact-consensus-note div{display:grid;gap:2px}.impact-consensus-note b{font-size:.78rem}.impact-consensus-note span{color:var(--muted);font-size:.72rem;line-height:1.4}
+.impact-consensus-note>i{color:var(--accent);margin-top:2px}.impact-consensus-note div{display:grid;gap:2px}.impact-consensus-note b{font-size:.78rem}.impact-consensus-note span{color:var(--muted);font-size:.72rem;line-height:1.4}
 
 .impact-weight-modal[hidden]{display:none!important}
 .impact-weight-modal{
@@ -409,7 +466,7 @@ html,body{max-width:100%;overflow-x:hidden}
   padding:12px!important;
   box-sizing:border-box!important;
   overflow:auto!important;
-  background:rgba(0,0,0,.82)!important;
+  background:var(--overlay-strong)!important;
   backdrop-filter:none!important;
 }
 .impact-weight-card{
@@ -425,9 +482,9 @@ html,body{max-width:100%;overflow-x:hidden}
   overflow-y:auto!important;
   border:1px solid var(--line)!important;
   border-radius:22px!important;
-  background:var(--panel,#111827)!important;
+  background:var(--panel)!important;
   color:var(--text)!important;
-  box-shadow:0 28px 90px rgba(0,0,0,.5)!important;
+  box-shadow:0 28px 90px var(--shadow)!important;
 }
 .impact-weight-card *{box-sizing:border-box;min-width:0}
 .impact-weight-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -435,7 +492,7 @@ html,body{max-width:100%;overflow-x:hidden}
 .impact-weight-head h3{margin:4px 0 0;font-size:1.4rem;line-height:1.08;overflow-wrap:anywhere}
 .impact-weight-cancel{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;border:1px solid var(--line);border-radius:13px;background:transparent;color:var(--muted);padding:0;font-size:1rem;font-weight:1000;cursor:pointer}
 .impact-weight-copy{display:none!important}
-.impact-weight-slider{--slider-color:var(--module-trident,var(--accent,#0b79b7));width:100%!important;max-width:100%!important;margin-top:14px!important}
+.impact-weight-slider{--slider-color:var(--accent);width:100%!important;max-width:100%!important;margin-top:14px!important}
 .impact-weight-slider .impact-slider-top{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;flex-wrap:wrap!important}
 .impact-weight-slider .impact-slider-title{flex:1 1 130px!important}
 .impact-weight-slider .impact-rating-actions{display:flex!important;align-items:center!important;gap:6px!important;margin-left:auto!important;width:auto!important}
@@ -504,8 +561,8 @@ body.impact-modal-open{overflow:hidden!important}
     content:""!important;
     width:10px!important;height:10px!important;min-width:10px!important;
     padding:0!important;right:10px!important;top:10px!important;border-radius:50%!important;
-    background:var(--module-trident,var(--accent,#7c8cff))!important;
-    box-shadow:0 0 0 3px color-mix(in srgb,var(--module-trident,var(--accent,#7c8cff)) 18%,transparent),0 0 12px var(--impact-glow)!important;
+    background:var(--accent)!important;
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent),0 0 12px var(--impact-glow)!important;
     color:transparent!important;font-size:0!important;line-height:0!important;letter-spacing:0!important;
   }
 }
@@ -513,42 +570,389 @@ body.impact-modal-open{overflow:hidden!important}
 
 /* Manual final scores are shared per match, not per robot. */
 .manual-scores-launch{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:9px 0 2px}
-.manual-scores-launch button{padding:10px 14px;border:1px solid var(--module-trident,var(--accent));border-radius:12px;background:color-mix(in srgb,var(--module-trident,var(--accent)) 12%,var(--panel));color:var(--text);font-weight:900;cursor:pointer}
+.manual-scores-launch button{padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--text);font-weight:900;cursor:pointer}
 .manual-scores-launch button:hover{filter:brightness(1.16)}
 .manual-score-caption{font-size:.76rem;color:var(--muted);line-height:1.5}
-.manual-score-dialog{border:1px solid var(--line);background:var(--panel,#101b29);color:var(--text,#fff);border-radius:20px;width:min(94vw,480px);max-height:calc(100dvh - 32px);overflow:auto;padding:22px;box-shadow:0 30px 100px rgba(0,0,0,.7);box-sizing:border-box}
-.manual-score-dialog::backdrop{background:rgba(1,8,19,.82)}
+.manual-score-dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:20px;width:min(94vw,480px);max-height:calc(100dvh - 32px);overflow:auto;padding:22px;box-shadow:0 30px 100px var(--shadow);box-sizing:border-box}
+.manual-score-dialog::backdrop{background:var(--overlay-strong)}
 .manual-score-dialog h3{margin:4px 0 10px;font-size:1.55rem}
 .manual-score-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:17px 0}
 .manual-score-fields label{font-size:.83rem;font-weight:900;display:grid;gap:8px}
 .manual-score-fields input{width:100%;box-sizing:border-box;min-height:54px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:1.25rem;font-weight:950;background:var(--panel2,var(--panel));color:var(--text)}
-.manual-score-fields label:first-child{color:#ff6b83}.manual-score-fields label:last-child{color:#73a0ff}
+.manual-score-fields label:first-child{color:var(--c1-red)}.manual-score-fields label:last-child{color:var(--alliance-blue)}
 .manual-score-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .manual-score-actions button{min-height:46px;padding:10px 16px;border-radius:12px;font-weight:900;cursor:pointer;background:var(--panel2);color:var(--text);border:1px solid var(--line)}
-.manual-score-actions button[type=submit]{background:var(--module-trident,var(--accent));color:#fff}
+.manual-score-actions button[type=submit]{background:var(--accent);color:var(--solid-text)}
 .manual-score-actions button:disabled{opacity:.5;cursor:wait}
 .manual-score-status{font-size:.82rem;line-height:1.45;min-height:20px;margin:12px 0;color:var(--muted)}
-.manual-score-status.error{color:#ff7b89}.manual-score-status.good{color:var(--good,#70e5a9)}
-.manual-score-conflict{border:1px solid #c98d3e;border-radius:12px;padding:10px;margin:10px 0;font-size:.82rem;line-height:1.5}
+.manual-score-status.error{color:var(--bad)}.manual-score-status.good{color:var(--good)}
+.manual-score-conflict{border:1px solid var(--warn);border-radius:12px;padding:10px;margin:10px 0;font-size:.82rem;line-height:1.5}
 .manual-score-conflict[hidden]{display:none}
 .manual-official-box{margin-top:14px;padding:13px;border:1px solid var(--line);border-radius:14px;background:var(--panel2,var(--panel));}
 .manual-official-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px}
 .manual-official-header strong{font-size:.85rem}
-.manual-official-source{font-size:.72rem;font-weight:900;letter-spacing:.04em;border:1px solid var(--module-trident,var(--accent));border-radius:999px;padding:4px 9px;color:var(--text)}
+.manual-official-source{font-size:.72rem;font-weight:900;letter-spacing:.04em;border:1px solid var(--accent);border-radius:999px;padding:4px 9px;color:var(--text)}
 .manual-official-scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .manual-official-score{border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
 .manual-official-score span{display:block;font-size:.77rem;font-weight:800;color:var(--muted)}
 .manual-official-score b{display:block;font-size:1.45rem;margin-top:3px;line-height:1.2}
-.manual-official-score.red b{color:#ff778b}.manual-official-score.blue b{color:#7ba7ff}
+.manual-official-score.red b{color:var(--c1-red)}.manual-official-score.blue b{color:var(--alliance-blue)}
 .manual-official-score .unavailable{font-size:.85rem;font-weight:700;color:var(--muted)}
 .manual-official-note{font-size:.76rem;color:var(--muted);line-height:1.5;margin:9px 0 0}
+
+/* Keep long-press robot navigation from selecting text on touch devices.
+   Native form fields remain editable and selectable. */
+.impact-shell, .impact-shell * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+.impact-shell input, .impact-shell textarea, .impact-shell select,
+.impact-shell [contenteditable=""], .impact-shell [contenteditable="true"] {
+  -webkit-user-select:text; user-select:text; -webkit-touch-callout:default;
+}
+/* Mobile-first scouting UI — inherits the global Neptune palette, including organization presets. */
+.impact-shell{
+  --impact-red:var(--c1-red);
+  --impact-blue:var(--alliance-blue);
+  --impact-glow:color-mix(in srgb,var(--accent) 22%,transparent);
+  color:var(--text);
+  background:linear-gradient(155deg,color-mix(in srgb,var(--bg2) 65%,var(--panel)),var(--bg));
+  border:1px solid var(--line);border-radius:24px;
+  padding:clamp(12px,2.4vw,28px);max-width:1500px;margin:0 auto 32px;
+  box-shadow:0 18px 64px var(--shadow);
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+.impact-shell *, .impact-shell *::before,.impact-shell *::after{box-sizing:border-box}
+.impact-shell .tag-unified-tab{border-radius:14px;background:var(--panel2);color:var(--muted);border-color:var(--line);min-height:45px;letter-spacing:.015em}
+.impact-shell .tag-unified-tab.active{color:var(--text);background:color-mix(in srgb,var(--accent) 15%,var(--panel));border-color:var(--accent);box-shadow:0 6px 22px var(--shadow)}
+.impact-shell .impact-hero{padding:clamp(18px,3vw,32px);border-radius:21px;background:radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 66%),linear-gradient(150deg,color-mix(in srgb,var(--accent) 11%,var(--panel)),var(--panel) 78%);border-color:var(--line);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--text) 6%,transparent),0 16px 40px var(--shadow)}
+.impact-shell .impact-title{font-size:clamp(2rem,5vw,3.5rem);line-height:1;letter-spacing:-.055em;margin:12px 0}
+.impact-shell .impact-title span{background:linear-gradient(95deg,var(--accent),color-mix(in srgb,var(--accent) 58%,var(--text)));-webkit-background-clip:text;background-clip:text}
+.impact-shell .impact-sub{font-size:.93rem;max-width:670px;color:var(--muted)}
+.impact-hero-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.impact-hero-badges span{display:inline-flex;align-items:center;gap:7px;border-radius:30px;border:1px solid color-mix(in srgb,var(--accent) 36%,var(--line));background:color-mix(in srgb,var(--accent) 9%,var(--panel));padding:6px 11px;color:var(--text);font-size:.75rem;font-weight:780}
+.impact-shell .impact-selectors{margin-top:20px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.impact-shell .impact-selectors label{color:var(--muted)}
+.impact-shell .impact-selectors select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:13px;min-height:51px;font-weight:800;padding:0 14px}
+.impact-match-nav{display:grid;grid-template-columns:minmax(80px,.25fr) minmax(0,1fr) minmax(80px,.25fr);align-items:stretch;gap:10px;padding:11px;margin-top:14px;border:1px solid var(--line);border-radius:19px;background:linear-gradient(100deg,color-mix(in srgb,var(--accent) 9%,var(--panel2)),var(--panel));touch-action:pan-y;box-shadow:0 10px 28px var(--shadow)}
+.impact-nav-arrow{display:flex;align-items:center;justify-content:center;gap:8px;min-height:80px;border:1px solid var(--line);border-radius:13px;background:var(--panel2);color:var(--text);text-decoration:none!important;font-size:.84rem;font-weight:850;transition:background .14s,transform .14s}
+.impact-nav-arrow:not(.disabled):active{background:color-mix(in srgb,var(--accent) 16%,var(--panel2));transform:scale(.975)}.impact-nav-arrow.disabled{opacity:.28;pointer-events:none}
+.impact-match-now{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;text-align:center;gap:3px}
+.impact-nav-status{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.impact-round-badge{font-size:.66rem;font-weight:950;letter-spacing:.09em;text-transform:uppercase;border-radius:100px;padding:4px 9px;background:color-mix(in srgb,var(--accent) 13%,var(--panel2));color:var(--text);border:1px solid color-mix(in srgb,var(--accent) 36%,var(--line))}
+.impact-round-badge.playoff{background:color-mix(in srgb,var(--warn) 13%,var(--panel2));color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+.impact-match-progress{color:var(--muted);font-size:.72rem;font-weight:800}.impact-match-now strong{font-size:clamp(1.3rem,3vw,1.8rem);line-height:1.2;color:var(--text);letter-spacing:-.035em}.impact-round-hint{font-size:.7rem;color:var(--muted)}
+.impact-bracket-note{margin-top:9px;padding:10px 13px;border-radius:12px;border:1px solid color-mix(in srgb,var(--warn) 47%,var(--line));color:var(--text);background:color-mix(in srgb,var(--warn) 10%,var(--panel));font-size:.77rem;line-height:1.4;display:flex;align-items:center;gap:9px}
+.impact-shell .impact-alliance-grid{gap:12px;margin-top:14px}.impact-shell .impact-alliance{border-radius:18px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.impact-shell .impact-alliance.red{box-shadow:inset 0 3px 0 var(--c1-red)}.impact-shell .impact-alliance.blue{box-shadow:inset 0 3px 0 var(--alliance-blue)}
+.impact-shell .impact-alliance-head{padding:0 1px 6px}.impact-shell .impact-alliance.red .impact-alliance-head b{color:var(--c1-red)}.impact-shell .impact-alliance.blue .impact-alliance-head b{color:var(--alliance-blue)}
+.impact-shell .impact-robots{gap:8px}.impact-shell .impact-robot{min-height:112px;padding:13px;border-radius:14px;background:var(--panel2);border-color:var(--line);box-shadow:none}
+.impact-shell .impact-robot.active{transform:translateY(-1px);background:color-mix(in srgb,var(--accent) 16%,var(--panel));border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent),0 8px 22px var(--shadow)}
+.impact-shell .impact-team{font-size:clamp(1.35rem,2.6vw,2rem);color:var(--text)}.impact-shell .impact-nick{color:var(--muted)}.impact-shell .impact-meta{min-height:0;gap:4px}.impact-shell .impact-mini{font-size:.6rem;padding:4px 6px;border-color:var(--line);color:var(--muted)}
+.impact-shell .impact-main{gap:13px;margin-top:14px}.impact-shell .impact-editor,.impact-shell .impact-consensus{background:var(--panel);border-color:var(--line);border-radius:19px}
+.impact-shell .impact-editor-head{align-items:center;border-bottom:1px solid var(--line);padding-bottom:14px;touch-action:pan-y}.impact-shell .impact-editor-head h2{font-size:clamp(1.35rem,3vw,2.1rem);color:var(--text);line-height:1.12}
+.impact-robot-actions{display:flex;align-items:center;gap:7px;flex:none}.impact-robot-actions button{width:41px;height:42px;min-height:42px;display:grid;place-items:center;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--line);cursor:pointer}.impact-robot-actions button:disabled{opacity:.3;cursor:not-allowed}.impact-robot-actions span{font-size:.7rem;color:var(--muted);font-weight:900;white-space:nowrap}
+.impact-category-rail{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:5px 1px 14px;margin:4px 0 0;position:relative}.impact-category-rail::-webkit-scrollbar{display:none}
+.impact-category-rail button{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;flex:none;min-height:42px;border-radius:100px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:9px 13px;font-size:.78rem;font-weight:850;cursor:pointer}
+.impact-category-rail button.active{background:var(--c1-blue);border-color:var(--c1-blue);color:var(--solid-text);box-shadow:0 4px 18px var(--shadow)}
+.impact-shell .impact-tag-groups{gap:10px}.impact-shell .impact-tag-group{background:var(--panel2);border:1px solid var(--line);border-radius:15px}.impact-tag-group[hidden]{display:none!important}.impact-shell .impact-tag-group-head{color:var(--muted)}.impact-shell .impact-tag-group-head i{color:var(--accent)}.impact-shell .impact-tag span{border-radius:12px;min-height:54px}
+.impact-shell .impact-section-label{color:var(--muted)}.impact-shell .impact-save-state{border-radius:12px}
+.impact-shell .impact-consensus{background:linear-gradient(170deg,color-mix(in srgb,var(--accent) 6%,var(--panel)),var(--panel))}
+.impact-shell .impact-robot:focus-visible,.impact-nav-arrow:focus-visible,.impact-category-rail button:focus-visible,.impact-robot-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.impact-tag:focus-within span{outline:2px solid var(--accent);outline-offset:2px}
+.impact-mobile-dock{display:none}
+@media(max-width:800px){
+  .impact-shell{padding:9px 9px 96px;border-radius:14px}
+  .impact-shell .impact-hero{padding:18px;border-radius:15px}
+  .impact-shell .impact-selectors{grid-template-columns:1fr 1fr;gap:8px}
+  .impact-shell .impact-selectors select{min-height:48px;font-size:.86rem;padding:8px 7px}
+  .impact-shell .impact-title{font-size:2.2rem}
+  .impact-shell .impact-alliance-grid{grid-template-columns:1fr;gap:8px}
+  .impact-shell .impact-robots{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .impact-shell .impact-alliance{padding:7px;border-radius:13px}
+  .impact-shell .impact-robot{padding:8px;height:105px;min-height:105px;border-radius:10px}
+  .impact-shell .impact-robot.active:after{right:6px;top:6px}
+  .impact-shell .impact-team{font-size:1.35rem}
+  .impact-shell .impact-nick{font-size:.65rem}
+  .impact-shell .impact-meta{padding-top:6px}.impact-shell .impact-mini{font-size:.56rem;padding:2px 4px}
+  .impact-shell .impact-main{grid-template-columns:1fr}
+  .impact-nav-arrow{min-height:68px}
+  .impact-match-nav{grid-template-columns:minmax(56px,72px) minmax(0,1fr) minmax(56px,72px);gap:5px;padding:6px}
+  .impact-nav-arrow span{display:none}.impact-nav-arrow i{font-size:1.05rem}
+  .impact-round-hint{font-size:.62rem}.impact-round-hint i{display:none}
+  .impact-mobile-dock{display:flex;align-items:stretch;gap:8px;position:fixed;z-index:500;bottom:calc(8px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);width:min(calc(100vw - 24px),620px);background:color-mix(in srgb,var(--panel) 95%,transparent);backdrop-filter:blur(16px);padding:7px;border:1px solid var(--line);border-radius:16px;margin:0;box-shadow:0 12px 35px var(--shadow)}
+  .impact-mobile-dock a,.impact-mobile-dock button{display:flex;align-items:center;justify-content:center;gap:6px;flex:1;border:0;border-radius:11px;text-decoration:none;color:var(--text);background:var(--panel2);border:1px solid var(--line);font-weight:850;font-size:.78rem;padding:11px 5px;min-height:52px;cursor:pointer}
+  .impact-mobile-dock button{background:var(--c1-blue);color:var(--solid-text);flex:1.4}.impact-mobile-dock .disabled{opacity:.32;pointer-events:none}
+  .impact-shell .impact-editor,.impact-shell .impact-consensus{padding:13px}
+}
+@media(max-width:440px){
+  .impact-shell .impact-sub{font-size:.83rem}.impact-hero-badges{gap:5px;margin-top:11px}.impact-hero-badges span{font-size:.61rem;padding:5px 7px}
+  .impact-shell .impact-alliance-grid{gap:7px}.impact-shell .impact-alliance{padding:8px}
+  .impact-shell .impact-robots{gap:4px}.impact-shell .impact-robot{min-height:108px;height:108px;padding:9px}
+  .impact-shell .impact-team{font-size:1.5rem}.impact-shell .impact-mini{font-size:.52rem}.impact-shell .impact-meta{padding-top:4px}
+  .impact-shell .impact-tag-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .impact-shell .impact-tag span{font-size:.76rem;min-height:64px;padding:7px 25px 7px 8px}
+  .impact-shell .impact-editor-head{gap:7px}.impact-robot-actions{gap:3px}.impact-robot-actions button{width:34px;height:37px;min-height:37px}.impact-robot-actions span{font-size:.6rem}
+  .impact-round-hint{font-size:.58rem}
+}
+@media(prefers-reduced-motion:reduce){.impact-shell *{scroll-behavior:auto!important;transition:none!important}}
+
+/* Non-blocking navigation feedback, styled entirely with Neptune theme tokens. */
+.impact-navigation-toast{position:fixed;z-index:12000;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translate(-50%,10px);max-width:min(90vw,420px);min-width:180px;padding:11px 17px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--text);box-shadow:0 12px 38px var(--shadow);text-align:center;font-weight:750;font-size:.93rem;line-height:1.4;opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+.impact-navigation-toast.visible{opacity:1;transform:translate(-50%,0)}
+@media(min-width:800px){.impact-navigation-toast{bottom:28px}}
+@media(prefers-reduced-motion:reduce){.impact-navigation-toast{transition:none}}
+
+/* Touch-friendly robot quick picker; colors always follow Neptune's theme. */
+/* The quick picker is appended to body, outside .impact-shell. */
+.impact-quick-picker, .impact-quick-picker *,
+.impact-quick-picker *::before, .impact-quick-picker *::after {
+  -webkit-user-select:none!important;
+  user-select:none!important;
+  -webkit-touch-callout:none!important;
+}
+.impact-quick-picker-team, .impact-quick-picker-close {
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+.impact-quick-picker-team:active { transform:scale(.985); }
+.impact-quick-picker-team { transition:transform .11s ease,background .11s ease; }
+.impact-quick-picker{border:1px solid var(--line);border-radius:20px 20px 0 0;padding:0;width:min(100%,520px);max-width:100%;max-height:min(76dvh,620px);margin:auto auto 0;background:var(--panel);color:var(--text);box-shadow:0 -12px 48px var(--shadow);overflow:hidden}
+.impact-quick-picker::backdrop{background:rgba(0,0,0,.52)}
+.impact-quick-picker-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 18px 12px;border-bottom:1px solid var(--line)}
+.impact-quick-picker-head b{font-size:1.05rem}.impact-quick-picker-head small{display:block;color:var(--muted);margin-top:3px}
+.impact-quick-picker-close{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;width:42px;height:42px;display:grid;place-items:center;cursor:pointer}
+.impact-quick-picker-list{display:grid;gap:9px;overflow:auto;max-height:calc(min(76dvh,620px) - 92px);padding:14px 16px calc(18px + env(safe-area-inset-bottom,0px))}
+.impact-quick-picker-team{min-height:65px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);color:var(--text);padding:11px 13px;text-align:left;display:flex;align-items:center;gap:12px;cursor:pointer;touch-action:manipulation}
+.impact-quick-picker-team[aria-current="true"]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.impact-quick-picker-team .number{font-weight:850;font-size:1.13rem;min-width:78px}.impact-quick-picker-team .details{display:flex;flex-direction:column;gap:4px;min-width:0}.impact-quick-picker-team .details b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.impact-quick-picker-team .details small{color:var(--muted)}
+@media(min-width:800px){.impact-quick-picker{margin:auto;border-radius:20px;max-height:610px}.impact-quick-picker-list{max-height:510px}}
+
+/* Persistent thumb-accessible robot wheel. Theme variables only. */
+/* The six station choices appear as a vertically rotating-style scroll wheel. */
+.impact-quick-picker-list{display:block!important;scroll-snap-type:y mandatory;overscroll-behavior:contain;padding:75px 16px!important;max-height:min(52dvh,370px)!important;overflow-y:auto!important;scrollbar-width:thin;touch-action:pan-y}
+.impact-quick-picker-team{width:100%;min-height:70px;margin:0 0 8px;scroll-snap-align:center;scroll-snap-stop:always;transition:opacity .17s ease,transform .17s ease,border-color .17s ease}
+.impact-quick-picker-team[aria-current="true"]{background:color-mix(in srgb,var(--accent) 15%,var(--panel2));border-color:var(--accent)}
+.impact-quick-picker{max-height:min(78dvh,550px)}
+.impact-quick-picker-head{position:relative;z-index:1;background:var(--panel)}
+.impact-quick-picker-list::before,.impact-quick-picker-list::after{content:'';pointer-events:none;position:sticky;display:block;height:0}
+
+/* Scoring-share explanation and navigation warning use the selected Neptune theme. */
+.impact-scoring-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:2px 0 8px}
+.impact-scoring-heading .impact-section-label{margin:0}
+.impact-scoring-info{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:6px 11px;background:var(--panel2);color:var(--accent);border:1px solid var(--line);border-radius:999px;font-size:.77rem;font-weight:850;cursor:pointer}
+.impact-scoring-info:focus-visible,.impact-scoring-dialog button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.impact-scoring-dialog{width:min(92vw,540px);max-height:min(85dvh,720px);padding:0;overflow:auto;border:1px solid var(--line);border-radius:20px;background:var(--panel);color:var(--text);box-shadow:0 18px 55px var(--shadow)}
+.impact-scoring-dialog::backdrop{background:color-mix(in srgb,var(--text) 52%,transparent)}
+.impact-scoring-dialog-head{padding:20px 20px 13px;display:flex;align-items:start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}
+.impact-scoring-dialog-head h2{margin:4px 0 0;font-size:1.25rem}.impact-scoring-dialog-close{flex-shrink:0;display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--line);border-radius:11px;background:var(--panel2);color:var(--text);cursor:pointer}
+.impact-scoring-dialog-body{padding:14px 20px;color:var(--text);line-height:1.55;font-size:.91rem}.impact-scoring-dialog-body p{margin:0 0 14px}.impact-scoring-dialog-body h3{margin:16px 0 6px;font-size:1rem}.impact-scoring-example{display:grid;gap:6px;padding:13px;border-left:3px solid var(--accent);border-radius:11px;background:var(--panel2)}.impact-scoring-example span{font-weight:800;color:var(--accent);font-size:.75rem;text-transform:uppercase}.impact-scoring-dialog-foot{padding:10px 20px 18px;display:flex;justify-content:flex-end}.impact-scoring-dialog-foot button{border:0;border-radius:11px;background:var(--accent);color:var(--panel);padding:11px 18px;font-weight:850;cursor:pointer}
+.impact-navigation-toast.warning{border-color:var(--warn,var(--accent));box-shadow:inset 3px 0 0 var(--warn,var(--accent)),0 12px 38px var(--shadow)}
+
+/* A single centered app-style navigation dock replaces the redundant floating button. */
+.impact-wheel-dock{justify-content:space-between;align-items:center;gap:12px;overflow:visible}
+.impact-wheel-dock .impact-dock-match{flex:1;min-width:0;display:flex;align-items:center;gap:7px}
+/* Long-press robot navigation should not be stolen by browser panning/zoom. */
+#impactDockNextRobot,#impactNextRobot{touch-action:none!important;-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important}
+.impact-wheel-dock .impact-dock-robot-wheel{flex:0 0 76px!important;width:76px;height:76px;min-height:76px!important;border-radius:50%!important;border:2px solid var(--accent)!important;background:var(--panel)!important;color:var(--text)!important;box-shadow:0 3px 16px var(--shadow),inset 0 0 0 4px var(--panel2);padding:4px!important;display:flex;flex-direction:column;gap:0;align-items:center;justify-content:center;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.impact-wheel-logo{width:37px;height:37px;display:grid;place-items:center;overflow:hidden;border-radius:50%;color:var(--accent);font-size:1.25rem}
+.impact-wheel-logo img,.impact-picker-avatar img,.impact-team-logo img{display:block;width:100%;height:100%;object-fit:contain}
+.impact-wheel-number{font-size:.68rem;font-weight:900;line-height:1.4}
+.impact-picker-avatar{width:46px;height:46px;flex:0 0 46px;display:grid;place-items:center;border-radius:12px;background:var(--panel);border:1px solid var(--line);overflow:hidden;color:var(--accent);font-size:1.4rem}
+.impact-quick-picker-team .number{min-width:65px}
+.impact-team-logo{width:40px;height:40px;margin:0 auto 7px;display:grid;place-items:center;border:1px solid var(--line);border-radius:12px;overflow:hidden;color:var(--accent);background:var(--panel2)}
+@media(min-width:801px){.impact-wheel-dock{display:flex!important;width:min(380px,calc(100vw - 32px));bottom:16px}.impact-shell{padding-bottom:110px}}
+@media(max-width:800px){.impact-wheel-dock{padding:6px 10px;bottom:calc(8px + env(safe-area-inset-bottom,0px))}.impact-wheel-dock .impact-dock-match{padding:12px 8px}.impact-wheel-dock .impact-dock-robot-wheel{margin-top:-17px;margin-bottom:-5px}}
+
+/* v11: Compact native-feeling match dock and a six-item, no-scroll picker. */
+.impact-wheel-dock{display:flex!important;position:fixed!important;left:50%!important;right:auto!important;top:auto!important;bottom:calc(10px + env(safe-area-inset-bottom,0px))!important;transform:translateX(-50%)!important;width:min(96vw,390px)!important;min-height:70px!important;padding:7px 9px!important;gap:6px!important;align-items:center!important;justify-content:space-between!important;border-radius:20px!important;box-sizing:border-box}
+.impact-wheel-dock .impact-dock-match{min-width:0!important;flex:1 1 0!important;min-height:52px!important;justify-content:center!important;padding:8px 7px!important;gap:6px!important;font-size:.78rem!important;white-space:nowrap}
+.impact-wheel-dock .impact-dock-robot-wheel{flex:0 0 70px!important;width:70px!important;height:70px!important;min-height:70px!important;margin:0!important;padding:5px!important}
+.impact-wheel-dock .impact-wheel-logo{width:34px;height:34px}
+.impact-shell{padding-bottom:105px}
+/* Modal: six stations are always visible, with left-aligned logo, number and name. */
+.impact-quick-picker{box-sizing:border-box;width:min(94vw,640px)!important;max-width:640px!important;height:auto!important;max-height:calc(100dvh - 24px)!important;margin:auto!important;border-radius:20px!important;display:none;flex-direction:column}
+.impact-quick-picker[open]{display:flex!important}
+.impact-quick-picker-head{flex:0 0 auto;padding:12px 16px!important}
+.impact-quick-picker-list{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:repeat(6,minmax(0,1fr))!important;gap:6px!important;min-height:0!important;max-height:none!important;height:auto!important;overflow:hidden!important;overflow-y:hidden!important;scroll-snap-type:none!important;padding:9px 12px 12px!important;scrollbar-width:none!important;touch-action:manipulation!important}
+.impact-quick-picker-team{box-sizing:border-box;display:flex!important;justify-content:flex-start!important;align-items:center!important;width:100%!important;min-height:0!important;height:clamp(46px,8.5dvh,64px)!important;margin:0!important;padding:5px 10px!important;gap:12px!important;text-align:left!important;scroll-snap-align:none!important;transform:none}
+.impact-quick-picker-team .number{flex:0 0 auto;min-width:66px!important;text-align:left!important;font-size:1rem!important}
+.impact-quick-picker-team .details{flex:1 1 auto;min-width:0!important;text-align:left!important;align-items:flex-start!important;gap:2px!important}
+.impact-quick-picker-team .details b{max-width:100%;font-size:.91rem;line-height:1.15;white-space:normal!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.impact-quick-picker-team .details small{font-size:.73rem}
+.impact-picker-avatar{width:40px!important;height:40px!important;flex:0 0 40px!important}
+@media(max-width:800px){
+ .impact-wheel-dock{width:min(calc(100vw - 20px),430px)!important}
+ .impact-shell .impact-alliance{padding:9px!important}
+ .impact-shell .impact-robots{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px!important}
+ .impact-shell .impact-robot{min-width:0;min-height:148px!important;height:auto!important;padding:9px 6px!important;align-items:center;text-align:center;gap:4px}
+ .impact-shell .impact-team-logo{flex:0 0 auto;width:39px;height:39px;margin:1px auto 0}
+ .impact-shell .impact-team{font-size:clamp(1.2rem,5.4vw,1.75rem)!important;line-height:1.14}
+ .impact-shell .impact-nick{white-space:normal!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2;overflow:hidden!important;min-height:2.4em;font-size:.7rem!important;overflow-wrap:anywhere}
+ .impact-shell .impact-meta{min-height:0!important;justify-content:center;padding-top:4px!important;gap:4px}
+ .impact-shell .impact-mini{font-size:.59rem!important;padding:3px 5px!important}
+ .impact-shell .impact-robot.active:after{font-size:.45rem;top:3px;right:3px;padding:2px 4px}
+}
+@media(max-width:360px){.impact-wheel-dock .impact-dock-match span{display:none}.impact-shell .impact-robot{min-height:154px!important}.impact-picker-avatar{width:34px!important;height:34px!important;flex-basis:34px!important}.impact-quick-picker-team{gap:8px!important}}
+@media(max-height:590px){.impact-quick-picker-head{padding:7px 12px!important}.impact-quick-picker-team{height:clamp(34px,7.8dvh,48px)!important}.impact-picker-avatar{height:32px!important;width:32px!important;flex-basis:32px!important}}
+/* v12: thumb-reachable two-alliance picker, sized to its content and anchored over dock. */
+.impact-quick-picker[open]{position:fixed!important;inset:auto 50% calc(91px + env(safe-area-inset-bottom,0px)) auto!important;transform:translateX(50%)!important;margin:0!important;width:min(calc(100vw - 16px),620px)!important;max-width:620px!important;max-height:calc(100dvh - 112px - env(safe-area-inset-bottom,0px))!important;height:fit-content!important;overflow:hidden!important;border-radius:18px!important}
+.impact-quick-picker-head{padding:10px 13px!important;min-height:0!important}
+.impact-quick-picker-head b{font-size:1rem}
+.impact-quick-picker-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-template-rows:repeat(3,minmax(0,auto))!important;grid-auto-flow:column!important;gap:6px!important;padding:9px!important;max-height:none!important;overflow:hidden!important;scroll-snap-type:none!important;touch-action:manipulation!important}
+.impact-quick-picker-team{min-width:0!important;width:100%!important;height:clamp(58px,9dvh,76px)!important;padding:6px 8px!important;gap:7px!important;border-radius:12px!important;flex-wrap:nowrap!important}
+.impact-quick-picker-team[data-alliance="Red"]{border-left:3px solid var(--red,var(--danger,#d74b4b))}
+.impact-quick-picker-team[data-alliance="Blue"]{border-left:3px solid var(--blue,#377ec5)}
+.impact-quick-picker-team .number{min-width:0!important;flex:0 0 auto!important;font-size:clamp(.72rem,2.7vw,1rem)!important}
+.impact-quick-picker-team .details{flex:1 1 auto!important;overflow:hidden!important}
+.impact-quick-picker-team .details b{font-size:clamp(.7rem,2.45vw,.91rem)!important;line-height:1.16!important;white-space:normal!important;overflow-wrap:anywhere!important}
+.impact-quick-picker-team .details small{font-size:.65rem!important}
+.impact-quick-picker .impact-picker-avatar{width:clamp(25px,7vw,38px)!important;height:clamp(25px,7vw,38px)!important;flex:0 0 clamp(25px,7vw,38px)!important}
+@media(max-height:650px){.impact-quick-picker[open]{bottom:calc(82px + env(safe-area-inset-bottom,0px))!important}.impact-quick-picker-team{height:clamp(45px,8dvh,57px)!important}.impact-quick-picker-head{padding:6px 10px!important}}
+@media(min-width:801px){.impact-quick-picker[open]{bottom:108px!important}}
+
+/* v13: fixed, truly two-column thumb picker. Undo inherited wheel/list styles. */
+.impact-quick-picker[open]{display:flex!important;flex-direction:column!important;box-sizing:border-box!important;left:50%!important;right:auto!important;top:auto!important;bottom:calc(91px + env(safe-area-inset-bottom,0px))!important;transform:translateX(-50%)!important;margin:0!important;width:min(calc(100vw - 20px),560px)!important;max-width:560px!important;height:auto!important;max-height:calc(100dvh - 110px - env(safe-area-inset-bottom,0px))!important;overflow:hidden!important}
+.impact-quick-picker-head{flex:none!important;padding:10px 13px!important}
+.impact-quick-picker-list{box-sizing:border-box!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-template-rows:repeat(3,minmax(0,1fr))!important;grid-auto-flow:row!important;gap:7px!important;width:100%!important;min-width:0!important;height:auto!important;max-height:none!important;min-height:0!important;overflow:hidden!important;overflow-y:hidden!important;padding:10px!important;scroll-snap-type:none!important;touch-action:manipulation!important}
+.impact-quick-picker-team{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;justify-content:flex-start!important;align-items:center!important;box-sizing:border-box!important;min-width:0!important;max-width:100%!important;width:100%!important;height:clamp(76px,11dvh,100px)!important;min-height:0!important;margin:0!important;padding:8px!important;gap:9px!important;text-align:left!important;overflow:hidden!important}
+.impact-quick-picker-team .impact-picker-avatar{display:grid!important;place-items:center!important;flex:0 0 clamp(45px,12vw,65px)!important;width:clamp(45px,12vw,65px)!important;height:clamp(45px,12vw,65px)!important;margin:0!important;border-radius:11px!important}
+.impact-quick-picker-team .number{display:block!important;flex:none!important;min-width:0!important;font-weight:900!important;font-size:clamp(.85rem,3.5vw,1.25rem)!important;line-height:1.05!important}
+.impact-quick-picker-team .details{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;flex:1 1 auto!important;min-width:0!important;overflow:hidden!important;gap:4px!important}
+.impact-quick-picker-team .details b{display:none!important}
+.impact-quick-picker-team .details small{display:block!important;color:var(--muted)!important;font-size:clamp(.65rem,2.5vw,.78rem)!important;line-height:1.1!important;white-space:normal!important}
+@media(max-width:400px){.impact-quick-picker-team{gap:5px!important;padding:6px!important}.impact-quick-picker-team .impact-picker-avatar{flex-basis:clamp(37px,10vw,47px)!important;width:clamp(37px,10vw,47px)!important;height:clamp(37px,10vw,47px)!important}.impact-quick-picker-team .details small{font-size:.62rem!important}}
+@media(max-height:620px){.impact-quick-picker-team{height:clamp(52px,10dvh,68px)!important}.impact-quick-picker-team .impact-picker-avatar{flex-basis:36px!important;width:36px!important;height:36px!important}}
+
+/* v14: Each selection is strictly TWO internal columns:
+   [large logo] [team number / station beneath]. */
+.impact-quick-picker-team{
+  display:grid!important;
+  grid-template-columns:clamp(52px,13vw,74px) minmax(0,1fr)!important;
+  grid-template-rows:1fr!important;
+  align-items:center!important;
+  justify-items:start!important;
+  column-gap:10px!important;
+  height:clamp(78px,11dvh,100px)!important;
+  padding:8px!important;
+}
+.impact-quick-picker-team .impact-picker-avatar{
+  grid-column:1!important;
+  grid-row:1!important;
+  width:100%!important;
+  height:auto!important;
+  aspect-ratio:1!important;
+  min-width:0!important;
+  max-width:none!important;
+  flex:none!important;
+  margin:0!important;
+}
+.impact-picker-identity{
+  grid-column:2!important;
+  grid-row:1!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  align-items:flex-start!important;
+  min-width:0!important;
+  width:100%!important;
+  gap:5px!important;
+  text-align:left!important;
+}
+.impact-picker-identity .number{
+  display:block!important;
+  width:100%!important;
+  font-size:clamp(.95rem,3.6vw,1.36rem)!important;
+  line-height:1.15!important;
+  font-weight:900!important;
+  white-space:nowrap!important;
+}
+.impact-picker-identity small{
+  display:block!important;
+  font-size:clamp(.6rem,2.25vw,.79rem)!important;
+  line-height:1.2!important;
+  color:var(--muted)!important;
+  white-space:normal!important;
+}
+@media(max-width:400px){
+  .impact-quick-picker-team{grid-template-columns:clamp(45px,12vw,54px) minmax(0,1fr)!important;column-gap:7px!important}
+}
+@media(max-height:620px){
+  .impact-quick-picker-team{height:clamp(54px,9dvh,76px)!important;grid-template-columns:clamp(38px,9dvh,56px) minmax(0,1fr)!important}
+}
+
+/* V15: one active robot header; large touch-safe logo and prominent station. */
+.impact-shell .impact-active-identity{display:flex;align-items:center;gap:15px;min-width:0;flex:1}
+.impact-shell .impact-active-avatar{flex:0 0 76px;width:76px;height:76px;border:1px solid var(--line);border-radius:16px;background:var(--panel2);display:grid;place-items:center;overflow:hidden;color:var(--accent);font-size:30px}
+.impact-shell .impact-active-avatar img{display:block;max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain}
+.impact-shell .impact-active-details{min-width:0;flex:1}
+.impact-shell .impact-station-prominent{display:inline-block;border:1px solid var(--line);border-radius:9px;padding:6px 9px;margin-top:8px;color:var(--text);font-size:.78rem;font-weight:900;background:var(--panel2);line-height:1.4}
+.impact-shell .impact-station-preference{display:flex;align-items:center;gap:9px;font-size:.82rem;color:var(--muted);margin:0 0 13px;cursor:pointer;max-width:max-content}
+.impact-shell .impact-station-preference input{width:18px;height:18px;accent-color:var(--accent);flex:none}
+@media(max-width:600px){.impact-shell .impact-active-identity{gap:9px}.impact-shell .impact-active-avatar{flex-basis:54px;width:54px;height:54px;border-radius:11px}.impact-shell .impact-editor-head{align-items:center}.impact-shell .impact-active-details h2{font-size:clamp(1.12rem,4.7vw,1.5rem)}.impact-shell .impact-station-prominent{font-size:.68rem;padding:5px 7px}.impact-shell .impact-robot-actions{flex:none}}
+
+/* v18: shared compact heading rhythm, consistent on phone/tablet/desktop. */
+.impact-shell .impact-hero{padding:clamp(14px,1.8vw,22px)!important}
+.impact-shell .impact-title{font-size:clamp(1.9rem,4vw,3rem)!important;line-height:1.08!important;margin:0 0 8px!important}
+.impact-shell .impact-sub{font-size:clamp(.82rem,1vw,.94rem)!important;line-height:1.42!important;margin:0!important;max-width:680px}
+.impact-shell .impact-selectors{margin-top:14px!important;gap:9px!important}
+.impact-shell .impact-selectors label{gap:5px!important}
+.impact-shell .impact-selectors select{min-height:46px!important}
+/* Dock framing must not depend on the mobile breakpoint. */
+.impact-mobile-dock.impact-wheel-dock{
+ display:flex!important;z-index:500!important;
+ background:color-mix(in srgb,var(--panel) 95%,transparent)!important;
+ backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+ border:1px solid var(--line)!important;
+ border-radius:20px!important;
+ box-shadow:0 12px 35px var(--shadow)!important;
+ padding:7px 9px!important;
+}
+.impact-mobile-dock.impact-wheel-dock .impact-dock-match{
+ background:var(--panel2)!important;color:var(--text)!important;
+ border:1px solid var(--line)!important;border-radius:13px!important;
+ text-decoration:none!important;
+}
+.impact-mobile-dock.impact-wheel-dock .impact-dock-match.disabled{opacity:.32;pointer-events:none}
+@media(max-width:600px){.impact-shell .impact-hero{padding:14px!important}.impact-shell .impact-title{font-size:clamp(1.85rem,7vw,2.25rem)!important}.impact-shell .impact-selectors{margin-top:12px!important}}
+
+.impact-tag-guide-entry{padding:10px 0;border-bottom:1px solid var(--line);display:grid;gap:5px;line-height:1.45}.impact-tag-guide-entry strong{color:var(--text)}.impact-tag-guide-entry div{color:var(--muted);font-size:.87rem}.impact-tag-guide-entry b{color:var(--text)}
+
+/* v20: responsive tag controls, on-device settings and press-and-hold help */
+.impact-hero-settings{position:absolute;z-index:3;right:14px;top:12px;display:grid;place-items:center;width:42px;height:42px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);font-size:1.2rem;cursor:pointer;box-shadow:0 3px 14px var(--shadow)}
+.impact-hero-settings:hover,.impact-hero-settings:focus-visible{border-color:var(--accent);color:var(--accent)}
+.impact-shell .impact-hero .impact-title{padding-right:50px}
+.impact-shell .impact-tag span>i{font-size:clamp(1.65rem,2.5vw,2rem)!important;min-width:34px!important;line-height:1!important}
+.impact-shell .impact-tag span{gap:12px;min-height:74px!important;padding:12px 37px 12px 13px!important}
+.impact-shell.compact-tags .impact-tag span{min-height:52px!important;padding:7px 32px 7px 10px!important;gap:9px}
+.impact-shell.compact-tags .impact-tag span>i{font-size:1.45rem!important;min-width:29px!important}
+.impact-setting-option{display:flex;align-items:flex-start;gap:13px;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer;color:var(--text)}
+.impact-setting-option input{flex:none;margin-top:3px;width:21px;height:21px;accent-color:var(--accent)}
+.impact-setting-option span{display:grid;gap:4px}.impact-setting-option strong{font-size:.98rem}.impact-setting-option small{color:var(--muted);font-size:.82rem;line-height:1.4}
+.impact-settings-note{font-size:.83rem!important;color:var(--muted);line-height:1.5}
+.impact-tag{touch-action:pan-y;-webkit-touch-callout:none;user-select:none}
+
+
+/* v38: neutral icons, severity on the tile edge only. */
+.impact-shell .impact-tag span>i,.impact-shell .impact-tag.danger span>i{color:var(--muted)!important}
+.impact-shell .impact-tag input:checked+span>i{color:var(--accent)!important}
+.impact-shell .impact-tag.danger input:checked+span>i{color:var(--bad)!important}
+.impact-shell .impact-tag:not(.danger) span{border-left:3px solid var(--good)}
+.impact-shell .impact-tag.danger span{border-left:3px solid var(--bad)}
+.impact-shell .impact-tag:not(.danger) input:checked+span{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--panel));box-shadow:0 0 0 2px var(--impact-glow)}
+.impact-shell .impact-tag:not(.danger) input:checked+span:after{background:var(--accent)}
+.impact-shell.compact-tags .impact-tag span{min-height:74px!important;padding:12px 37px 12px 13px!important;gap:12px!important}
+.impact-settings-category{margin:16px 0;padding:12px;border:1px solid var(--line);border-radius:12px}
+.impact-settings-category summary{font-weight:900;cursor:pointer}
+.impact-settings-category button{display:block;width:100%;text-align:left;padding:9px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);cursor:pointer}
+
+/* v39: Severity is conveyed by borders, not by coloring all tag icons. */
+.impact-shell .impact-tag span i,.impact-shell .impact-tag.danger span i,.impact-shell .impact-tag:not(.danger) span i{color:var(--muted)!important}
+.impact-shell .impact-tag input:checked+span i{color:var(--text)!important}
 </style>
 <div class="impact-shell">
   <?=tag_unified_tabs_html('match',$eventId,$selectedTeam)?>
   <section class="impact-hero">
-    <div class="impact-kicker"><i class="fa-solid fa-satellite-dish"></i> TRIDENT · HUMAN SIGNAL</div>
+    <button type="button" class="impact-hero-settings" id="impactSettingsOpen" aria-label="Tag Scouting settings" title="Tag Scouting settings"><i class="fa-solid fa-gear" aria-hidden="true"></i></button>
     <h1 class="impact-title">Tag <span>Scouting</span></h1>
-    <p class="impact-sub">Watch what matters. Tag standout behavior, estimate scoring contribution when you can, and move on. Each robot is saved independently on this device and synced to Neptune in the background.</p>
+    <p class="impact-sub">Fast observations, one tap at a time. Switch robots instantly, then swipe to the next match. Changes save on this device and sync when connected.</p>
     <div class="impact-selectors">
       <label>Event
         <select id="impactEvent">
@@ -557,11 +961,24 @@ body.impact-modal-open{overflow:hidden!important}
       </label>
       <label>Match
         <select id="impactMatch" <?=$eventId?'':'disabled'?>>
-          <?php foreach($matches as $m):?><option value="<?=(int)$m['id']?>" <?=$matchId===(int)$m['id']?'selected':''?>><?=e(impact_match_label($m))?><?=!empty($m['field_id'])?' · Field '.e($m['field_id']):''?></option><?php endforeach;?>
+          <?php $lastMatchGroup='';foreach($matches as $m):$group=(string)$m['comp_level']==='qm'?'Qualifications':'Playoffs';if($group!==$lastMatchGroup):if($lastMatchGroup!==''):?></optgroup><?php endif;?><optgroup label="<?=e($group)?>"><?php $lastMatchGroup=$group;endif;?><option value="<?=(int)$m['id']?>" <?=$matchId===(int)$m['id']?'selected':''?>><?=e(impact_match_label($m))?><?=!empty($m['field_id'])?' · Field '.e($m['field_id']):''?></option><?php endforeach;if($lastMatchGroup!==''):?></optgroup><?php endif;?>
         </select>
       </label>
     </div>
   </section>
+
+  <?php if($matches && $match):?>
+  <nav class="impact-match-nav" id="impactMatchGesture" aria-label="Match navigation">
+    <a class="impact-nav-arrow <?=$prevMatch?'':'disabled'?>" href="<?=e($matchPageUrl($prevMatch))?>" data-impact-match-step="-1" <?=$prevMatch?'':'aria-disabled="true" tabindex="-1"'?> aria-label="Previous match"><i class="fa-solid fa-chevron-left"></i><span>Previous</span></a>
+    <div class="impact-match-now">
+      <div class="impact-nav-status"><span class="impact-round-badge <?=$activeRound==='Qualification'?'qual':'playoff'?>"><?=e($activeRound)?></span><span class="impact-match-progress"><?=($activeMatchIndex+1)?> of <?=count($matches)?> matches</span></div>
+      <strong><?=e(impact_match_label($match))?></strong>
+      <div class="impact-round-hint"><i class="fa-solid fa-arrows-left-right"></i> Swipe here to change matches <span aria-hidden="true">·</span> <?=$qualificationCount?> quals <span aria-hidden="true">·</span> <?=$playoffCount?> playoffs</div>
+    </div>
+    <a class="impact-nav-arrow <?=$nextMatch?'':'disabled'?>" href="<?=e($matchPageUrl($nextMatch))?>" data-impact-match-step="1" <?=$nextMatch?'':'aria-disabled="true" tabindex="-1"'?> aria-label="Next match"><span>Next</span><i class="fa-solid fa-chevron-right"></i></a>
+  </nav>
+  <?php if($pendingPlayoffs>0):?><div class="impact-bracket-note"><i class="fa-solid fa-clock"></i> <?=e($pendingPlayoffs)?> playoff <?= $pendingPlayoffs===1?'match is':'matches are' ?> awaiting complete published alliances. They will become scoutable after the next TBA or FIRST sync.</div><?php endif;?>
+  <?php elseif($pendingPlayoffs>0):?><div class="impact-bracket-note"><i class="fa-solid fa-clock"></i> Playoff fixtures are awaiting official robot assignments from TBA or FIRST.</div><?php endif;?>
 
   <?php if($message):?><div class="notice good" style="margin-top:14px"><i class="fa-solid fa-circle-check"></i> <?=e($message)?></div><?php endif;?>
   <?php if($error):?><div class="notice bad" style="margin-top:14px"><i class="fa-solid fa-triangle-exclamation"></i> <?=e($error)?></div><?php endif;?>
@@ -571,34 +988,22 @@ body.impact-modal-open{overflow:hidden!important}
   <?php elseif(!$robots):?>
     <div class="card impact-empty" style="margin-top:16px"><i class="fa-solid fa-robot fa-2x"></i><h2>No robots in this match</h2><p>Refresh the event schedule so Neptune can load the six match robots.</p></div>
   <?php else:?>
-    <div class="impact-alliance-grid">
-      <?php foreach(['Red','Blue'] as $side):?>
-      <section class="impact-alliance <?=strtolower($side)?>">
-        <div class="impact-alliance-head"><b><?=$side?> Alliance</b><span class="pill"><?=count(array_filter($robots,fn($r)=>$r['alliance']===$side))?> robots</span></div>
-        <div class="impact-robots">
-          <?php foreach($robots as $r): if($r['alliance']!==$side)continue; $team=(int)$r['frc_team_number'];$sum=$summaryByTeam[$team]??null; ?>
-            <button type="button" class="impact-robot <?=$selectedTeam===$team?'active':''?>" data-impact-team="<?=$team?>">
-              <div class="impact-team">#<?=$team?></div>
-              <div class="impact-nick"><?=e($r['nickname'] ?: 'Robot '.$team)?></div>
-              <div class="impact-meta">
-                <span class="impact-mini">Station <?=e($r['station'])?></span>
-                <span class="impact-mini" data-card-observers><i class="fa-solid fa-eye"></i> <span data-card-observer-count><?=e($sum['observers']??0)?></span></span>
-                <span class="impact-mini" data-card-score <?=(!$sum || (int)($sum['scoring_ratings']??0)<1)?'hidden':''?>><i class="fa-solid fa-chart-pie"></i> <span data-card-score-value><?=e(($sum && (int)($sum['scoring_ratings']??0)>0) ? $sum['avg_scoring'].'%' : '')?></span></span>
-                <span class="impact-mini local"><i class="fa-solid fa-mobile-screen"></i> <span data-local-label>Saved</span></span>
-              </div>
-            </button>
-          <?php endforeach;?>
-        </div>
-      </section>
-      <?php endforeach;?>
+    <div id="impactRobotOrderData" hidden aria-hidden="true">
+      <?php foreach($robots as $r): ?>
+        <span data-impact-team="<?=(int)$r['frc_team_number']?>"></span>
+      <?php endforeach; ?>
     </div>
 
     <div class="impact-main">
       <section class="impact-editor">
-        <div class="impact-editor-head">
-          <div><div class="impact-kicker">YOUR OBSERVATION</div><h2 id="impactRobotTitle">#<?=$selectedTeam?> <?=e($selectedRobot['nickname'] ?: '')?></h2><div class="impact-station" id="impactRobotStation"><?=e($selectedRobot['alliance'])?> Station <?=e($selectedRobot['station'])?><?= $match ? ' · '.e(impact_match_label($match)) : '' ?></div></div>
-          <span class="pill" id="impactObservationPill"><i class="fa-solid fa-mobile-screen"></i> Local-first</span>
+        <div class="impact-editor-head" id="impactRobotGesture">
+          <div class="impact-active-identity">
+            <span class="impact-active-avatar" id="impactActiveRobotLogo"><?php if($impactLogoUrl($selectedTeam)!==''):?><img src="<?=e($impactLogoUrl($selectedTeam))?>" alt="" onerror="this.replaceWith(document.createTextNode('🤖'))"><?php else:?><i class="fa-solid fa-robot" aria-hidden="true"></i><?php endif;?></span>
+            <div class="impact-active-details"><div class="impact-kicker">SCOUTING NOW · SWIPE TO SWITCH ROBOTS</div><h2 id="impactRobotTitle">#<?=$selectedTeam?> <?=e($selectedRobot['nickname'] ?: '')?></h2><div class="impact-station impact-station-prominent" id="impactRobotStation"><?=e(strtoupper((string)$selectedRobot['alliance']))?> ALLIANCE · STATION <?=e($selectedRobot['station'])?><?= $match ? ' · '.e(impact_match_label($match)) : '' ?></div></div>
+          </div>
+          <div class="impact-robot-actions"><button type="button" id="impactPrevRobot" aria-label="Previous robot"><i class="fa-solid fa-chevron-left"></i></button><span id="impactRobotIndex" aria-live="polite">1 / <?=count($robots)?></span><button type="button" id="impactNextRobot" aria-label="Next robot"><i class="fa-solid fa-chevron-right"></i></button></div>
         </div>
+
 
         <div class="impact-save-state local" id="impactSaveState"><i class="fa-solid fa-circle"></i><b id="impactSaveText">Opening device cache…</b><span class="pending" id="impactPendingText"></span></div>
 
@@ -609,28 +1014,32 @@ body.impact-modal-open{overflow:hidden!important}
           <input type="hidden" name="frc_team_number" id="impactTeamInput" value="<?=$selectedTeam?>">
 
           <div class="impact-section-row">
-            <div class="impact-section-label">Tap what stood out</div>
-            <label class="impact-advanced-toggle" title="Remembered on this device">
+            <div class="impact-section-label">What happened in the match?</div>
+            <label class="impact-advanced-toggle" title="Enable weighted tag observations">
               <input type="checkbox" id="impactAdvancedMode">
               <span class="impact-toggle-track"><span class="impact-toggle-knob"></span></span>
               <span>Advanced</span>
             </label>
           </div>
-          <div class="impact-advanced-hint" id="impactAdvancedHint" hidden>Advanced Mode: tapping a tag opens a 1–5 weight picker. Leave it unweighted when the tag itself is enough.</div>
-          <div class="impact-tag-groups">
+          <div class="impact-advanced-hint" id="impactAdvancedHint" hidden>Advanced Mode: tap a non-binary tag to set a 1–5 observation weight. Hold any tag to read its definition.</div>
+          <div class="impact-category-rail" role="group" aria-label="Tag categories">
+            <button type="button" class="active" data-impact-category="all" aria-pressed="true">All</button>
+            <?php foreach($tagGroups as $g):?><button type="button" data-impact-category="<?=e(strtolower(str_replace(' ','-',$g['label'])))?>" aria-pressed="false"><i class="<?=e($g['icon'])?>"></i><?=e($g['label'])?></button><?php endforeach;?>
+          </div>
+          <div class="impact-tag-groups" id="impactTagGroups">
             <?php foreach($tagGroups as $group):?>
-              <section class="impact-tag-group">
+              <section class="impact-tag-group" data-impact-section="<?=e(strtolower(str_replace(' ','-',$group['label'])))?>">
                 <div class="impact-tag-group-head"><i class="<?=e($group['icon'])?>"></i> <?=e($group['label'])?></div>
                 <div class="impact-tag-grid">
                   <?php foreach($group['tags'] as $key): $tag=$tagCatalog[$key];?>
-                    <label class="impact-tag <?=in_array($key,$negativeTags,true)?'danger':''?>"><input type="checkbox" name="tags[]" value="<?=e($key)?>"><span><i class="<?=e($tag[1])?>"></i><?=e($tag[0])?><em class="impact-tag-weight" data-tag-weight-badge="<?=e($key)?>" hidden></em></span></label>
+                    <label class="impact-tag <?=in_array($key,$negativeTags,true)?'danger':''?>" data-tag-area="<?=e($group['label'])?>"><input type="checkbox" name="tags[]" value="<?=e($key)?>"><span><i class="<?=e($tag[1])?>"></i><?=e($tag[0])?><em class="impact-tag-weight" data-tag-weight-badge="<?=e($key)?>" hidden></em></span></label>
                   <?php endforeach;?>
                 </div>
               </section>
             <?php endforeach;?>
           </div>
 
-          <div class="impact-section-label">Estimated scoring share · optional</div>
+          <div class="impact-scoring-heading"><div class="impact-section-label">Estimated scoring share</div><button type="button" class="impact-scoring-info" id="impactScoringInfoOpen" aria-haspopup="dialog" aria-controls="impactScoringInfoDialog" aria-label="What is estimated scoring share and why does it matter?"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Why it matters</span></button></div>
           <div class="impact-sliders">
             <div class="impact-slider score inactive" data-rating="scoring_contribution" data-block-count="21" data-active="0"><div class="impact-slider-top"><span class="impact-slider-title"><i class="fa-solid fa-chart-pie"></i> Scoring Contribution</span><span class="impact-rating-actions"><span class="impact-value" data-output="scoring_contribution">Not rated</span><button type="button" class="impact-clear" data-clear-rating="scoring_contribution">Clear</button></span></div><div class="impact-block-control"><div class="impact-blocks" aria-hidden="true"></div><input type="range" name="scoring_contribution" min="0" max="100" step="1" value="0" aria-label="Scoring Contribution"></div><div class="impact-slider-scale"><span>0%</span><span>50%</span><span>100%</span></div><div class="impact-rating-help">Estimate this robot's share of its alliance scoring. Leave it unrated if you were not confident.</div></div>
           </div>
@@ -664,13 +1073,47 @@ body.impact-modal-open{overflow:hidden!important}
 
         <div class="impact-section-label impact-consensus-label">Consensus tags</div>
         <div id="impactConsensusTags">
-          <?php if(!$robotTagConsensus):?><p class="impact-consensus-empty">No tags yet. Your observation can be the first signal.</p><?php else:?><div class="impact-consensus-tags"><?php foreach(array_slice($robotTagConsensus,0,10,true) as $key=>$count):?><span class="impact-consensus-tag"><i class="<?=e($tagCatalog[$key][1])?>"></i><span><?=e($tagCatalog[$key][0])?></span><b><?=$count?></b></span><?php endforeach;?></div><?php endif;?>
+          <?php if(!$robotTagConsensus):?><p class="impact-consensus-empty">No tags yet. Your observation can be the first signal.</p><?php else:?><div class="impact-consensus-tags"><?php foreach(array_slice($robotTagConsensus,0,10,true) as $key=>$count):?><span class="impact-consensus-tag"><i class="<?=e(($tagCatalog[$key][1] ?? 'fa-solid fa-tag'))?>"></i><span><?=e(($tagCatalog[$key][0] ?? $key))?></span><b><?=$count?></b></span><?php endforeach;?></div><?php endif;?>
         </div>
         <div class="impact-consensus-note"><i class="fa-solid fa-people-group"></i><div><b>Independent by design</b><span>Each scout keeps their own observation. Neptune averages scoring-share estimates and counts tag agreement.</span></div></div>
       </aside>
     </div>
   <?php endif;?>
+  <?php if($match && $robots):?>
+    <div class="impact-mobile-dock impact-wheel-dock" aria-label="Match and robot navigation">
+      <a href="<?=e($matchPageUrl($prevMatch))?>" data-impact-match-step="-1" class="impact-dock-match <?=$prevMatch?'':'disabled'?>" <?=$prevMatch?'':'aria-disabled="true" tabindex="-1"'?> aria-label="Previous match"><i class="fa-solid fa-chevron-left"></i><span>Match</span></a>
+      <button type="button" id="impactDockNextRobot" class="impact-dock-robot-wheel" aria-label="Next robot; hold to choose a robot" title="Tap for next robot · hold for picker"><span class="impact-wheel-logo" id="impactWheelLogo"><?php if($impactLogoUrl($selectedTeam)!==''):?><img src="<?=e($impactLogoUrl($selectedTeam))?>" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><i class="fa-solid fa-robot" hidden></i><?php else:?><i class="fa-solid fa-robot"></i><?php endif;?></span><span class="impact-wheel-number" id="impactWheelNumber">#<?=$selectedTeam?></span></button>
+      <a href="<?=e($matchPageUrl($nextMatch))?>" data-impact-match-step="1" class="impact-dock-match <?=$nextMatch?'':'disabled'?>" <?=$nextMatch?'':'aria-disabled="true" tabindex="-1"'?> aria-label="Next match"><span>Match</span><i class="fa-solid fa-chevron-right"></i></a>
+    </div>
+  <?php endif;?>
 
+    <dialog class="impact-scoring-dialog impact-settings-dialog" id="impactSettingsDialog" aria-labelledby="impactSettingsTitle">
+      <div class="impact-scoring-dialog-head"><div><span class="impact-kicker">TRIDENT · PREFERENCES</span><h2 id="impactSettingsTitle">Scouting settings</h2></div><button type="button" class="impact-scoring-dialog-close" data-impact-settings-close aria-label="Close settings"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="impact-scoring-dialog-body">
+        <p>Preferences are saved on this device and browser. They do not change scouting data.</p>
+        <label class="impact-setting-option"><input type="checkbox" id="impactRememberStation" checked><span><strong>Remember alliance station</strong><small>When changing matches, select the same alliance color and station number.</small></span></label>
+
+        <label class="impact-setting-option"><input type="checkbox" id="impactTagHaptics" checked><span><strong>Touch feedback</strong><small>Vibrate briefly on supported devices when selecting tags.</small></span></label>
+        <p class="impact-settings-note">Tap a tag to select; hold it to read its guidance.</p><div id="impactSettingsTagSections"></div>
+      </div>
+      <div class="impact-scoring-dialog-foot"><button type="button" data-impact-settings-close>Done</button></div>
+    </dialog>
+    <dialog class="impact-scoring-dialog impact-tag-info-dialog" id="impactTagInfoDialog" aria-labelledby="impactTagInfoTitle">
+      <div class="impact-scoring-dialog-head"><div><span class="impact-kicker" id="impactTagInfoArea">TAG INFORMATION</span><h2 id="impactTagInfoTitle">Tag</h2></div><button type="button" class="impact-scoring-dialog-close" data-impact-tag-info-close aria-label="Close tag information"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="impact-scoring-dialog-body"><h3>When to use it</h3><p id="impactTagInfoWhen"></p><h3>Why it matters</h3><p id="impactTagInfoWhy"></p><p class="impact-settings-note">Tag observations do not directly change EPA or D-EPA unless explicitly incorporated into a downstream model.</p></div>
+      <div class="impact-scoring-dialog-foot"><button type="button" data-impact-tag-info-close>Close</button></div>
+    </dialog>
+    <dialog class="impact-scoring-dialog" id="impactScoringInfoDialog" aria-labelledby="impactScoringInfoTitle" aria-describedby="impactScoringInfoDescription">
+      <div class="impact-scoring-dialog-head"><div><span class="impact-kicker">SCOUTING INTELLIGENCE</span><h2 id="impactScoringInfoTitle">Estimated Scoring Share</h2></div><button type="button" class="impact-scoring-dialog-close" data-impact-scoring-close aria-label="Close explanation"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="impact-scoring-dialog-body" id="impactScoringInfoDescription">
+        <p>Estimate what percentage of the <strong>alliance's total scoring</strong> came from the robot you're watching during this match. This is an observation, not an official per-robot score.</p>
+        <div class="impact-scoring-example"><span>Example</span><b>An alliance scores 100 points. If this robot contributed roughly 35, select 35%.</b></div>
+        <h3>Why it matters</h3>
+        <p>Alliance scores alone cannot tell Neptune how much each robot contributed. Your estimate helps distinguish primary scorers from support robots and improves comparisons for strategy, alliance selection, and future match planning.</p>
+        <p>When multiple scouts provide independent estimates, Neptune can average them to reduce the impact of one person's judgment. <strong>Accuracy matters more than filling every field.</strong> If you did not observe enough to estimate fairly, leave it unrated.</p>
+      </div>
+      <div class="impact-scoring-dialog-foot"><button type="button" data-impact-scoring-close>Got it</button></div>
+    </dialog>
     <dialog class="manual-score-dialog" id="manualScoresDialog" aria-labelledby="manualScoresTitle">
       <form id="manualScoresForm" autocomplete="off">
         <div class="impact-kicker">MANUAL FINAL RESULT · <?=e($match ? impact_match_label($match) : 'MATCH')?></div>
@@ -746,7 +1189,9 @@ body.impact-modal-open{overflow:hidden!important}
   const SUMMARIES = <?=json_encode($summaryForJs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)?>;
   const TAG_COUNTS = <?=json_encode($tagConsensusForJs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)?>;
   const TAG_CATALOG = <?=json_encode($tagCatalog, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)?>;
-  const BINARY_TAGS = new Set(['no_auton','no_defense','failed_endgame']);
+  // Match tags are all eligible for Advanced Mode weighting. The v29 blanket
+  // binary classification prevented the weight dialog from opening for every tag.
+  const BINARY_TAGS = new Set();
   const MANUAL_API = <?=json_encode(base_url('scout/manual-scores-api.php'))?>;
   const MANUAL_SERVER = <?=json_encode($manualScores ? ['red_score'=>(int)$manualScores['red_score'],'blue_score'=>(int)$manualScores['blue_score'],'revision'=>(int)$manualScores['revision']] : null)?>;
   let OFFICIAL_SCORES = <?=json_encode($officialScores, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)?>;
@@ -1310,9 +1755,20 @@ body.impact-modal-open{overflow:hidden!important}
     currentTeam = team;
     teamInput.value = String(team);
     robotButtons.forEach(btn => btn.classList.toggle('active', Number(btn.dataset.impactTeam) === team));
+    if (typeof updateRobotPager === 'function') updateRobotPager();
     const r = ROBOTS[String(team)] || ROBOTS[team];
     titleEl.textContent = '#' + team + ' ' + (r.nickname || '');
-    stationEl.textContent = r.alliance + ' Station ' + r.station + (CONFIG.matchLabel ? ' · ' + CONFIG.matchLabel : '');
+    stationEl.textContent = String(r.alliance || '').toUpperCase() + ' ALLIANCE · STATION ' + r.station + (CONFIG.matchLabel ? ' · ' + CONFIG.matchLabel : '');
+    const activeLogo = document.getElementById('impactActiveRobotLogo');
+    if (activeLogo) {
+      const fallback = document.createElement('i'); fallback.className = 'fa-solid fa-robot';
+      activeLogo.replaceChildren();
+      if (r.logo) {
+        const image = document.createElement('img'); image.src = r.logo; image.alt = '';
+        image.addEventListener('error', () => image.replaceWith(fallback), {once:true});
+        activeLogo.appendChild(image);
+      } else activeLogo.appendChild(fallback);
+    }
     renderRobotCardSummary(team);
     renderConsensus(team);
     const state = await getState(team);
@@ -1320,6 +1776,458 @@ body.impact-modal-open{overflow:hidden!important}
     applyState(state);
     await refreshStatus();
   }
+
+  // Restore the exact viewport after a match change, and announce the new match.
+  // sessionStorage is per-tab, avoiding cross-tab navigation interference.
+  const tagDefinitionsByKey = {"auto_no_attempt": {"category": "Autonomous", "title": "No Attempt", "when": "Use when the robot made no autonomous attempt.", "why": "Counts explicit non-participation in observed autonomous periods."}, "auto_partial": {"category": "Autonomous", "title": "Partial Completion", "when": "Use when the robot achieved some but not all of its autonomous objective.", "why": "Enables a partial-completion rate; this alone does not measure autonomous points."}, "auto_completed": {"category": "Autonomous", "title": "Completed Successfully", "when": "Use when the planned autonomous objective was completed.", "why": "Enables completion rate from observed outcomes; can be compared alongside autonomous EPA."}, "auto_failed": {"category": "Autonomous", "title": "Failed", "when": "Use when autonomous was attempted but did not achieve its objective.", "why": "Enables failure rate from observed outcomes."}, "no_scoring": {"category": "Scoring", "title": "No Scoring", "when": "Use only when you observed the robot make no scoring contribution.", "why": "Creates an explicit no-scoring observation rather than treating a blank as zero."}, "scoring": {"category": "Scoring", "title": "Scoring", "when": "Use when the robot visibly contributed to scoring.", "why": "Identifies scoring participation; estimated scoring share provides a separate numerical estimate."}, "slow_cycles": {"category": "Scoring", "title": "Slow Cycles", "when": "Use when the robot repeatedly completes scoring cycles slowly relative to peers in this match.", "why": "Qualitative speed indicator; timed cycles are needed for quantitative rates."}, "fast_cycles": {"category": "Scoring", "title": "Fast Cycles", "when": "Use when the robot repeatedly completes scoring cycles quickly relative to peers in this match.", "why": "Qualitative speed indicator; not a measured cycle time or proof of higher EPA."}, "no_defense": {"category": "Defense", "title": "No Defense", "when": "Use when the robot did not attempt to defend an opponent.", "why": "Tracks defensive participation; it does not mean poor defense."}, "attempted_defense": {"category": "Defense", "title": "Attempted Defense", "when": "Use when the robot actively attempted to obstruct an opponent.", "why": "Tracks defensive participation; D-EPA is a separate modeled estimate, not a direct measurement of this attempt."}, "mechanical_issues": {"category": "Reliability", "title": "Mechanical Issue", "when": "Use when an observable mechanical fault impaired performance.", "why": "Tracks mechanical-issue incidence, not the fault cause or severity."}, "disabled": {"category": "Reliability", "title": "Disabled", "when": "Use when the robot became unable to continue participating.", "why": "Counts disabled observations per robot-match, helping quantify reliability."}, "recovered": {"category": "Reliability", "title": "Recovered", "when": "Use when the robot returned to operation after a problem during the match.", "why": "Tracks observed recoveries; can coexist with Disabled or Mechanical Issue."}, "end_no_attempt": {"category": "Endgame", "title": "No Attempt", "when": "Use when the robot made no endgame attempt.", "why": "Counts explicit non-attempts."}, "end_partial": {"category": "Endgame", "title": "Partial Completion", "when": "Use when the endgame objective was only partly achieved.", "why": "Supports a partial-outcome rate."}, "end_completed": {"category": "Endgame", "title": "Completed Successfully", "when": "Use when the robot completed its intended endgame objective.", "why": "Supports endgame completion rate from observed outcomes."}, "end_failed": {"category": "Endgame", "title": "Failed", "when": "Use when the robot tried the endgame objective and did not complete it.", "why": "Supports failure-rate reporting."}, "strong_support": {"category": "Alliance Play", "title": "Strong Support", "when": "Use when the robot materially assisted an alliance partner through feeding, positioning, or other support.", "why": "Records support participation; assigning points or EPA credit requires additional evidence."}, "penalty_risk": {"category": "Alliance Play", "title": "Penalty Risk", "when": "Use after observing behavior likely to incur fouls or penalties, not merely aggressive driving.", "why": "Tracks potential penalty risk; use official foul data to quantify actual penalty points."}};
+  const settingsTagHost=document.getElementById('impactSettingsTagSections');
+  const settingsCatalog=<?=json_encode($settingsCatalog,JSON_UNESCAPED_SLASHES|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?>;
+  const settingsApprovedMatch=<?=json_encode(array_keys($matchTagByKey))?>;
+  if(settingsTagHost){
+    settingsTagHost.replaceChildren();
+    for(const [context,label] of [['match','Match'],['pit','Pit'],['team','Alliance']]){
+      const section=document.createElement('details');section.className='impact-settings-category';
+      const rootTitle=document.createElement('summary');rootTitle.textContent=label+' tag guide';section.append(rootTitle);
+      const groups=new Map();
+      for(const tag of settingsCatalog){
+        if(Number(tag.active)!==1||Number(tag[context+'_enabled'])!==1)continue;
+        if(context==='match'&&!settingsApprovedMatch.includes(String(tag.seed_key||'').replace(/^match:/,'').replaceAll('-','_'))&&!settingsApprovedMatch.includes(String(tag.slug||'').replaceAll('-','_')))continue;
+        const cat=tag.category||'General';if(!groups.has(cat))groups.set(cat,[]);groups.get(cat).push(tag);
+      }
+      for(const [category,items] of groups){
+        const group=document.createElement('details');group.className='impact-settings-category';
+        const title=document.createElement('summary');title.textContent=category+' · '+items.length+' tags';group.append(title);
+        for(const tag of items){const button=document.createElement('button');button.type='button';button.textContent=tag.label;
+          button.addEventListener('click',()=>{document.getElementById('impactTagInfoArea').textContent=category;
+            document.getElementById('impactTagInfoTitle').textContent=tag.label;
+            document.getElementById('impactTagInfoWhen').textContent=tag.when_to_use||tag.description||'No guidance provided';
+            document.getElementById('impactTagInfoWhy').textContent=tag.why_important||'No rationale provided';
+            document.getElementById('impactSettingsDialog')?.close();document.getElementById('impactTagInfoDialog')?.showModal();});group.append(button);}
+        section.append(group);
+      }
+      settingsTagHost.append(section);
+    }
+  }
+
+  const editedTagHelp = <?=json_encode(array_map(static fn($t)=>['when'=>(string)($t['when_to_use']??''),'why'=>(string)($t['why_important']??''),'description'=>(string)($t['description']??'')],$matchTagByKey),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)?>;
+  const tagInfo = document.getElementById('impactTagInfoDialog');
+  function openTagDescription(label) {
+    const key=label.querySelector('input[name="tags[]"]')?.value;
+    const fallback=tagDefinitionsByKey[key]||{};
+    const edited=editedTagHelp[key]||{};
+    document.getElementById('impactTagInfoArea').textContent=(label.dataset.tagArea||'').toUpperCase();
+    document.getElementById('impactTagInfoTitle').textContent=TAG_CATALOG[key]?.[0]||key||'Tag';
+    document.getElementById('impactTagInfoWhen').textContent=edited.when||edited.description||fallback.when||'Select when you directly observe this behavior.';
+    document.getElementById('impactTagInfoWhy').textContent=edited.why||fallback.why||'Preserves an observation for strategy review.';
+    tagInfo?.showModal();
+  }
+  document.querySelectorAll('[data-impact-tag-info-close]').forEach(b=>b.addEventListener('click',()=>tagInfo?.close()));
+  tagInfo?.addEventListener('click', event=>{ if (event.target===tagInfo) tagInfo.close(); });
+  // Long-press works with pointer/touch/pen. Prevent the subsequent synthesized click from tagging.
+  document.querySelectorAll('.impact-tag').forEach(label => {
+    let timer = null, origin = null, fired = false, swallow = false;
+    const clear = () => { if (timer !== null) clearTimeout(timer); timer = null; };
+    label.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || tagInfo?.open) return;
+      clear(); fired=false; origin={x:event.clientX,y:event.clientY};
+      timer=setTimeout(()=>{timer=null;fired=true;swallow=true;openTagDescription(label);}, 550);
+    });
+    label.addEventListener('pointermove',event=>{if(origin && Math.hypot(event.clientX-origin.x,event.clientY-origin.y)>12) clear();});
+    label.addEventListener('pointerup', clear);
+    label.addEventListener('pointercancel',()=>{clear();origin=null;});
+    label.addEventListener('pointerleave',clear);
+    label.addEventListener('contextmenu',event=>{event.preventDefault();clear();swallow=true;openTagDescription(label);});
+    label.addEventListener('click',event=>{if(swallow || fired){event.preventDefault();event.stopImmediatePropagation();const checkbox=label.querySelector('input');if(checkbox)checkbox.checked=checkbox.dataset.beforeHold==='1';swallow=false;fired=false;}},true);
+    label.addEventListener('pointerdown',()=>{const checkbox=label.querySelector('input');if(checkbox)checkbox.dataset.beforeHold=checkbox.checked?'1':'0';},true);
+  });
+  const settingsDialog = document.getElementById('impactSettingsDialog');
+  document.getElementById('impactSettingsOpen')?.addEventListener('click',()=>settingsDialog?.showModal());
+  document.querySelectorAll('[data-impact-settings-close]').forEach(b=>b.addEventListener('click',()=>settingsDialog?.close()));
+  settingsDialog?.addEventListener('click',event=>{if(event.target===settingsDialog)settingsDialog.close();});
+  function savedBoolean(key, fallback) { try {const v=localStorage.getItem(key);return v===null?fallback:v==='1';}catch(_){return fallback;} }
+  function savedPreference(input, key, defaultValue, update) {
+    if(!input)return;
+    input.checked=savedBoolean(key,defaultValue);update(input.checked);
+    input.addEventListener('change',()=>{try{localStorage.setItem(key,input.checked?'1':'0');}catch(_){}update(input.checked);});
+  }
+  shell?.classList.remove('compact-tags');
+  try{localStorage.removeItem('neptune.tag.compact')}catch(_){}
+  savedPreference(document.getElementById('impactTagHaptics'),'neptune.tag.haptics',true,()=>{});
+  const scoringInfoDialog = document.getElementById('impactScoringInfoDialog');
+  document.getElementById('impactScoringInfoOpen')?.addEventListener('click', () => {
+    if (scoringInfoDialog?.showModal) scoringInfoDialog.showModal();
+  });
+  scoringInfoDialog?.querySelectorAll('[data-impact-scoring-close]').forEach(button => {
+    button.addEventListener('click', () => scoringInfoDialog.close());
+  });
+  scoringInfoDialog?.addEventListener('click', event => {
+    if (event.target === scoringInfoDialog) scoringInfoDialog.close();
+  });
+  const NAV_KEY = 'neptune.tag.matchNav';
+  const STATION_PREF_KEY = 'neptune.tag.rememberStation';
+  const rememberStationToggle = document.getElementById('impactRememberStation');
+  let rememberStation = true;
+  try { rememberStation = localStorage.getItem(STATION_PREF_KEY) !== '0'; } catch (_) {}
+  if (rememberStationToggle) {
+    rememberStationToggle.checked = rememberStation;
+    rememberStationToggle.addEventListener('change', () => {
+      rememberStation = rememberStationToggle.checked;
+      try { localStorage.setItem(STATION_PREF_KEY, rememberStation ? '1' : '0'); } catch (_) {}
+    });
+  }
+  let stationToRestore = null;
+
+  let navigationToastTimer;
+  let navigationToast;
+  function showNavigationToast(message, type = 'normal') {
+    if (!navigationToast) {
+      navigationToast = document.createElement('div');
+      navigationToast.className = 'impact-navigation-toast';
+      navigationToast.setAttribute('role','status');
+      navigationToast.setAttribute('aria-live','polite');
+      document.body.appendChild(navigationToast);
+    }
+    clearTimeout(navigationToastTimer);
+    navigationToast.classList.remove('visible');
+    navigationToast.classList.toggle('warning', type === 'warning');
+    navigationToast.textContent = message;
+    requestAnimationFrame(() => navigationToast.classList.add('visible'));
+    navigationToastTimer = setTimeout(() => navigationToast.classList.remove('visible'), 1700);
+  }
+  try {
+    const savedNav = JSON.parse(sessionStorage.getItem(NAV_KEY) || 'null');
+    sessionStorage.removeItem(NAV_KEY);
+    if (savedNav && savedNav.path === location.pathname &&
+        savedNav.match === String(CONFIG.matchId) &&
+        Date.now() - savedNav.time < 20000) {
+      if (savedNav.rememberStation && ['Red','Blue'].includes(savedNav.alliance) && Number(savedNav.station)>0) {
+        stationToRestore = { alliance:savedNav.alliance, station:Number(savedNav.station) };
+      }
+      if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+      const restore = () => window.scrollTo({left:0, top: savedNav.y, behavior:'instant'});
+      restore();
+      requestAnimationFrame(restore);
+      window.addEventListener('load', restore, {once:true});
+      showNavigationToast('Now scouting ' + (CONFIG.matchLabel || 'selected match'));
+    }
+  } catch (_) { /* storage disabled: ordinary navigation still works */ }
+
+  // Match/robot navigation is scoped to published station assignments.
+  // Match switching commits the current unsaved UI to IndexedDB before leaving.
+  const matchStepLinks = [...document.querySelectorAll('[data-impact-match-step]')];
+  const ROBOT_ORDER = robotButtons.map(button => Number(button.dataset.impactTeam));
+  const robotIndex = document.getElementById('impactRobotIndex');
+  let matchNavigating = false;
+
+  function updateRobotPager() {
+    const activeRobot = ROBOTS[String(currentTeam)] || ROBOTS[currentTeam] || {};
+    const wheelLogo = document.getElementById('impactWheelLogo');
+    const wheelNumber = document.getElementById('impactWheelNumber');
+    if (wheelNumber) wheelNumber.textContent = '#' + currentTeam;
+    if (wheelLogo) {
+      wheelLogo.replaceChildren();
+      const fallback = document.createElement('i'); fallback.className='fa-solid fa-robot';
+      if (activeRobot.logo) {
+        const img = document.createElement('img'); img.src=activeRobot.logo; img.alt='';
+        img.addEventListener('error', () => img.replaceWith(fallback), {once:true});
+        wheelLogo.append(img);
+      } else wheelLogo.append(fallback);
+    }
+    const idx = ROBOT_ORDER.indexOf(Number(currentTeam));
+    if (robotIndex) robotIndex.textContent = (idx >= 0 ? idx + 1 : 0) + ' / ' + ROBOT_ORDER.length;
+    document.getElementById('impactPrevRobot')?.toggleAttribute('disabled', idx <= 0);
+    document.getElementById('impactNextRobot')?.toggleAttribute('disabled', idx < 0 || idx === ROBOT_ORDER.length - 1);
+  }
+  async function stepRobot(direction) {
+    const idx = ROBOT_ORDER.indexOf(Number(currentTeam));
+    const team = ROBOT_ORDER[idx + direction];
+    if (!team) return;
+    tapFeedback();
+    await selectRobot(team);
+    updateRobotPager();
+    const header = document.getElementById('impactRobotGesture');
+    const bounds = header?.getBoundingClientRect();
+    if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) {
+      const selected = ROBOTS[String(team)] || ROBOTS[team];
+      showNavigationToast('Robot #' + team + (selected?.nickname ? ' · ' + selected.nickname : ''));
+    }
+  }
+  async function navigateToMatch(url) {
+    if (matchNavigating || !url || url === '#') return;
+    matchNavigating = true;
+    try {
+      // A zero-percent score is a valid estimate; only -1 means not rated.
+      // This warning is deliberately non-blocking and never discards observations.
+      if (currentTeam && ratingValue('scoring_contribution') < 0) {
+        const robot = ROBOTS[String(currentTeam)] || ROBOTS[currentTeam];
+        showNavigationToast('No scoring share for #' + currentTeam + (robot?.nickname ? ' · ' + robot.nickname : ''), 'warning');
+        await new Promise(resolve => setTimeout(resolve, 1150));
+      }
+      if (uiHasChanges()) {
+        // Without IndexedDB, do not silently abandon pending observations.
+        if (!db) {
+          const record = await saveCurrentLocal();
+          if (!record || !(await syncRecord(record))) throw new Error('Offline storage is unavailable.');
+        } else {
+          await saveCurrentLocal();
+          // The record is durable locally; it may sync on a later visit.
+          scheduleSync(0);
+        }
+      }
+      try {
+        const target = new URL(url, location.href);
+        sessionStorage.setItem(NAV_KEY, JSON.stringify({
+          path:target.pathname, match:target.searchParams.get('match_id'),
+          y:window.scrollY, time:Date.now(), rememberStation,
+          alliance:rememberStation ? (ROBOTS[String(currentTeam)] || ROBOTS[currentTeam] || {}).alliance : null,
+          station:rememberStation ? (ROBOTS[String(currentTeam)] || ROBOTS[currentTeam] || {}).station : null
+        }));
+      } catch (_) { /* navigation must work even without storage */ }
+      window.location.assign(url);
+    } catch (error) {
+      matchNavigating = false;
+      setStatus('error', 'Could not safely save; match unchanged');
+      window.alert('Your current observation could not be stored. Stay on this match and check the device connection.');
+    }
+  }
+  matchStepLinks.forEach(link => link.addEventListener('click', event => {
+    event.preventDefault();
+    if (link.getAttribute('aria-disabled')==='true') return;
+    navigateToMatch(link.href);
+  }));
+  // Press and hold Next Robot for a six-station quick picker. A short tap
+  // retains the original next-robot behavior. Also works with a mouse or pen.
+  let pickerDialog = null;
+  async function showPickerRobotDetails(team,robot){
+    pickerDialog?.close();
+    let dialog=document.getElementById('impactRobotDetailDialog');
+    if(!dialog){dialog=document.createElement('dialog');dialog.id='impactRobotDetailDialog';dialog.className='impact-quick-picker';document.body.appendChild(dialog);}
+    dialog.replaceChildren();
+    const head=document.createElement('div');head.className='impact-quick-picker-head';
+    const title=document.createElement('b');title.textContent='#'+team+' · '+(robot.nickname||'Robot details');
+    const close=document.createElement('button');close.type='button';close.className='impact-quick-picker-close';close.textContent='×';close.addEventListener('click',()=>dialog.close());head.append(title,close);
+    const body=document.createElement('div');body.className='impact-quick-picker-list';body.style.cssText='display:block!important;overflow:auto!important;max-height:55dvh!important;padding:18px!important';
+    const facts=document.createElement('div');body.append(facts);
+    function render(r){facts.replaceChildren();for(const [label,value] of Object.entries({'Team':team,'Name':r.nickname||robot.nickname,'City':r.city,'State / Province':r.state_prov,'Country':r.country,'Rookie year':r.rookie_year,'School / organization':r.school_name,'Motto':r.motto,'Full name':r.full_name,'Alliance':robot.alliance,'Station':robot.station})){
+      if(value===null||value===undefined||String(value).trim()==='')continue;
+      const row=document.createElement('p');row.textContent=label+': '+value;facts.append(row);
+    }if(r.website&&/^https?:\/\//i.test(r.website)){const a=document.createElement('a');a.href=r.website;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Team website';body.append(a);}}
+    render(robot);
+    const status=document.createElement('p');status.className='impact-settings-note';status.textContent='Loading Team Lookup / TBA information…';body.append(status);
+    dialog.append(head,body);dialog.showModal();
+    const eventId=Number(document.getElementById('impactEvent')?.value||0);
+    if(!eventId){status.textContent='Select an event to retrieve TBA information.';return;}
+    try{const response=await fetch(<?=json_encode(base_url('scout/tag-api.php'))?>+'?action=robot_details&event_id='+encodeURIComponent(eventId)+'&team='+encodeURIComponent(team));
+      const data=await response.json();if(!response.ok||data.status!=='success')throw new Error('Unavailable');
+      if(dialog.open){render({...robot,...data.team});status.textContent='Public team facts from TBA / Neptune Team Lookup.';}
+    }catch(error){status.textContent='Showing locally available details. TBA facts could not be loaded.';}
+  }
+  function openRobotQuickPicker() {
+    if (!ROBOT_ORDER.length) return;
+    if (!pickerDialog) {
+      pickerDialog = document.createElement('dialog');
+      pickerDialog.className = 'impact-quick-picker';
+      pickerDialog.setAttribute('aria-label', 'Choose a robot in this match');
+      pickerDialog.innerHTML = '<div class="impact-quick-picker-head"><div><b class="impact-picker-match-label"></b><small class="impact-picker-robot-label"></small></div><button type="button" class="impact-quick-picker-close" aria-label="Close robot picker"><i class="fa-solid fa-xmark"></i></button></div><div class="impact-quick-picker-list"></div>';
+      document.body.appendChild(pickerDialog);
+      // Suppress native selection/context menus in the body-mounted picker.
+      // Normal editing of scouting notes outside this dialog is unaffected.
+      pickerDialog.addEventListener('selectstart', event => event.preventDefault());
+      pickerDialog.addEventListener('contextmenu', event => event.preventDefault());
+      pickerDialog.addEventListener('dragstart', event => event.preventDefault());
+      pickerDialog.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+          window.getSelection()?.removeAllRanges();
+        }
+      }, {passive:true});
+      pickerDialog.querySelector('.impact-quick-picker-close').addEventListener('click', () => pickerDialog.close());
+      pickerDialog.addEventListener('click', event => { if (event.target === pickerDialog) pickerDialog.close(); });
+    }
+    const selected = ROBOTS[String(currentTeam)] || ROBOTS[currentTeam] || {};
+    pickerDialog.querySelector('.impact-picker-match-label').textContent = CONFIG.matchLabel || 'Current Match';
+    const stationText = String(selected.alliance || '').trim();
+    pickerDialog.querySelector('.impact-picker-robot-label').textContent = '#' + currentTeam + ' · ' + (stationText ? stationText + ' Alliance · ' : '') + 'Station ' + (selected.station || '—');
+    const list = pickerDialog.querySelector('.impact-quick-picker-list');
+    list.replaceChildren();
+    const orderedPickerTeams = [...ROBOT_ORDER].sort((a,b) => {
+      const ra = ROBOTS[String(a)] || ROBOTS[a] || {};
+      const rb = ROBOTS[String(b)] || ROBOTS[b] || {};
+      const rank = r => String(r.alliance || '').toLowerCase() === 'red' ? 0 : 1;
+      return rank(ra) - rank(rb) || Number(ra.station || 0) - Number(rb.station || 0);
+    });
+    orderedPickerTeams.forEach(team => {
+      const robot = ROBOTS[String(team)] || ROBOTS[team] || {};
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'impact-quick-picker-team';
+      button.dataset.alliance = String(robot.alliance || '');
+      button.setAttribute('aria-current', String(Number(currentTeam) === team));
+      button.dataset.alliance = String(robot.alliance || '');
+      const stationIndex = Math.max(1, Math.min(3, Number(robot.station) || 1));
+      button.style.gridColumn = String(String(robot.alliance).toLowerCase() === 'blue' ? 2 : 1);
+      button.style.gridRow = String(stationIndex);
+      const number = document.createElement('span'); number.className = 'number'; number.textContent = '#' + team;
+      const details = document.createElement('span'); details.className = 'details';
+      const name = document.createElement('b'); name.textContent = robot.nickname || 'Team ' + team;
+      const station = document.createElement('small'); station.textContent = (robot.alliance || '') + ' · Station ' + (robot.station || '—');
+      details.append(name, station);
+      const avatar = document.createElement('span'); avatar.className = 'impact-picker-avatar';
+      if (robot.logo) {
+        const image = document.createElement('img'); image.src = robot.logo; image.alt = ''; image.loading = 'lazy';
+        image.addEventListener('error', () => { image.remove(); avatar.textContent = '🤖'; });
+        avatar.append(image);
+      } else { const fallback = document.createElement('i'); fallback.className = 'fa-solid fa-robot'; avatar.append(fallback); }
+      const identity = document.createElement('span'); identity.className = 'impact-picker-identity';
+      identity.append(number, station);
+      button.append(avatar, identity);
+      let robotHeld=false,robotHoldTimer=null,robotStartX=0,robotStartY=0;
+      button.addEventListener('pointerdown',event=>{if(event.pointerType==='mouse'&&event.button!==0)return;robotHeld=false;robotStartX=event.clientX;robotStartY=event.clientY;clearTimeout(robotHoldTimer);robotHoldTimer=setTimeout(()=>{robotHeld=true;showPickerRobotDetails(team,robot);},550);});
+      button.addEventListener('pointermove',event=>{if(Math.hypot(event.clientX-robotStartX,event.clientY-robotStartY)>16)clearTimeout(robotHoldTimer);});
+      ['pointerup','pointerleave','pointercancel'].forEach(type=>button.addEventListener(type,()=>clearTimeout(robotHoldTimer)));
+      button.addEventListener('contextmenu',event=>{event.preventDefault();robotHeld=true;showPickerRobotDetails(team,robot)});
+      button.addEventListener('click', async () => {
+        if(robotHeld){robotHeld=false;return;}
+
+        pickerDialog.close();
+        tapFeedback();
+        await selectRobot(team);
+        updateRobotPager();
+        const header = document.getElementById('impactRobotGesture');
+        const bounds = header?.getBoundingClientRect();
+        if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) {
+          showNavigationToast('Robot #' + team + (robot.nickname ? ' · ' + robot.nickname : ''));
+        }
+      });
+      list.appendChild(button);
+    });
+    window.getSelection()?.removeAllRanges();
+    if (!pickerDialog.open) pickerDialog.showModal();
+    // All six targets fit within the bottom sheet; never scroll the picker.
+  }
+  function installRobotLongPress(button, shortTap) {
+    if (!button) return;
+    let timer = null;
+    let tracking = false;
+    let activePointer = null;
+    let startX = 0, startY = 0;
+    let lastHoldAt = 0;
+    let suppressClick = false;
+    const cancelTimer = () => { if (timer !== null) clearTimeout(timer); timer = null; };
+    const openPickerFromHold = () => {
+      if (!tracking || suppressClick) return;
+      cancelTimer();
+      suppressClick = true;
+      lastHoldAt = Date.now();
+      tracking = false;
+      tapFeedback();
+      openRobotQuickPicker();
+    };
+    button.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (!event.isPrimary) return;
+      cancelTimer();
+      tracking = true;
+      suppressClick = false;
+      activePointer = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      // Capture keeps the press on the button when a finger wanders over its children.
+      try { button.setPointerCapture(event.pointerId); } catch (_) {}
+      timer = setTimeout(openPickerFromHold, 480);
+    });
+    button.addEventListener('pointermove', event => {
+      if (!tracking || event.pointerId !== activePointer) return;
+      // Natural touch jitter is greater than mouse movement. Only cancel a
+      // deliberate drag, not a slight movement during a sustained press.
+      const tolerance = event.pointerType === 'mouse' ? 14 : 30;
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > tolerance) {
+        tracking = false;
+        cancelTimer();
+      }
+    });
+    button.addEventListener('pointerup', event => {
+      if (event.pointerId !== activePointer) return;
+      tracking = false;
+      cancelTimer();
+    });
+    button.addEventListener('pointercancel', event => {
+      if (event.pointerId !== activePointer) return;
+      tracking = false;
+      cancelTimer();
+    });
+    button.addEventListener('lostpointercapture', () => {
+      // Capture can be released when the dialog opens; never erase hold suppression.
+      tracking = false;
+      cancelTimer();
+    });
+    button.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      // Some mobile browsers dispatch contextmenu before the 480ms timer.
+      // Treat it as a long hold rather than silently cancelling the picker.
+      if (tracking) openPickerFromHold();
+    });
+    button.addEventListener('click', event => {
+      if (suppressClick || Date.now() - lastHoldAt < 850) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        suppressClick = false;
+        return;
+      }
+      shortTap();
+    });
+    button.addEventListener('keydown', event => {
+      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+        event.preventDefault();
+        openRobotQuickPicker();
+      }
+    });
+  }
+  document.getElementById('impactPrevRobot')?.addEventListener('click', () => stepRobot(-1));
+  installRobotLongPress(document.getElementById('impactNextRobot'), () => stepRobot(1));
+  installRobotLongPress(document.getElementById('impactDockNextRobot'), () => {
+    const idx = ROBOT_ORDER.indexOf(Number(currentTeam));
+    stepRobot(idx>=ROBOT_ORDER.length-1 ? -idx : 1);
+  });
+  robotButtons.forEach(btn => btn.addEventListener('click', updateRobotPager));
+
+  // Horizontal swipes are limited to deliberate navigation surfaces, never to
+  // sliders, tags, note fields, or other form controls.
+  function registerSwipe(element, callback) {
+    if (!element) return;
+    let start = null;
+    element.addEventListener('touchstart', e => {
+      if (e.touches.length!==1 || e.target.closest('button, a, select, input, textarea')) {start=null;return;}
+      start={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    }, {passive:true});
+    element.addEventListener('touchend', e => {
+      if (!start || !e.changedTouches.length) return;
+      const dx=e.changedTouches[0].clientX-start.x;
+      const dy=e.changedTouches[0].clientY-start.y;
+      start=null;
+      if (Math.abs(dx)<64 || Math.abs(dx)<Math.abs(dy)*1.3) return;
+      callback(dx<0?1:-1);
+    }, {passive:true});
+    element.addEventListener('touchcancel',()=>{start=null;},{passive:true});
+  }
+  registerSwipe(document.getElementById('impactMatchGesture'), direction => {
+    const link=document.querySelector('#impactMatchGesture [data-impact-match-step="'+direction+'"]');
+    if (link && link.getAttribute('aria-disabled')!=='true') navigateToMatch(link.href);
+  });
+  registerSwipe(document.getElementById('impactRobotGesture'), direction => stepRobot(direction));
+  document.querySelectorAll('[data-impact-category]').forEach(button => button.addEventListener('click',()=>{
+    const category=button.dataset.impactCategory;
+    document.querySelectorAll('[data-impact-category]').forEach(b=>{
+      const active=b===button;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));
+    });
+    document.querySelectorAll('[data-impact-section]').forEach(section=>{
+      section.hidden = category!=='all' && section.dataset.impactSection!==category;
+    });
+  }));
+  document.addEventListener('keydown',event=>{
+    if (event.altKey||event.ctrlKey||event.metaKey||event.target.closest('input,textarea,select,button,[contenteditable]')) return;
+    if (event.key==='ArrowRight') stepRobot(1);
+    if (event.key==='ArrowLeft') stepRobot(-1);
+  });
+  updateRobotPager();
 
   async function markLocalCards() {
     if (!db) return;
@@ -1358,12 +2266,32 @@ body.impact-modal-open{overflow:hidden!important}
     scheduleSync(0);
     location.href='?event_id='+encodeURIComponent(eventSelect.value)+'&match_id='+encodeURIComponent(matchSelect.value);
   });
-  const tapFeedback = () => { try { if (navigator.vibrate) navigator.vibrate(8); } catch (_) {} };
-  robotButtons.forEach(btn => btn.addEventListener('click', () => { tapFeedback(); selectRobot(Number(btn.dataset.impactTeam)); }));
+  const tapFeedback = () => { try { if (navigator.vibrate) (savedBoolean('neptune.tag.haptics',true) && navigator.vibrate ? navigator.vibrate.bind(navigator) : ()=>{})(8); } catch (_) {} };
+  robotButtons.forEach(btn => btn.addEventListener('click', () => {
+    tapFeedback();
+    const team = Number(btn.dataset.impactTeam);
+    selectRobot(team);
+    const bounds = document.getElementById('impactRobotGesture')?.getBoundingClientRect();
+    if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) {
+      const selected = ROBOTS[String(team)] || ROBOTS[team];
+      showNavigationToast('Robot #' + team + (selected?.nickname ? ' · ' + selected.nickname : ''));
+    }
+  }));
   const exclusiveTagGroups = [
-    ['no_auton', ['impressive_auton','consistent_auton','weak_auton']],
-    ['no_defense', ['good_defense','elite_defense','counter_defense']],
-    ['failed_endgame', ['strong_endgame','reliable_endgame']]
+    ['auto_no_attempt',['auto_completed','auto_partial','auto_failed']],
+    ['auto_completed',['auto_no_attempt','auto_partial','auto_failed']],
+    ['auto_partial',['auto_no_attempt','auto_completed','auto_failed']],
+    ['auto_failed',['auto_no_attempt','auto_completed','auto_partial']],
+    ['end_no_attempt',['end_completed','end_partial','end_failed']],
+    ['end_completed',['end_no_attempt','end_partial','end_failed']],
+    ['end_partial',['end_no_attempt','end_completed','end_failed']],
+    ['end_failed',['end_no_attempt','end_completed','end_partial']],
+    ['no_defense',['attempted_defense']],
+    ['attempted_defense',['no_defense']],
+    ['no_scoring',['scoring','fast_cycles','slow_cycles']],
+    ['scoring',['no_scoring']],
+    ['fast_cycles',['no_scoring','slow_cycles']],
+    ['slow_cycles',['no_scoring','fast_cycles']]
   ];
   function clearTag(tag) {
     const input = tagInputs.find(item => item.value === tag);
@@ -1373,12 +2301,8 @@ body.impact-modal-open{overflow:hidden!important}
 
   function enforceTagExclusivity(changed) {
     if (!changed?.checked) return;
-    for (const [noneTag, peers] of exclusiveTagGroups) {
-      if (changed.value === noneTag) {
-        peers.forEach(clearTag);
-      } else if (peers.includes(changed.value)) {
-        clearTag(noneTag);
-      }
+    for (const [tag, peers] of exclusiveTagGroups) {
+      if (changed.value === tag) peers.forEach(clearTag);
     }
     paintTagWeights();
   }
@@ -1655,14 +2579,31 @@ body.impact-modal-open{overflow:hidden!important}
       await loadAdvancedMode();
       await cleanupOldCache();
       await markLocalCards();
+      if (stationToRestore) {
+        const matched = Object.keys(ROBOTS).find(team => {
+          const r = ROBOTS[team];
+          return r && r.alliance === stationToRestore.alliance && Number(r.station) === stationToRestore.station;
+        });
+        if (matched) currentTeam = Number(matched);
+      }
       await selectRobot(currentTeam, false);
+      if (stationToRestore) {
+        const robot = ROBOTS[String(currentTeam)] || ROBOTS[currentTeam] || {};
+        if (robot.alliance === stationToRestore.alliance && Number(robot.station) === stationToRestore.station) {
+          showNavigationToast('Now scouting ' + robot.alliance + ' Station ' + robot.station + ' · #' + currentTeam);
+        }
+      }
       await syncPending();
       await syncManualPending();
       setInterval(() => {syncPending();syncManualPending();}, 5000);
     } catch (err) {
       cacheAvailable = false;
-      try { await setAdvancedMode(localStorage.getItem('neptune-' + ADVANCED_PREF_KEY) === '1', false); } catch (_) {}
+      try { await setAdvancedMode(false, false); } catch (_) {}
       setStatus('error','Device cache unavailable · changes require connection',0);
+      if (stationToRestore) {
+        const matched = Object.keys(ROBOTS).find(team => ROBOTS[team]?.alliance === stationToRestore.alliance && Number(ROBOTS[team]?.station) === stationToRestore.station);
+        if (matched) { currentTeam = Number(matched); teamInput.value = String(currentTeam); updateRobotPager(); }
+      }
       const state = fromServer(currentTeam) || defaultState(currentTeam);
       applyState(state);
     }
