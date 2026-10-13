@@ -18,6 +18,28 @@ try{
         json_response(['ok'=>true,'room'=>$room]+$joined);
     }
 
+    // Public rooms must progress without an administrator keeping a host tab open.
+    // The deadline is anchored to question_started_at, and updates are guarded
+    // by both status and question index to avoid duplicate advances.
+    if($action==='state' && in_array((string)$session['status'],['question','reveal'],true)){
+        $startAt=robot_recall_parse_utc_micro($session['question_started_at']??null);
+        if($startAt!==null){
+            $elapsed=microtime(true)-$startAt;
+            $duration=max(5,(int)$session['question_seconds']);
+            $sid=(int)$session['id'];$idx=(int)$session['current_question_index'];
+            if($session['status']==='question' && $elapsed >= $duration){
+                $pdo->prepare("UPDATE robot_recall_sessions SET status='reveal' WHERE id=? AND status='question' AND current_question_index=?")->execute([$sid,$idx]);
+            }elseif($session['status']==='reveal' && $elapsed >= $duration+5){
+                if($idx >= (int)$session['question_count']){
+                    $pdo->prepare("UPDATE robot_recall_sessions SET status='finished',finished_at=UTC_TIMESTAMP(),question_started_at=NULL WHERE id=? AND status='reveal' AND current_question_index=?")->execute([$sid,$idx]);
+                }else{
+                    $pdo->prepare("UPDATE robot_recall_sessions SET status='question',current_question_index=current_question_index+1,question_started_at=UTC_TIMESTAMP(6) WHERE id=? AND status='reveal' AND current_question_index=?")->execute([$sid,$idx]);
+                }
+            }
+            $session=robot_recall_room($pdo,$room)?:$session;
+        }
+    }
+
     if($action==='state'){
         $view=(string)($_REQUEST['view']??'player');
         if($view==='screen'){
@@ -29,6 +51,26 @@ try{
         // Refresh player row after prior scoring updates.
         $player=robot_recall_player_from_token($pdo,(int)$session['id'],$token)?:$player;
         json_response(['ok'=>true,'state'=>robot_recall_state($pdo,$session,$player,false)]);
+    }
+
+    // Any joined player may start a lobby. Their per-room player token is required;
+    // an atomic conditional update makes simultaneous Let's go taps safe.
+    if($action==='start'){
+        if($_SERVER['REQUEST_METHOD']!=='POST')json_response(['ok'=>false,'message'=>'POST required.'],405);
+        $token=(string)($_POST['token']??'');
+        $player=robot_recall_player_from_token($pdo,(int)$session['id'],$token);
+        if(!$player)json_response(['ok'=>false,'message'=>'Join the room before starting the game.'],401);
+        $count=$pdo->prepare('SELECT COUNT(*) FROM robot_recall_players WHERE session_id=?');
+        $count->execute([(int)$session['id']]);
+        if((int)$count->fetchColumn()<1)throw new RuntimeException('Waiting for players to join.');
+        $start=$pdo->prepare("UPDATE robot_recall_sessions SET status='question', current_question_index=1, question_started_at=UTC_TIMESTAMP(6), finished_at=NULL WHERE id=? AND status='lobby'");
+        $start->execute([(int)$session['id']]);
+        if($start->rowCount()!==1){
+            $fresh=robot_recall_room($pdo,$room);
+            if(!$fresh || (string)$fresh['status']==='lobby')throw new RuntimeException('Could not start the game. Try again.');
+            json_response(['ok'=>true,'already_started'=>true]);
+        }
+        json_response(['ok'=>true,'started'=>true]);
     }
 
     if($action==='answer'){

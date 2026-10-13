@@ -30,7 +30,7 @@ include dirname(__DIR__).'/partials_header.php';
       <div class="rr-player-status"><span id="rrPlayerName">Player</span><strong id="rrPlayerScore">0 pts</strong></div>
       <div id="rrPlayerLobby" class="rr-mc-phone-lobby">
         <span class="rr-screen-kicker">YOU'RE IN</span>
-        <h1>Waiting for the host</h1>
+        <h1>Ready to play?</h1>
         <p><b id="rrLobbyCount">0</b> players are in the room.</p>
         <div class="rr-mc-phone-rules">
           <div><b>1</b><span>Recognize the pixelated robot logo.</span></div>
@@ -38,6 +38,8 @@ include dirname(__DIR__).'/partials_header.php';
           <div><b>3</b><span>Faster correct answers score more points.</span></div>
         </div>
         <div class="rr-mc-phone-note">No searching. No asking the person next to you. We are pretending there are officials.</div>
+        <button class="rr-primary-button" id="rrStartFromPhone" type="button" style="width:100%;margin-top:1rem;font-size:1.15rem;padding:1rem"><i class="fa-solid fa-play"></i> Let's go!</button>
+        <p id="rrStartFeedback" class="muted" role="status" aria-live="polite" style="margin-top:.6rem">Any joined player can start the game.</p>
       </div>
       <div id="rrPlayerQuestion" hidden><div class="rr-phone-qhead"><span>QUESTION <b id="rrPhoneQNum">1</b>/<b id="rrPhoneQTotal">10</b></span><strong id="rrPhoneTimer">15.0</strong></div><h2>Whose logo is this?</h2><div class="rr-player-logo-slot rr-direct-player-logo" id="rrPhoneLogoSlot"><img id="rrPhoneLogo" alt="Mystery FRC team logo" loading="eager" decoding="async" fetchpriority="high" hidden></div><div class="rr-phone-options" id="rrPhoneOptions"></div><div class="rr-locked" id="rrLocked" hidden><i class="fa-solid fa-lock"></i> Answer locked in</div></div>
       <div id="rrPlayerReveal" hidden><span class="rr-screen-kicker">ANSWER</span><h1 id="rrRevealResult">Correct!</h1><p id="rrCorrectLabel"></p><div class="rr-points-earned" id="rrPointsEarned">+0</div><p class="muted" id="rrRankLine"></p></div>
@@ -49,7 +51,7 @@ include dirname(__DIR__).'/partials_header.php';
 <script>
 (()=>{
  const app=document.getElementById('rrPlayerApp'),endpoint=app.dataset.endpoint,seriesEndpoint=app.dataset.seriesEndpoint,realtimeUrl=app.dataset.realtimeUrl||'', $=id=>document.getElementById(id);
- let room=(app.dataset.room||'').replace(/\D/g,''),token='',state=null,answering=false,lastQuestion=0,switchingRoom=false,lastLogo='',pollTimer=null,pollBusy=false,stopped=false,refreshQueued=false,realtime=null;
+ let room=(app.dataset.room||'').replace(/\D/g,''),token='',state=null,starting=false,answering=false,lastQuestion=0,switchingRoom=false,lastLogo='',pollTimer=null,pollBusy=false,stopped=false,refreshQueued=false,realtime=null;
  const storageKey=r=>'neptune-robot-recall:'+r;
  function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
  function loadSaved(){if(room.length!==6)return false;try{const x=JSON.parse(localStorage.getItem(storageKey(room))||'null');if(x?.token){token=x.token;$('rrNickname').value=x.nickname||'';return true;}}catch(e){}return false;}
@@ -102,7 +104,7 @@ include dirname(__DIR__).'/partials_header.php';
  }
  function render(s){
    state=s;$('rrPublicActions').hidden=true;$('rrGameCard').hidden=false;$('rrPlayerName').textContent=s.player?.nickname||'Player';$('rrPlayerScore').textContent=Number(s.player?.score||0).toLocaleString()+' pts';
-   if(s.status==='lobby'){showOnly('rrPlayerLobby');$('rrLobbyCount').textContent=s.player_count||0;return;}
+   if(s.status==='lobby'){showOnly('rrPlayerLobby');$('rrLobbyCount').textContent=s.player_count||0;$('rrStartFromPhone').disabled=starting;return;}
    if(s.status==='question'){
       showOnly('rrPlayerQuestion');$('rrPhoneQNum').textContent=s.question_number;$('rrPhoneQTotal').textContent=s.question_count;if(lastQuestion!==s.question_number){lastQuestion=s.question_number;answering=false;$('rrLocked').textContent='Answer locked in';}
       setQuestionLogo(s.logo_url||'');
@@ -135,6 +137,18 @@ include dirname(__DIR__).'/partials_header.php';
      if(d.ok){const fixed=await reconcilePlayerState(d.state);if(fixed)render(fixed);}
    }catch(e){}finally{pollBusy=false;if(refreshQueued){refreshQueued=false;setTimeout(fetchState,0);}else schedulePoll();}
  }
+ async function startFromPhone(){
+   if(starting||!token||state?.status!=='lobby')return;
+   starting=true;const btn=$('rrStartFromPhone'),msg=$('rrStartFeedback');btn.disabled=true;msg.textContent='Starting the game…';
+   try{
+     const body=new URLSearchParams({action:'start',room,token});
+     const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body});
+     const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Unable to start game.');
+     realtime?.poke('start');await fetchState();msg.textContent='Game started!';
+   }catch(e){msg.textContent=e.message||'Unable to start game.';}
+   finally{starting=false;btn.disabled=state?.status!=='lobby';}
+ }
+ $('rrStartFromPhone')?.addEventListener('click',startFromPhone);
  async function submitAnswer(team){if(answering||!token)return;answering=true;$('rrPhoneOptions').querySelectorAll('button').forEach(b=>b.disabled=true);try{const body=new URLSearchParams({action:'answer',room,token,team:String(team)}),r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Could not submit answer.');$('rrLocked').hidden=false;realtime?.poke('answer');await fetchState();}catch(e){$('rrLocked').hidden=false;$('rrLocked').textContent=e.message||'Answer closed.';}finally{answering=false;}}
  $('rrJoinForm').addEventListener('submit',async e=>{e.preventDefault();room=$('rrRoom').value.replace(/\D/g,'');const nickname=$('rrNickname').value.trim();$('rrJoinError').hidden=true;if(room.length!==6){$('rrJoinError').textContent='Enter the 6-digit room code.';$('rrJoinError').hidden=false;return;}try{const body=new URLSearchParams({action:'join',room,nickname}),r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Could not join the game.');token=d.token;save(d.nickname);history.replaceState(null,'',`?room=${room}`);startRealtime();realtime?.poke('join');await fetchState();}catch(e){$('rrJoinError').textContent=e.message||'Could not join the game.';$('rrJoinError').hidden=false;}});
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&room&&token){clearTimeout(pollTimer);fetchState();}});
