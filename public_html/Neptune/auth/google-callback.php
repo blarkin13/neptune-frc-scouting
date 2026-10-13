@@ -49,6 +49,11 @@ try{
     $hostedDomain=strtolower(trim((string)($profile['hd']??'')));
     $displayName=trim((string)($profile['name']??''));
     if($sub===''||$email===''||!$verified)throw new RuntimeException('Google did not provide a verified email address.');
+    // Store Google's verified account photo in this login session, without storing it in the database.
+    $picture = trim((string)($profile['picture'] ?? ''));
+    $urlParts = parse_url($picture);
+    $pictureHost = strtolower((string)($urlParts['host'] ?? ''));
+    $_SESSION['google_profile_picture'] = (($urlParts['scheme'] ?? '') === 'https' && ($pictureHost === 'googleusercontent.com' || str_ends_with($pictureHost, '.googleusercontent.com'))) ? $picture : '';
 
     if($intent==='invite'){
         if($inviteToken==='')google_fail('The invitation session expired. Open the invitation link again.','invite');

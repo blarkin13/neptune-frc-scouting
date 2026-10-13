@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/google-auth.php';
+require_once dirname(__DIR__,3).'/neptune_secure/image.php';
 $teamLogoHelper=dirname(__DIR__).'/analytics/_team_logo_cache.php';
 if(is_file($teamLogoHelper)) require_once $teamLogoHelper;
 
@@ -9,6 +10,15 @@ $u=require_role(['owner','admin','strategy']);
 $org=(int)$u['organization_id'];
 $msg='';$error='';$issuedPassword='';$issuedInviteUrl='';
 neptune_auth_ensure_schema($pdo);
+
+/** Delete only logos uploaded into this organization's own storage folder. */
+function ntu_delete_owned_org_logo(int $org,string $relative):void{
+    if(!preg_match('~^uploads/organization-logos/'.preg_quote((string)$org,'~').'/logo-[a-z0-9-]+\.(?:avif|webp|jpe?g|png)$~i',$relative))return;
+    $root=realpath(dirname(__DIR__).'/uploads/organization-logos/'.$org);
+    $path=realpath(dirname(__DIR__).'/'.$relative);
+    if($root===false||$path===false||!str_starts_with($path,$root.DIRECTORY_SEPARATOR)||!is_file($path))return;
+    @unlink($path);
+}
 
 function ntu_load_teams(PDO $pdo,int $org):array{
     $s=$pdo->prepare('SELECT * FROM teams WHERE organization_id=? AND active=1 ORDER BY frc_team_number');$s->execute([$org]);return $s->fetchAll();
@@ -68,7 +78,34 @@ $teams=ntu_load_teams($pdo,$org);
 if($_SERVER['REQUEST_METHOD']==='POST'){
     verify_csrf();$kind=(string)($_POST['kind']??'');
     try{
-        if($kind==='workspace_settings'){
+if($kind==='organization_logo_upload'){
+            if((string)$u['role']!=='owner')throw new RuntimeException('Only an organization owner can change the organization logo.');
+            $file=$_FILES['logo']??null;
+            if(!is_array($file))throw new RuntimeException('Select an image to upload.');
+            $oldStatement=$pdo->prepare('SELECT logo_path FROM organizations WHERE id=? LIMIT 1');
+            $oldStatement->execute([$org]);
+            $oldPath=(string)($oldStatement->fetchColumn()?:'');
+            $dest=dirname(__DIR__).'/uploads/organization-logos/'.$org;
+            $saved=neptune_store_uploaded_image($file,$dest,'logo',1000,8*1024*1024);
+            $relative='uploads/organization-logos/'.$org.'/'.$saved['filename'];
+            try{
+                $st=$pdo->prepare('UPDATE organizations SET logo_path=? WHERE id=?');
+                $st->execute([$relative,$org]);
+                if($st->rowCount()!==1)throw new RuntimeException('Organization logo could not be saved.');
+            }catch(Throwable $writeError){ntu_delete_owned_org_logo($org,$relative);throw $writeError;}
+            if($oldPath!==''&&$oldPath!==$relative)ntu_delete_owned_org_logo($org,$oldPath);
+            $msg='Organization logo updated. It will appear in Neptune navigation for members of this organization.';
+            neptune_auth_audit($pdo,$org,(int)$u['id'],'organization_logo_uploaded','organization',(string)$org,['path'=>$relative]);
+        } elseif($kind==='organization_logo_remove'){
+            if((string)$u['role']!=='owner')throw new RuntimeException('Only an organization owner can change the organization logo.');
+            $oldStatement=$pdo->prepare('SELECT logo_path FROM organizations WHERE id=? LIMIT 1');
+            $oldStatement->execute([$org]);
+            $oldPath=(string)($oldStatement->fetchColumn()?:'');
+            $pdo->prepare('UPDATE organizations SET logo_path=NULL WHERE id=?')->execute([$org]);
+            if($oldPath!=='')ntu_delete_owned_org_logo($org,$oldPath);
+            $msg='Organization logo removed. Neptune branding remains unchanged.';
+            neptune_auth_audit($pdo,$org,(int)$u['id'],'organization_logo_removed','organization',(string)$org);
+        } elseif($kind==='workspace_settings'){
             if($u['role']!=='owner')throw new RuntimeException('Only an organization owner can change authentication settings.');
             $mode=(string)($_POST['google_signin_mode']??'optional');
             if(!in_array($mode,['disabled','optional','required'],true))throw new RuntimeException('Invalid Google sign-in mode.');
@@ -181,6 +218,18 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $teams=ntu_load_teams($pdo,$org);
 }
 
+$orgLogoStmt=$pdo->prepare('SELECT logo_path FROM organizations WHERE id=? LIMIT 1');
+$orgLogoStmt->execute([$org]);
+$orgLogoPath=trim((string)($orgLogoStmt->fetchColumn()?:''));
+/** Branding belongs to the organization; keep the Neptune mark only as an empty-state fallback. */
+function ntu_org_mark(string $path,string $name,string $type='inline'):string{
+    $url=$path!==''?e(base_url($path)):'';
+    $label=e($name);
+    if($type==='inline')return $url!==''?'<img class="neptune-org-logo-image" src="'.$url.'" alt="'.$label.' logo">':'<span class="ntu-brand-placeholder" aria-hidden="true"><i class="fa-solid fa-building"></i></span>';
+    return $url!==''?'<img class="neptune-org-logo-image" src="'.$url.'" alt="'.$label.' logo">':'<span class="ntu-modal-placeholder" aria-hidden="true"><i class="fa-solid fa-building"></i></span>';
+}
+
+if(!preg_match('~^(?:uploads|images)/[a-z0-9/_-]+\.(?:png|jpe?g|webp|avif)$~i',$orgLogoPath)||!is_file(dirname(__DIR__).'/'.$orgLogoPath))$orgLogoPath='';
 $policy=neptune_google_org_policy($pdo,$org);
 $s=$pdo->prepare("SELECT u.id,u.username,u.email,u.display_name,u.role,u.active,u.must_change_password,u.last_login_at,u.google_sub,u.google_email,u.google_linked_at,t.id primary_team_id,t.frc_team_number primary_team,
 EXISTS(SELECT 1 FROM audit_log al WHERE al.organization_id=u.organization_id AND al.user_id=u.id AND al.action='google_user_auto_provisioned') AS google_auto_provisioned,
@@ -226,7 +275,10 @@ $pageTitle='Teams & Users';$moduleName='SATURN';include dirname(__DIR__).'/parti
 .ntu-team-logo{width:62px;height:62px;display:grid;place-items:center;border-radius:16px;background:#fff;border:1px solid var(--line);overflow:hidden;box-shadow:0 8px 16px rgba(0,0,0,.08)}
 .ntu-team-logo img{width:100%;height:100%;object-fit:contain;padding:6px}.ntu-team-logo i{font-size:1.5rem;color:var(--muted)}
 .ntu-team-meta{position:relative;z-index:1;min-width:0}.ntu-team-meta strong{display:block;font-size:1.35rem;line-height:1}.ntu-team-meta .ntu-team-name{font-size:1.05rem;font-weight:850;margin-top:4px;overflow-wrap:anywhere}.ntu-team-meta .ntu-team-copy{font-size:.82rem;color:var(--muted);margin-top:8px;line-height:1.45}.ntu-team-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.ntu-team-actions{position:relative;z-index:2;display:flex;align-items:flex-start;justify-self:end}.ntu-team-actions .secondary{white-space:nowrap}
+.ntu-team-actions{position:relative;z-index:2;display:flex;flex-direction:column;gap:7px;align-items:stretch;justify-self:end}.ntu-team-actions .secondary{white-space:nowrap}
+.ntu-team-logo-feedback{font-size:.82rem;line-height:1.4;margin-top:8px}.ntu-team-logo-feedback:empty{display:none}.ntu-team-logo-feedback.error{color:var(--bad,#f87171)}.ntu-team-logo-feedback.success{color:var(--good,#39b87f)}
+.ntu-logo-editor{display:grid;grid-template-columns:84px minmax(0,1fr);gap:15px;align-items:start}.ntu-logo-editor-preview{width:84px;height:84px;border:1px solid var(--line);border-radius:16px;background:#fff;display:grid;place-items:center;overflow:hidden;color:#64748b}.ntu-logo-editor-preview img{width:100%;height:100%;object-fit:contain;padding:8px}.ntu-logo-editor-preview i{font-size:2rem}.ntu-logo-editor-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.ntu-logo-editor-actions button{white-space:nowrap}.ntu-logo-edit-status{margin-top:10px;min-height:1.2em}.ntu-logo-edit-status.error{color:var(--bad,#f87171)}.ntu-logo-edit-status.success{color:var(--good,#39b87f)}
+@media(max-width:460px){.ntu-logo-editor{grid-template-columns:62px minmax(0,1fr)}.ntu-logo-editor-preview{width:62px;height:62px}}
 @container (min-width:760px){.ntu-team-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:420px){.ntu-team-card{grid-template-columns:54px minmax(0,1fr);padding:14px}.ntu-team-logo{width:54px;height:54px}.ntu-team-actions{grid-column:2;justify-self:start;margin-top:2px}}
 .ntu-empty{padding:18px;border:1px dashed var(--line);border-radius:16px;background:var(--panel);color:var(--muted)}
@@ -269,6 +321,50 @@ $pageTitle='Teams & Users';$moduleName='SATURN';include dirname(__DIR__).'/parti
 .ntu-org-login-copy h2{margin:0 0 4px}.ntu-org-login-copy p{margin:0;color:var(--muted);max-width:68ch}
 .ntu-org-slug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--panel2)}
 .ntu-org-slug code{font-size:.95rem;font-weight:850;user-select:all}
+/* Compact organization branding: one row on desktop, two rows on small screens. */
+.ntu-org-branding{margin-top:16px;display:grid;grid-template-columns:68px minmax(0,1fr) auto;align-items:center;column-gap:16px;row-gap:10px;padding:16px 18px}
+.ntu-org-branding-preview{width:68px;height:68px;border:1px solid var(--line);border-radius:15px;background:#fff;display:grid;place-items:center;overflow:hidden;color:#64748b}
+.ntu-org-branding-preview img{width:100%;height:100%;object-fit:contain;padding:6px}
+.ntu-org-branding-preview i{font-size:1.6rem}
+.ntu-org-branding-copy{min-width:0}
+.ntu-org-branding-copy h2{margin:0 0 4px;font-size:1.15rem;line-height:1.25}
+.ntu-org-branding-copy h2 i{margin-right:5px;color:var(--accent)}
+.ntu-org-branding-copy p{margin:0;color:var(--muted);font-size:.88rem;line-height:1.4;max-width:62ch}
+.ntu-org-branding-copy p strong{color:var(--text)}
+.ntu-org-branding-note{display:block;margin-top:5px;color:var(--muted);font-size:.76rem}
+.ntu-org-branding-controls{display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.ntu-org-branding-controls form{display:flex;align-items:center;margin:0}
+.ntu-org-branding-controls .ntu-org-upload-btn{display:inline-flex;align-items:center;gap:8px;margin:0;padding:10px 13px;border-radius:9px;font-size:.87rem;white-space:nowrap;cursor:pointer;line-height:1.35}
+.ntu-org-branding-controls button.secondary{padding:10px 12px;border-radius:9px;font-size:.87rem;white-space:nowrap;line-height:1.35}
+.ntu-org-branding-controls .ntu-org-remove-btn{background:transparent;border-color:transparent;color:var(--muted);box-shadow:none}
+.ntu-org-branding-controls .ntu-org-remove-btn:hover{background:var(--panel2);border-color:var(--line);color:var(--text)}
+.ntu-org-branding-upload input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;padding:0;border:0}
+.ntu-org-branding-upload input[type=file]:focus-visible + .ntu-org-upload-btn{outline:3px solid var(--accent);outline-offset:3px}
+.ntu-org-branding-status{grid-column:2/-1;justify-self:end;color:var(--muted);font-size:.79rem;line-height:1.3}
+.ntu-org-branding-status.error{color:var(--bad,#f87171)}
+@media(max-width:840px){.ntu-org-branding{grid-template-columns:64px minmax(0,1fr)}.ntu-org-branding-preview{width:64px;height:64px}.ntu-org-branding-controls{grid-column:2;justify-content:flex-start}.ntu-org-branding-status{grid-column:2;justify-self:start}}
+@media(max-width:480px){.ntu-org-branding{grid-template-columns:56px minmax(0,1fr);gap:10px;padding:13px}.ntu-org-branding-preview{width:56px;height:56px;border-radius:12px}.ntu-org-branding-copy h2{font-size:1.05rem}.ntu-org-branding-copy p{font-size:.82rem}.ntu-org-branding-copy .ntu-org-branding-note{font-size:.72rem}.ntu-org-branding-controls{grid-column:1/-1;justify-content:flex-start}.ntu-org-branding-status{grid-column:1/-1}}
+
+/* Distinguish organization identity from product and third-party branding. */
+.ntu-brand-inline img{width:46px;height:46px;flex:0 0 46px;padding:5px;object-fit:contain}
+.ntu-brand-placeholder,.ntu-brand-service{width:46px;height:46px;flex:0 0 46px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;background:var(--panel2);color:var(--text);font-size:1.45rem}
+.ntu-brand-service.google{background:#fff;color:#4285f4;border-color:#d7e1f1}
+.ntu-modal-brand .ntu-brand-service.google{width:100%;height:100%;border:0;border-radius:0;font-size:1.65rem}
+.ntu-modal-placeholder,.ntu-modal-brand .ntu-modal-placeholder{display:grid;place-items:center;width:100%;height:100%;color:var(--text);font-size:1.5rem;background:var(--panel2)}
+.ntu-org-branding-controls .ntu-org-crop-adjust{padding:10px 12px;font-size:.87rem;line-height:1.35;border-radius:9px;white-space:nowrap}
+.ntu-org-crop-dialog{width:min(760px,calc(100vw - 24px))}
+.ntu-org-crop-layout{display:grid;grid-template-columns:minmax(230px,1.05fr) minmax(225px,1fr);gap:22px;align-items:start}
+.ntu-org-crop-stage{min-width:0}
+.ntu-org-crop-canvas{width:100%;max-width:400px;aspect-ratio:1;display:block;margin:auto;touch-action:none;cursor:grab;border:1px solid var(--line);border-radius:14px;background-color:#fff;background-image:linear-gradient(45deg,#edf2f7 25%,transparent 25%),linear-gradient(-45deg,#edf2f7 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#edf2f7 75%),linear-gradient(-45deg,transparent 75%,#edf2f7 75%);background-position:0 0,0 12px,12px -12px,-12px 0;background-size:24px 24px}
+.ntu-org-crop-canvas:active{cursor:grabbing}
+.ntu-org-crop-canvas:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.ntu-org-crop-options{display:flex;flex-direction:column;gap:16px}
+.ntu-org-crop-options label{font-size:.86rem;font-weight:700;color:var(--text)}
+.ntu-org-crop-options select,.ntu-org-crop-options input[type=range]{width:100%;margin-top:8px}
+.ntu-org-crop-options .ntu-help{margin-top:8px}
+.ntu-org-crop-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ntu-org-crop-error{color:var(--bad,#f87171);min-height:1em;line-height:1.4;font-size:.85rem}
+@media(max-width:650px){.ntu-org-crop-layout{grid-template-columns:1fr}.ntu-org-crop-canvas{max-width:300px}.ntu-org-crop-options{gap:12px}}
 
 html[data-theme="light"] .ntu-modal,html[data-theme="light"] .ntu-modal-head,html[data-theme="light"] .ntu-modal-body{background:#ffffff!important}
 html:not([data-theme="light"]) .ntu-modal,html:not([data-theme="light"]) .ntu-modal-head,html:not([data-theme="light"]) .ntu-modal-body{background:var(--panel)!important}
@@ -297,10 +393,160 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
   </div>
 </div>
 
+<div class="card ntu-org-branding" id="ntu-organization-branding">
+  <div class="ntu-org-branding-preview neptune-org-logo-frame">
+    <?php if($orgLogoPath!==''):?><img class="neptune-org-logo-image" src="<?=e(base_url($orgLogoPath))?>" alt="Logo for <?=e($u['organization_name'])?>">
+    <?php else:?><i class="fa-solid fa-building" aria-hidden="true"></i><?php endif;?>
+  </div>
+  <div class="ntu-org-branding-copy">
+    <h2><i class="fa-solid fa-image" aria-hidden="true"></i> Organization Logo</h2>
+    <p><strong><?=e($u['organization_name'])?></strong> · Shown next to Neptune branding on signed-in pages.</p>
+    <?php if((string)$u['role']==='owner'):?>
+      <span class="ntu-org-branding-note">Drag to position · zoom and crop · PNG, JPG, WebP, AVIF (HEIC may require direct upload) · 8 MB max</span>
+    <?php else:?>
+      <span class="ntu-org-branding-note">Only organization owners can change the logo.</span>
+    <?php endif;?>
+  </div>
+  <?php if((string)$u['role']==='owner'):?>
+    <div class="ntu-org-branding-controls">
+      <form class="ntu-org-branding-upload" method="post" enctype="multipart/form-data" action="#ntu-organization-branding">
+        <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
+        <input type="hidden" name="kind" value="organization_logo_upload">
+        <input id="ntuOrgLogoFile" type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/avif,image/heic,image/heif" required aria-label="Choose a new organization logo">
+        <label for="ntuOrgLogoFile" class="btn secondary ntu-org-upload-btn"><i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i> <?= $orgLogoPath!==''?'Change Logo':'Upload Logo' ?></label>
+        <noscript><button type="submit">Save logo</button></noscript>
+      </form>
+      <?php if($orgLogoPath!==''):?><button type="button" class="secondary ntu-org-crop-adjust" id="ntuOrgAdjustLogo"><i class="fa-solid fa-crop-simple" aria-hidden="true"></i> Adjust</button><?php endif;?>
+      <?php if($orgLogoPath!==''):?>
+        <form method="post" action="#ntu-organization-branding" onsubmit="return confirm('Remove the organization logo?')">
+          <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
+          <input type="hidden" name="kind" value="organization_logo_remove">
+          <button class="secondary ntu-org-remove-btn" type="submit" title="Remove the organization logo"><i class="fa-solid fa-trash" aria-hidden="true"></i> Remove</button>
+        </form>
+      <?php endif;?>
+    </div>
+    <div class="ntu-org-branding-status" id="ntuOrgLogoStatus" role="status" aria-live="polite" hidden></div>
+
+  <?php endif;?>
+</div>
+
+
+<?php if((string)$u['role']==='owner'):?>
+<dialog class="ntu-modal ntu-org-crop-dialog" id="ntuOrgCropDialog" aria-labelledby="ntuOrgCropTitle">
+  <div class="ntu-modal-head">
+    <div class="ntu-modal-hero"><div class="ntu-modal-brand"><i class="fa-solid fa-crop-simple" aria-hidden="true" style="font-size:1.5rem;color:var(--accent)"></i></div><div><small>Organization identity</small><h2 id="ntuOrgCropTitle">Position organization logo</h2><div class="ntu-modal-sub">Adjust once; the saved crop is used site-wide.</div></div></div>
+    <button class="ntu-icon-btn" type="button" id="ntuOrgCropClose" aria-label="Close crop editor"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+  </div>
+  <div class="ntu-modal-body">
+    <div class="ntu-org-crop-layout">
+      <div class="ntu-org-crop-stage"><canvas id="ntuOrgCropCanvas" class="ntu-org-crop-canvas" width="512" height="512" tabindex="0" aria-label="Logo crop. Drag to position, use arrow keys to make small adjustments."></canvas><p class="ntu-help" style="text-align:center">Drag your logo to reposition, or use arrow keys.</p></div>
+      <div class="ntu-org-crop-options">
+        <div><label for="ntuOrgCropMode">How should the logo fit?</label><select id="ntuOrgCropMode"><option value="contain">Show entire logo</option><option value="cover">Fill square (crop edges)</option></select><div class="ntu-help">The preview is the shape used in Neptune cards and menus.</div></div>
+        <div><label for="ntuOrgCropZoom">Zoom · <output id="ntuOrgCropZoomLabel">100%</output></label><input id="ntuOrgCropZoom" type="range" min="100" max="350" step="5" value="100"></div>
+        <div class="ntu-org-crop-actions"><button class="secondary" id="ntuOrgCropCenter" type="button"><i class="fa-solid fa-arrows-to-circle"></i> Center</button><button class="secondary" id="ntuOrgCropReset" type="button"><i class="fa-solid fa-rotate-left"></i> Reset</button></div>
+        <div class="ntu-help">The crop becomes a new square image. Existing logos remain unchanged until you save.</div>
+        <div class="ntu-org-crop-error" id="ntuOrgCropError" role="alert" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="ntu-modal-foot"><button class="secondary" id="ntuOrgCropCancel" type="button">Cancel</button><div class="ntu-org-crop-actions"><button class="secondary" id="ntuOrgCropOriginal" type="button" hidden>Upload without crop</button><button id="ntuOrgCropSave" type="button"><i class="fa-solid fa-check"></i> Save crop</button></div></div>
+  </div>
+</dialog>
+<script>
+(()=>{
+  const picker=document.getElementById('ntuOrgLogoFile');
+  const dialog=document.getElementById('ntuOrgCropDialog');
+  const canvas=document.getElementById('ntuOrgCropCanvas');
+  if(!picker||!dialog||!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const mode=document.getElementById('ntuOrgCropMode');
+  const zoom=document.getElementById('ntuOrgCropZoom');
+  const zoomLabel=document.getElementById('ntuOrgCropZoomLabel');
+  const error=document.getElementById('ntuOrgCropError');
+  const fallback=document.getElementById('ntuOrgCropOriginal');
+  const save=document.getElementById('ntuOrgCropSave');
+  const status=document.getElementById('ntuOrgLogoStatus');
+  const adjustment=document.getElementById('ntuOrgAdjustLogo');
+  const currentUrl=<?=json_encode($orgLogoPath!==''?base_url($orgLogoPath):'',JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>;
+  let photo=null,origin=null,offsetX=0,offsetY=0,drag=null,busy=false;
+  let objectUrl=null;
+  const W=canvas.width;
+  function report(message){error.textContent=message||'';}
+  function cleanUrl(){if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}}
+  function geometry(){
+    if(!photo)return null;
+    const base=(mode.value==='cover'?Math.max:Math.min)(W/photo.naturalWidth,W/photo.naturalHeight);
+    const scale=base*Number(zoom.value)/100;
+    return {width:photo.naturalWidth*scale,height:photo.naturalHeight*scale};
+  }
+  function clamp(){
+    const g=geometry();if(!g)return;
+    offsetX=Math.max(-Math.abs(g.width-W)/2,Math.min(Math.abs(g.width-W)/2,offsetX));
+    offsetY=Math.max(-Math.abs(g.height-W)/2,Math.min(Math.abs(g.height-W)/2,offsetY));
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,W);
+    if(!photo)return;
+    clamp();const g=geometry();
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+    ctx.drawImage(photo,(W-g.width)/2+offsetX,(W-g.height)/2+offsetY,g.width,g.height);
+    zoomLabel.textContent=zoom.value+'%';
+  }
+  function reset(){mode.value='contain';zoom.value='100';offsetX=0;offsetY=0;draw();}
+  function show(){if(!dialog.open)dialog.showModal();report('');fallback.hidden=true;save.disabled=false;}
+  function load(src,isFile){
+    photo=null;draw();report('Loading image…');save.disabled=true;
+    const img=new Image();
+    img.onload=()=>{photo=img;reset();save.disabled=false;report('')};
+    img.onerror=()=>{report('This browser cannot preview that format. Select PNG, JPG, WebP or AVIF, or upload the original without cropping.');fallback.hidden=!isFile;};
+    img.src=src;
+  }
+  picker.addEventListener('change',()=>{
+    const file=picker.files?.[0];if(!file)return;
+    if(file.size>8*1024*1024){status.textContent='Maximum image size is 8 MB.';status.classList.add('error');status.hidden=false;picker.value='';return;}
+    cleanUrl();origin=file;objectUrl=URL.createObjectURL(file);show();load(objectUrl,true);
+  });
+  adjustment?.addEventListener('click',()=>{
+    if(!currentUrl)return;
+    picker.value='';origin=null;cleanUrl();show();load(currentUrl,false);
+  });
+  mode.addEventListener('change',draw);
+  zoom.addEventListener('input',draw);
+  document.getElementById('ntuOrgCropCenter').addEventListener('click',()=>{offsetX=0;offsetY=0;draw();});
+  document.getElementById('ntuOrgCropReset').addEventListener('click',reset);
+  canvas.addEventListener('pointerdown',e=>{if(!photo)return;canvas.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,ox:offsetX,oy:offsetY};});
+  canvas.addEventListener('pointermove',e=>{if(!drag)return;const rect=canvas.getBoundingClientRect();offsetX=drag.ox+(e.clientX-drag.x)*W/rect.width;offsetY=drag.oy+(e.clientY-drag.y)*W/rect.height;draw();});
+  canvas.addEventListener('pointerup',()=>drag=null);
+  canvas.addEventListener('pointercancel',()=>drag=null);
+  canvas.addEventListener('keydown',e=>{
+    const d={ArrowLeft:[-5,0],ArrowRight:[5,0],ArrowUp:[0,-5],ArrowDown:[0,5]}[e.key];
+    if(!photo||!d)return;e.preventDefault();offsetX+=d[0];offsetY+=d[1];draw();
+  });
+  function close(){if(!busy)dialog.close();}
+  document.getElementById('ntuOrgCropCancel').addEventListener('click',close);
+  document.getElementById('ntuOrgCropClose').addEventListener('click',close);
+  dialog.addEventListener('close',()=>{cleanUrl();photo=null;origin=null;drag=null;picker.value='';});
+  dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault()});
+  function submitPicker(){status.classList.remove('error');status.textContent='Saving organization logo…';status.hidden=false;picker.form.requestSubmit();}
+  fallback.addEventListener('click',()=>{if(origin){submitPicker()}});
+  save.addEventListener('click',()=>{
+    if(!photo||busy)return;
+    busy=true;save.disabled=true;report('Preparing logo…');
+    canvas.toBlob(blob=>{
+      if(!blob){busy=false;save.disabled=false;report('Could not create the cropped logo. Please try another image.');return;}
+      try{
+        const dt=new DataTransfer();dt.items.add(new File([blob],'organization-logo.png',{type:'image/png'}));
+        picker.files=dt.files;submitPicker();
+      }catch(ex){busy=false;save.disabled=false;report('Your browser could not prepare the cropped upload. Please try an updated browser.');}
+    },'image/png');
+  });
+})();
+</script>
+<?php endif;?>
+
 <div class="ntu-auth-grid">
   <div class="card">
     <div class="ntu-card-title">
-      <div class="ntu-brand-inline"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"><div><h2 style="margin:0">Google Sign-In</h2><div class="muted">Google works for existing matching accounts even without Google Workspace.</div></div></div>
+      <div class="ntu-brand-inline"><span class="ntu-brand-service google" aria-hidden="true"><i class="fa-brands fa-google"></i></span><div><h2 style="margin:0">Google Sign-In</h2><div class="muted">Google works for existing matching accounts even without Google Workspace.</div></div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill"><?=$googleEnabled?'OAuth configured':'OAuth not configured'?></span><span class="pill"><?=e(ucfirst($policy['mode']))?></span></div>
     </div>
     <?php if($u['role']==='owner'):?>
@@ -331,7 +577,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
   </div>
   <div class="card ntu-team-panel">
     <div class="ntu-card-title">
-      <div class="ntu-brand-inline"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"><div><h2 style="margin:0">Organization Teams</h2><div class="muted">Brand-aware team cards using your existing team logos. Admins and Owners can edit team identity from each card.</div></div></div>
+      <div class="ntu-brand-inline"><?=ntu_org_mark($orgLogoPath,(string)$u['organization_name'])?><div><h2 style="margin:0">Organization Teams</h2><div class="muted">Brand-aware team cards using your existing team logos. Admins and Owners can edit team identity from each card.</div></div></div>
     </div>
     <?php if(!$teams):?>
       <div class="ntu-empty">No FRC teams added yet. Add a team to start assigning users and showing team identity across Neptune.</div>
@@ -343,16 +589,18 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
           $logoUrl=!empty($logo['exists'])?base_url((string)$logo['path']).(!empty($logo['version'])?'?v='.rawurlencode((string)$logo['version']):''):'';
           $name=trim((string)($t['display_name']?:$t['nickname']?:('Team '.$num)));
         ?>
-        <article class="ntu-team-card">
+        <article class="ntu-team-card" data-team-number="<?=e((string)$num)?>" data-logo-owner="<?=!empty($logo['exists'])?(!empty($logo['fallback_organization_id'])?'shared':'local'):'none'?>" data-logo-source="<?=e((string)($logo['source']??''))?>">
           <div class="ntu-team-logo"><?php if($logoUrl!==''):?><img src="<?=e($logoUrl)?>" alt="Team <?=e((string)$num)?> logo"><?php else:?><i class="fa-solid fa-robot"></i><?php endif;?></div>
           <div class="ntu-team-meta">
             <strong>#<?=e((string)$num)?></strong>
             <div class="ntu-team-name"><?=e($name)?></div>
             <div class="ntu-team-badges"><span class="pill">Organization team</span><?php if(!empty($t['nickname']) && $t['display_name'] && $t['display_name']!==$t['nickname']):?><span class="pill"><?=e($t['nickname'])?></span><?php endif;?></div>
             <div class="ntu-team-copy">This team is available for user assignment, scouting, and organization-wide Neptune features.</div>
+            <div class="ntu-team-logo-feedback" role="status" aria-live="polite"></div>
           </div>
           <?php if(in_array((string)$u['role'],['owner','admin'],true)):?>
           <div class="ntu-team-actions">
+            <button type="button" class="secondary ntu-upload-team-logo" data-team="<?=e((string)$num)?>" title="Upload or replace the team logo"><i class="fa-solid fa-image"></i> Upload Logo</button>
             <button
               type="button"
               class="secondary ntu-edit-team"
@@ -378,7 +626,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
 
 <div class="card ntu-invite-card" style="margin-top:16px">
   <div class="ntu-card-title">
-    <div class="ntu-brand-inline"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"><div><h2 style="margin:0">Invite by Link <span class="muted" style="font-size:.78rem;font-weight:700">(optional)</span></h2><div class="muted">Use this when you want someone to create their own Scout account with Google instead of creating the user and temporary password yourself.</div></div></div>
+    <div class="ntu-brand-inline"><span class="ntu-brand-service google" aria-hidden="true"><i class="fa-brands fa-google"></i></span><div><h2 style="margin:0">Invite by Link <span class="muted" style="font-size:.78rem;font-weight:700">(optional)</span></h2><div class="muted">Use this when you want someone to create their own Scout account with Google instead of creating the user and temporary password yourself.</div></div></div>
     <button type="button" class="secondary" data-open="inviteDialog"><i class="fa-solid fa-link"></i> Create One-Time Invite</button>
   </div>
   <div class="ntu-help">This is an alternative to <b>Add User</b>, not a requirement. The recipient verifies Google, joins only <b><?=e($u['organization_name'])?></b> as <b>Scout</b>, and the link expires after one use. Use <b>Add User</b> when you want to create and configure the account yourself.</div>
@@ -390,7 +638,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
 
 <dialog class="ntu-modal" id="inviteDialog">
   <div class="ntu-modal-head">
-    <div class="ntu-modal-hero"><div class="ntu-modal-brand"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"></div><div><small>Secure onboarding</small><h2>Create Organization Invitation</h2><div class="ntu-add-copy">Creates a one-time Google-verified link for <b><?=e($u['organization_name'])?></b>. The new account starts as Scout.</div></div></div>
+    <div class="ntu-modal-hero"><div class="ntu-modal-brand"><span class="ntu-brand-service google" aria-hidden="true"><i class="fa-brands fa-google"></i></span></div><div><small>Secure onboarding</small><h2>Create Organization Invitation</h2><div class="ntu-add-copy">Creates a one-time Google-verified link for <b><?=e($u['organization_name'])?></b>. The new account starts as Scout.</div></div></div>
     <button type="button" class="ntu-icon-btn" data-close="inviteDialog"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div class="ntu-modal-body"><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="kind" value="create_invite">
@@ -407,7 +655,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
 <dialog class="ntu-modal" id="editUserDialog">
   <div class="ntu-modal-head">
     <div class="ntu-modal-hero">
-      <div class="ntu-modal-brand"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"></div>
+      <div class="ntu-modal-brand"><?=ntu_org_mark($orgLogoPath,(string)$u['organization_name'],'modal')?></div>
       <div>
         <small>User account</small>
         <h2 id="editUserTitle">Manage user</h2>
@@ -457,7 +705,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
 <dialog class="ntu-modal" id="userDialog">
   <div class="ntu-modal-head">
     <div class="ntu-modal-hero">
-      <div class="ntu-modal-brand"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"></div>
+      <div class="ntu-modal-brand"><?=ntu_org_mark($orgLogoPath,(string)$u['organization_name'],'modal')?></div>
       <div>
         <small>Create account</small>
         <h2>Add Organization User</h2>
@@ -487,11 +735,11 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
 <dialog class="ntu-modal" id="teamDialog">
   <div class="ntu-modal-head">
     <div class="ntu-modal-hero">
-      <div class="ntu-modal-brand"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"></div>
+      <div class="ntu-modal-brand"><?=ntu_org_mark($orgLogoPath,(string)$u['organization_name'],'modal')?></div>
       <div>
         <small>Organization setup</small>
         <h2>Add FRC Team</h2>
-        <div class="ntu-add-copy">Add an organization team so it can receive assignments, show branding, and appear across Neptune.</div>
+        <div class="ntu-add-copy">Add an organization team so it can receive assignments, show branding, and appear across Neptune. After saving, use <b>Upload Logo</b> on its team card.</div>
       </div>
     </div>
     <button type="button" class="ntu-icon-btn" data-close="teamDialog"><i class="fa-solid fa-xmark"></i></button>
@@ -514,7 +762,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
 <dialog class="ntu-modal" id="editTeamDialog">
   <div class="ntu-modal-head">
     <div class="ntu-modal-hero">
-      <div class="ntu-modal-brand"><img src="<?=e(base_url('images/logo.png'))?>" alt="Neptune"></div>
+      <div class="ntu-modal-brand"><?=ntu_org_mark($orgLogoPath,(string)$u['organization_name'],'modal')?></div>
       <div>
         <small>Organization setup</small>
         <h2 id="editTeamTitle">Edit FRC Team</h2>
@@ -540,6 +788,22 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
           <div class="full"><label for="edit_team_display">Display name</label><input id="edit_team_display" name="display_name"><div class="ntu-help">If blank, Neptune will use the nickname or team number where needed.</div></div>
         </div>
       </div>
+      <div class="ntu-modal-section">
+        <div class="ntu-section-title"><h3>Team logo</h3><span class="muted">Persistent branding</span></div>
+        <div class="ntu-logo-editor">
+          <div class="ntu-logo-editor-preview" id="ntuLogoEditorPreview"><img alt="" hidden><i class="fa-solid fa-robot" aria-hidden="true"></i></div>
+          <div>
+            <div id="ntuLogoEditorSource" class="ntu-help">No logo saved</div>
+            <div class="ntu-help">Upload a PNG, JPG, WebP, AVIF or supported HEIC/HEIF image (up to 8 MB). Neptune optimizes it and uses it across Robot Cards, Team Lookup, scouting views, and other pages connected to the team-logo library. The logo is scoped to your organization and FRC team number, and persists between events and seasons.</div>
+            <div class="ntu-logo-editor-actions">
+              <button type="button" class="secondary" id="ntuEditUploadLogo"><i class="fa-solid fa-upload"></i> Upload / Replace</button>
+              <button type="button" class="secondary" id="ntuEditRemoveLogo"><i class="fa-solid fa-trash"></i> Remove Logo</button>
+            </div>
+            <div class="ntu-logo-edit-status" id="ntuLogoEditorStatus" role="status" aria-live="polite"></div>
+            <div class="ntu-help">If you change this team's number, save the team first, then upload its logo.</div>
+          </div>
+        </div>
+      </div>
       <div class="ntu-modal-foot">
         <button type="button" class="secondary" data-close="editTeamDialog">Cancel</button>
         <button type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Team</button>
@@ -547,6 +811,9 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
     </form>
   </div>
 </dialog>
+
+<!-- The selected image is uploaded to Neptune's existing shared team-logo API. -->
+<input id="ntuTeamLogoPicker" type="file" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" hidden aria-label="Choose a team logo">
 
 <script>
 (function(){
@@ -556,8 +823,109 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
  document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.open)?.showModal()));
  document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.close)?.close()));
  document.querySelectorAll('.ntu-modal').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close()}));
+ const logoApi=<?=json_encode(base_url('api/team-logo.php'))?>;
+ const logoCsrf=<?=json_encode(csrf_token())?>;
+ const logoPicker=document.getElementById('ntuTeamLogoPicker');
+ const editLogoUpload=document.getElementById('ntuEditUploadLogo');
+ const editLogoRemove=document.getElementById('ntuEditRemoveLogo');
+ let selectedLogoTeam=0;
+ let editingLogoTeam=0;
+ let logoBusy=false;
+ const teamCard=n=>document.querySelector('.ntu-team-card[data-team-number="'+Number(n)+'"]');
+ function logoMessage(team,message,kind=''){
+   const card=teamCard(team),el=card?.querySelector('.ntu-team-logo-feedback');
+   if(el){el.textContent=message||'';el.className='ntu-team-logo-feedback '+kind;}
+   if(editingLogoTeam===Number(team)&&document.getElementById('editTeamDialog')?.open){
+     const status=document.getElementById('ntuLogoEditorStatus');
+     status.textContent=message||'';status.className='ntu-logo-edit-status '+kind;
+   }
+ }
+ function logoSourceLabel(card){
+   if(!card||card.dataset.logoOwner==='none')return 'No team logo saved yet.';
+   if(card.dataset.logoOwner==='shared')return 'Shared Neptune logo library — uploading overrides it for this organization.';
+   const source=card.dataset.logoSource;
+   return source==='custom'?'Custom logo — saved for your organization.':source==='tba'?'The Blue Alliance avatar — saved locally.':'Cached team logo — saved locally.';
+ }
+ function renderEditorLogo(team){
+   const card=teamCard(team),preview=document.getElementById('ntuLogoEditorPreview');
+   const image=preview.querySelector('img'),fallback=preview.querySelector('i');
+   const cardImage=card?.querySelector('.ntu-team-logo img');
+   if(cardImage&&cardImage.getAttribute('src')&&!cardImage.hidden){image.src=cardImage.src;image.hidden=false;fallback.hidden=true;}
+   else{image.hidden=true;image.removeAttribute('src');fallback.hidden=false;}
+   document.getElementById('ntuLogoEditorSource').textContent=logoSourceLabel(card);
+   editLogoRemove.disabled=logoBusy||!card||card.dataset.logoOwner!=='local';
+   document.getElementById('ntuLogoEditorStatus').textContent='';
+ }
+ function updateLogoCard(team,data){
+   const card=teamCard(team);if(!card||!data?.url)return;
+   const preview=card.querySelector('.ntu-team-logo');
+   let img=preview.querySelector('img');
+   if(!img){img=document.createElement('img');img.alt='Team '+team+' logo';preview.prepend(img);}
+   img.src=data.url;img.hidden=false;
+   const placeholder=preview.querySelector('i');if(placeholder)placeholder.hidden=true;
+   card.dataset.logoOwner='local';card.dataset.logoSource=data?.logo?.source||'custom';
+   if(editingLogoTeam===Number(team))renderEditorLogo(team);
+ }
+ function setLogoBusy(team,busy){
+   logoBusy=busy;
+   document.querySelectorAll('.ntu-upload-team-logo').forEach(b=>b.disabled=busy);
+   if(editLogoUpload)editLogoUpload.disabled=busy;
+   if(editLogoRemove)editLogoRemove.disabled=busy||teamCard(editingLogoTeam)?.dataset.logoOwner!=='local';
+ }
+ function logoEditorHasUnsavedNumber(){
+   return document.getElementById('editTeamDialog').open&&Number(document.getElementById('edit_team_number').value)!==editingLogoTeam;
+ }
+ function chooseTeamLogo(team){
+   if(logoBusy||!Number(team))return;
+   if(Number(team)===editingLogoTeam&&logoEditorHasUnsavedNumber()){
+     logoMessage(team,'Save the changed team number before uploading a logo.','error');return;
+   }
+   selectedLogoTeam=Number(team);logoPicker.value='';logoPicker.click();
+ }
+ async function logoRequest(team,action,file=null){
+   const form=new FormData();form.append('csrf',logoCsrf);form.append('event_id','0');
+   form.append('season',String(new Date().getFullYear()));form.append('team',String(team));form.append('action',action);
+   if(file)form.append('logo',file);
+   const response=await fetch(logoApi,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json'},body:form});
+   const data=await response.json().catch(()=>({ok:false,message:'Neptune returned an invalid response.'}));
+   if(!response.ok||!data.ok)throw new Error(data.message||'Unable to save the team logo.');
+   return data;
+ }
+ async function uploadTeamLogo(team,file){
+   if(logoBusy)return;
+   if(file.size>8*1024*1024){logoMessage(team,'Logo must be 8 MB or smaller.','error');return;}
+   setLogoBusy(team,true);logoMessage(team,'Uploading and optimizing logo…');
+   try{
+     const data=await logoRequest(team,'upload',file);
+     updateLogoCard(team,data);
+     logoMessage(team,'Logo saved. Neptune will use it across connected team views.','success');
+   }catch(error){logoMessage(team,error.message||'Logo upload failed.','error');}
+   finally{setLogoBusy(team,false);}
+ }
+ document.querySelectorAll('.ntu-upload-team-logo').forEach(b=>b.addEventListener('click',()=>chooseTeamLogo(b.dataset.team)));
+ editLogoUpload?.addEventListener('click',()=>chooseTeamLogo(editingLogoTeam));
+ logoPicker?.addEventListener('change',()=>{
+   const file=logoPicker.files?.[0];const team=selectedLogoTeam;
+   if(file&&team)uploadTeamLogo(team,file);
+ });
+ editLogoRemove?.addEventListener('click',async()=>{
+   const team=editingLogoTeam;if(logoBusy||!team||teamCard(team)?.dataset.logoOwner!=='local')return;
+   if(logoEditorHasUnsavedNumber()){logoMessage(team,'Save the changed team number first.','error');return;}
+   const confirmed=window.NeptuneUI?.confirm
+     ?await window.NeptuneUI.confirm('Remove the local logo for team #'+team+'? A shared logo may appear if available.',{title:'Remove team logo',confirmText:'Remove',danger:true})
+     :window.confirm('Remove the local logo for team #'+team+'?');
+   if(!confirmed)return;
+   setLogoBusy(team,true);logoMessage(team,'Removing logo…');
+   try{
+     await logoRequest(team,'remove');
+     // Reload so any shared-library fallback is reflected correctly.
+     window.location.reload();
+   }catch(error){logoMessage(team,error.message||'Unable to remove logo.','error');setLogoBusy(team,false);}
+ });
  document.querySelectorAll('.ntu-edit-team').forEach(b=>b.addEventListener('click',()=>{
    const d=document.getElementById('editTeamDialog');
+   editingLogoTeam=Number(b.dataset.number)||0;
+   renderEditorLogo(editingLogoTeam);
    document.getElementById('editTeamTitle').textContent='Edit Team #'+(b.dataset.number||'');
    document.getElementById('edit_team_id').value=b.dataset.id||'';
    document.getElementById('edit_team_number').value=b.dataset.number||'';

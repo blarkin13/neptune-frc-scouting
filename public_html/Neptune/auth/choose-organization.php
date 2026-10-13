@@ -58,7 +58,7 @@ $pageTitle='Choose Organization';include dirname(__DIR__).'/partials_header.php'
   <?php foreach($rows as $row):$logo=trim((string)($row['organization_logo_path']??''));?>
     <form method="post"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="user_id" value="<?=(int)$row['id']?>">
       <button class="auth-choice-option" type="submit">
-        <span class="auth-choice-logo"><?php if($logo!==''):?><img src="<?=e(base_url(ltrim($logo,'/')))?>" alt=""><?php else:?><i class="fa-solid fa-building"></i><?php endif;?></span>
+        <span class="auth-choice-logo neptune-org-logo-frame"><?php if($logo!==''):?><img class="neptune-org-logo-image" src="<?=e(base_url(ltrim($logo,'/')))?>" alt=""><?php else:?><i class="fa-solid fa-building"></i><?php endif;?></span>
         <span><span class="auth-choice-name"><?=e($row['organization_name'])?></span><span class="auth-choice-meta"><?=e(ucfirst((string)$row['role']))?> access<?php if((int)$row['organization_id']===(int)($_COOKIE['neptune_last_org']??0)):?> · Last used<?php endif;?></span></span>
         <i class="fa-solid fa-chevron-right auth-choice-arrow"></i>
       </button>

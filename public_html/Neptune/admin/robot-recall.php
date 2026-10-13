@@ -149,7 +149,7 @@ if(!$seasonYears){try{$seasonYears=array_map('intval',$pdo->query('SELECT DISTIN
 $currentYear=(int)date('Y');if(!in_array($currentYear,$seasonYears,true))array_unshift($seasonYears,$currentYear);
 $seasonYears=array_values(array_unique(array_filter($seasonYears,static fn($y)=>$y>=1992&&$y<=$currentYear+1)));
 
-$pageTitle='Robot Recall';$moduleName='SATURN';$bodyClass=trim(($bodyClass??'').' robot-recall-page');$pageStyles=['assets/css/robot-recall-admin-v41.css','assets/css/robot-recall-live-v44.css','assets/css/robot-recall-standings-v46.css','assets/css/robot-recall-public-v47.css'];
+$pageTitle='Robot Recall';$moduleName='SATURN';$bodyClass=trim(($bodyClass??'').' robot-recall-page');$pageStyles=['assets/css/robot-recall-admin-v41.css','assets/css/robot-recall-live-v44.css','assets/css/robot-recall-standings-v46.css','assets/css/robot-recall-public-v47.css','assets/css/robot-recall-realtime-status-v49.css'];
 include dirname(__DIR__).'/partials_header.php';
 ?>
 <section class="module-page robot-recall-admin">
@@ -173,7 +173,7 @@ include dirname(__DIR__).'/partials_header.php';
     <div class="card rr-host-main">
       <div class="rr-host-head">
         <div><span class="rr-kicker">LIVE GAME CONTROL</span><div class="rr-host-title-row"><h2><?=e($session['title'])?></h2><?php if($isTestSession):?><span class="rr-test-badge"><i class="fa-solid fa-flask"></i> TEST MODE</span><?php elseif($isPracticeSession):?><span class="rr-practice-badge"><i class="fa-solid fa-gamepad"></i> PRACTICE</span><?php endif;?></div><div class="muted"><?=e($session['event_name']?:((string)$session['season_year'].' · All cached teams'))?></div></div>
-        <div class="rr-room"><small>ROOM</small><strong><?=e($session['room_code'])?></strong></div>
+        <div class="rr-host-connectivity"><span class="rr-realtime-status" id="rrRealtimeStatus" data-state="connecting" role="status" aria-live="polite"><span class="rr-realtime-dot" aria-hidden="true"></span><span class="rr-realtime-copy"><small>Realtime</small><b data-rr-realtime-label>CONNECTING</b></span></span><div class="rr-room"><small>ROOM</small><strong><?=e($session['room_code'])?></strong></div></div>
       </div>
       <div class="rr-status-grid">
         <div class="rr-status-card"><small>Status</small><strong id="rrStatusPill">Lobby</strong></div>
@@ -329,7 +329,7 @@ include dirname(__DIR__).'/partials_header.php';
   </section><?php endif;?>
 </section>
 
-<?php if($session):?><script src="<?=e(base_url('assets/js/qrcode-v4l.js'))?>?v=1"></script><script src="<?=e(base_url('assets/js/robot-recall-realtime-v44.js'))?>"></script><?php endif;?>
+<?php if($session):?><script src="<?=e(base_url('assets/js/qrcode-v4l.js'))?>?v=1"></script><script src="<?=e(base_url('assets/js/robot-recall-realtime-v49.js'))?>"></script><?php endif;?>
 <script>
 (()=>{
  // Robot Recall is a fixed-width app page. Safari may restore a previous horizontal scroll offset after CSS updates.
@@ -461,7 +461,8 @@ include dirname(__DIR__).'/partials_header.php';
    submitNextMatch(true);
  });
  $('rrCopyJoin')?.addEventListener('click',async e=>{try{await navigator.clipboard.writeText(e.currentTarget.dataset.url);window.NeptuneUI?.toast('Join link copied.','good',{title:'Robot Recall'});}catch(_){await window.NeptuneUI?.prompt?.('Copy this join link:',{title:'Copy join link',value:e.currentTarget.dataset.url,confirmText:'Done'});}});
- realtime=window.NeptuneRobotRecallRealtime?.create({url:realtimeUrl,room:roomCode,onPoke:()=>{refresh();refreshEventTop();}})||null;
+ const realtimeView=window.NeptuneRobotRecallRealtime?.bindStatus?.($('rrRealtimeStatus'));
+  realtime=window.NeptuneRobotRecallRealtime?.create({url:realtimeUrl,room:roomCode,onStatus:realtimeView?.set,onTraffic:realtimeView?.traffic,onPoke:()=>{refresh();refreshEventTop();}})||null;
  refresh();refreshEventTop();setInterval(()=>{if(!realtime?.isOpen?.())refresh();},180);setInterval(()=>{if(realtime?.isOpen?.()&&document.visibilityState==='visible')refresh();},1500);setInterval(refreshEventTop,2500);setInterval(tick,100);
  window.addEventListener('beforeunload',()=>realtime?.close?.());
 })();

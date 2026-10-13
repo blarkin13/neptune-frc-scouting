@@ -233,7 +233,9 @@ if (!function_exists('neptune_hero_buffer_start')) {
     function neptune_hero_transform_document(string $html): string
     {
         if ($html === '' || !str_contains($html, 'topbar-identity') || !str_contains($html, '<main')) return $html;
-        if (str_contains($html, 'home-hero') || str_contains($html, 'auth-card')) return $html;
+        // Look for actual markup. Inline scripts in the shared header contain
+        // strings like 'home-hero-logo' that must not disable every page hero.
+        if (preg_match('~<(?:section|div|article|header)\b[^>]*\bclass\s*=\s*(["\'])[^"\']*\b(?:home-hero|auth-card|nd-mission-header)\b[^"\']*\1~i', $html)) return $html;
 
         // Heroes live at the top of Neptune pages. Parse only the initial document
         // window so large analytics/data tables do not pay a full-page DOM scan cost.
@@ -433,6 +435,92 @@ if (!function_exists('neptune_hero_buffer_start')) {
             return ($a[3]??0) <=> ($b[3]??0);
         });
         foreach ($mods as $mod) { [$a,$b,$text]=$mod; $html = substr_replace($html,$text,$a,$b-$a); }
+
+        /*
+         * Mission Control visual treatment for authenticated deeper-page heroes.
+         * Scoped to server-composited heroes only; never touches forms, tables,
+         * modals, the dashboard, or the three main module landing pages.
+         * One neutral-glass bubble field lives behind the full page.
+         */
+        $depthStyle = <<<'NEPTUNE_DEPTH_CSS'
+<style id="neptune-mission-depth-heroes">
+.neptune-page-hero[data-neptune-hero="server"]{
+  --nd-depth-color:var(--module-accent-readable,var(--module-accent,var(--accent)));
+  isolation:isolate;
+  background:radial-gradient(ellipse at 84% 12%,color-mix(in srgb,var(--nd-depth-color) 10%,transparent),transparent 55%),linear-gradient(125deg,color-mix(in srgb,var(--panel) 19%,transparent),color-mix(in srgb,var(--panel) 12%,transparent))!important;
+  border-color:color-mix(in srgb,var(--nd-depth-color) 34%,var(--line))!important;
+  box-shadow:0 14px 35px color-mix(in srgb,var(--shadow) 35%,transparent)!important;
+}
+/* Full-viewport animated ocean, not a child of the hero. */
+body>.nd-depth-field{
+  position:fixed;inset:0;z-index:0;overflow:hidden;
+  pointer-events:none;user-select:none;contain:paint;
+}
+body:has(>.nd-depth-field) main.wrap{position:relative;z-index:1}
+body>.nd-depth-field>.nd-depth-rays{
+  position:absolute;inset:-35%;opacity:.4;filter:blur(15px);
+  background:repeating-conic-gradient(from 194deg at 50% -10%,transparent 0deg 10deg,rgba(192,224,241,.07) 11deg 13deg,transparent 14deg 28deg);
+  animation:nd-depth-current 23s ease-in-out infinite alternate;
+}
+body>.nd-depth-field>.nd-depth-bubble{
+  position:absolute;left:var(--nd-x);bottom:-26px;width:var(--nd-size);height:var(--nd-size);
+  border:1px solid rgba(194,225,241,.58);
+  border-radius:50%;opacity:0;
+  background:radial-gradient(circle at 28% 21%,rgba(248,253,255,.32),transparent 55%);
+  box-shadow:inset -1px -2px 4px rgba(104,158,187,.2),0 0 9px rgba(192,228,248,.14);
+  animation:nd-depth-rise var(--nd-time) linear var(--nd-delay) infinite;
+  will-change:transform,opacity;
+}
+html[data-theme="light"] body>.nd-depth-field>.nd-depth-bubble{border-color:rgba(58,104,132,.38);background:radial-gradient(circle at 28% 21%,rgba(255,255,255,.42),transparent 55%);box-shadow:inset -1px -2px 4px rgba(58,103,133,.15),0 0 8px rgba(76,120,150,.12)}
+@keyframes nd-depth-rise{
+  0%{opacity:0;transform:translate3d(0,0,0) scale(.65)}
+  12%,82%{opacity:var(--nd-alpha)}
+  100%{opacity:0;transform:translate3d(var(--nd-drift),-125vh,0) scale(1.08)}
+}
+@keyframes nd-depth-current{from{transform:translateX(-2%)}to{transform:translateX(2%)}}
+/* Keep status chips readable against the much lighter hero background. */
+.neptune-page-hero[data-neptune-hero="server"] .neptune-hero-pill{
+  background:color-mix(in srgb,var(--panel) 82%,transparent)!important;
+  border-color:color-mix(in srgb,var(--nd-depth-color) 28%,var(--line))!important;
+}
+@media(max-width:640px){body>.nd-depth-field>.nd-depth-rays{opacity:.2}}
+@media(prefers-reduced-motion:reduce){
+  body>.nd-depth-field>.nd-depth-bubble{display:none!important;animation:none!important}
+  body>.nd-depth-field>.nd-depth-rays{animation:none!important}
+}
+</style>
+NEPTUNE_DEPTH_CSS;
+        $depthScript = <<<'NEPTUNE_DEPTH_JS'
+<script id="neptune-mission-depth-script">
+(()=>{
+  'use strict';
+  function init(){
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    // Only add the field on pages with a server-generated deep-page hero.
+    // The dashboard and primary section hubs manage their own ocean layer.
+    if(!document.querySelector('main.wrap .neptune-page-hero[data-neptune-hero="server"]'))return;
+    if(document.querySelector('body > .nd-depth-field')||document.querySelector('.nd-ocean'))return;
+    const layer=document.createElement('div');layer.className='nd-depth-field';layer.setAttribute('aria-hidden','true');
+    const rays=document.createElement('div');rays.className='nd-depth-rays';layer.appendChild(rays);
+    const count=window.matchMedia&&window.matchMedia('(max-width:640px)').matches?15:32;
+    for(let i=0;i<count;i++){
+      const bubble=document.createElement('span');bubble.className='nd-depth-bubble';
+      bubble.style.setProperty('--nd-x',(Math.random()*100).toFixed(1)+'%');
+      bubble.style.setProperty('--nd-size',(4+Math.random()*13).toFixed(1)+'px');
+      bubble.style.setProperty('--nd-time',(12+Math.random()*19).toFixed(1)+'s');
+      bubble.style.setProperty('--nd-delay',(-Math.random()*31).toFixed(1)+'s');
+      bubble.style.setProperty('--nd-drift',((Math.random()-.5)*125).toFixed(1)+'px');
+      bubble.style.setProperty('--nd-alpha',(.32+Math.random()*.29).toFixed(2));
+      layer.appendChild(bubble);
+    }
+    document.body.prepend(layer);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
+</script>
+NEPTUNE_DEPTH_JS;
+        $html = str_replace('</head>', $depthStyle."\n".'</head>', $html);
+        $html = str_replace('</body>', $depthScript."\n".'</body>', $html);
         return $html;
     }
 }

@@ -88,7 +88,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'&&($_POST['action']??'')==='create_practic
 
 $pageTitle=$session?'Host Robot Recall Practice':'Host Robot Recall';
 $moduleName='SATURN';$hideChrome=true;$hideBreadcrumbs=true;$bodyClass='robot-recall-public robot-recall-public-host';
-$pageStyles=['assets/css/robot-recall.css','assets/css/robot-recall-admin-v41.css','assets/css/robot-recall-live-v44.css','assets/css/robot-recall-public-v47.css'];
+$pageStyles=['assets/css/robot-recall.css','assets/css/robot-recall-admin-v41.css','assets/css/robot-recall-live-v44.css','assets/css/robot-recall-public-v47.css','assets/css/robot-recall-realtime-status-v49.css'];
 include dirname(__DIR__).'/partials_header.php';
 ?>
 <div class="rr-public-host-shell">
@@ -103,7 +103,7 @@ include dirname(__DIR__).'/partials_header.php';
       <div class="rr-public-control-card">
         <div class="rr-host-head">
           <div><span class="rr-kicker">PRACTICE GAME CONTROL</span><div class="rr-host-title-row"><h1><?=e((string)$session['title'])?></h1><span class="rr-practice-badge"><i class="fa-solid fa-gamepad"></i> PRACTICE</span></div><div class="muted"><?=e((string)($session['event_name']?:((string)$session['season_year'].' · All cached teams')))?></div></div>
-          <div class="rr-room"><small>ROOM</small><strong><?=e((string)$session['room_code'])?></strong></div>
+          <div class="rr-host-connectivity"><span class="rr-realtime-status" id="rrRealtimeStatus" data-state="connecting" role="status" aria-live="polite"><span class="rr-realtime-dot" aria-hidden="true"></span><span class="rr-realtime-copy"><small>Realtime</small><b data-rr-realtime-label>CONNECTING</b></span></span><div class="rr-room"><small>ROOM</small><strong><?=e((string)$session['room_code'])?></strong></div></div>
         </div>
         <div class="rr-status-grid">
           <div class="rr-status-card"><small>Status</small><strong id="rrStatusPill">Lobby</strong></div>
@@ -137,7 +137,7 @@ include dirname(__DIR__).'/partials_header.php';
     </section>
   </main>
   <script src="<?=e(base_url('assets/js/qrcode-v4l.js'))?>?v=1"></script>
-  <script src="<?=e(base_url('assets/js/robot-recall-realtime-v44.js'))?>"></script>
+  <script src="<?=e(base_url('assets/js/robot-recall-realtime-v49.js'))?>"></script>
   <script>
   (()=>{
     const host=document.getElementById('rrPublicHost');if(!host)return;
@@ -159,7 +159,8 @@ include dirname(__DIR__).'/partials_header.php';
     document.querySelectorAll('#rrActions [data-action]').forEach(b=>b.addEventListener('click',()=>doAction(b.dataset.action)));
     $('rrCopyJoin')?.addEventListener('click',async e=>{try{await navigator.clipboard.writeText(e.currentTarget.dataset.url);window.NeptuneUI?.toast?.('Join link copied.','good',{title:'Robot Recall'});}catch(_){await window.NeptuneUI?.prompt?.('Copy this join link:',{title:'Copy join link',value:e.currentTarget.dataset.url,confirmText:'Done'});}});
     $('rrCopyHost')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(location.href);window.NeptuneUI?.toast?.('Private host link copied.','good',{title:'Robot Recall'});}catch(_){await window.NeptuneUI?.prompt?.('Copy this private host link:',{title:'Copy private host link',value:location.href,confirmText:'Done'});}});
-    realtime=window.NeptuneRobotRecallRealtime?.create({url:realtimeUrl,room,onPoke:()=>refresh()})||null;
+    const realtimeView=window.NeptuneRobotRecallRealtime?.bindStatus?.($('rrRealtimeStatus'));
+     realtime=window.NeptuneRobotRecallRealtime?.create({url:realtimeUrl,room,onStatus:realtimeView?.set,onTraffic:realtimeView?.traffic,onPoke:()=>refresh()})||null;
     refresh();setInterval(()=>{if(!realtime?.isOpen?.())refresh();},180);setInterval(()=>{if(realtime?.isOpen?.()&&document.visibilityState==='visible')refresh();},1500);setInterval(tick,100);window.addEventListener('beforeunload',()=>realtime?.close?.());
   })();
   </script>
