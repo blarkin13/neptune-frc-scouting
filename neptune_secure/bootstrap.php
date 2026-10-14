@@ -151,27 +151,65 @@ function uuidv4(): string {
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($d),4));
 }
 function current_user(): ?array { return $_SESSION['user'] ?? null; }
+/**
+ * Validate every authenticated request against live account state. A password
+ * revision stamp binds the session to the password hash in force at sign-in;
+ * password resets invalidate all previously established sessions. Refreshing
+ * the role from the database prevents stale elevated privileges.
+ *
+ * Existing sessions without a stamp must sign in again after this upgrade.
+ */
+function neptune_live_user(PDO $pdo,array $sessionUser): ?array {
+    $id=(int)($sessionUser['id']??0);
+    $org=(int)($sessionUser['organization_id']??0);
+    $stamp=(string)($sessionUser['credential_revision']??'');
+    if($id<1||$org<1||!preg_match('/^[a-f0-9]{64}$/D',$stamp))return null;
+    $s=$pdo->prepare('SELECT u.id,u.organization_id,u.username,u.display_name,u.role,u.active,u.must_change_password,u.password_hash,u.google_sub,o.name organization_name,o.slug organization_slug,COALESCE(o.platform_status,\'active\') platform_status FROM users u JOIN organizations o ON o.id=u.organization_id WHERE u.id=? AND u.organization_id=? LIMIT 1');
+    $s->execute([$id,$org]);
+    $row=$s->fetch(PDO::FETCH_ASSOC);
+    if(!$row||(int)$row['active']!==1||strtolower((string)$row['platform_status'])!=='active')return null;
+    if(!hash_equals(hash('sha256',(string)$row['password_hash']),$stamp))return null;
+    if(($sessionUser['auth_method']??'')==='google'){
+        $identity=(string)($sessionUser['google_identity_revision']??'');
+        if($identity===''||!hash_equals($identity,hash('sha256',(string)($row['google_sub']??''))))return null;
+    }
+    $role=(string)$row['role'];
+    if(!in_array($role,['owner','admin','strategy','scout'],true))return null;
+    $sessionUser['username']=(string)$row['username'];
+    $sessionUser['display_name']=(string)$row['display_name'];
+    $sessionUser['role']=$role;
+    $sessionUser['organization_name']=(string)$row['organization_name'];
+    $sessionUser['organization_slug']=(string)$row['organization_slug'];
+    // Google sign-in does not require replacing a pending temporary local password.
+    $sessionUser['must_change_password']=(($sessionUser['auth_method']??'')==='google')?0:(int)$row['must_change_password'];
+    return $sessionUser;
+}
 function require_login(): array {
     global $pdo;
     $u=current_user();
     if(!$u){ header('Location: '.base_url('index.php')); exit; }
-
-    $orgId=(int)($u['organization_id']??0);
-    if($orgId>0 && neptune_organization_platform_status($pdo,$orgId)!=='active'){
+    try{$fresh=neptune_live_user($pdo,$u);}
+    catch(Throwable $e){
+        // Database outages must fail closed, not permit cached elevated privileges.
+        error_log('Neptune login revalidation failed: '.get_class($e));
+        http_response_code(503);
+        exit('Unable to verify account access. Try again shortly.');
+    }
+    if($fresh===null){
         unset($_SESSION['user']);
-        $_SESSION['auth_error']='This Neptune organization is currently suspended. Contact the platform administrator.';
+        $_SESSION['auth_error']='Your session ended after an account or credential change. Please sign in again.';
         header('Location: '.base_url('index.php'));
         exit;
     }
-
-    if(!empty($u['must_change_password'])){
+    $_SESSION['user']=$fresh;
+    if(!empty($fresh['must_change_password'])){
         $script=basename((string)($_SERVER['SCRIPT_NAME']??''));
         if(!in_array($script,['change-password.php','logout.php'],true)){
             header('Location: '.base_url('change-password.php'));
             exit;
         }
     }
-    return $u;
+    return $fresh;
 }
 function access_denied(string $message='Your account does not have permission to access this area.'): never {
     $u=current_user();

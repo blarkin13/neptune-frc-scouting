@@ -24,7 +24,17 @@ function neptune_realtime_secret(): string {
     static $secret = null;
     if ($secret !== null) return $secret;
 
-    $raw = @file_get_contents(NEPTUNE_REALTIME_SECRET_FILE);
+    // Portable field servers use a private, installer-generated local secret.
+    // Production continues using the AWS relay's existing /etc/neptune path.
+    global $config;
+    $secretFile = NEPTUNE_REALTIME_SECRET_FILE;
+    if (!empty($config['app']['portable_mode'])) {
+        $secretFile = trim((string)($config['app']['realtime_secret_file'] ?? ''));
+        if ($secretFile === '' || $secretFile[0] !== '/') {
+            throw new RuntimeException('Portable realtime secret path is not configured.');
+        }
+    }
+    $raw = @file_get_contents($secretFile);
     $secret = is_string($raw) ? trim($raw) : '';
     if (strlen($secret) < 32) $secret = '';
     return $secret;
@@ -47,6 +57,19 @@ function neptune_scouting_realtime_credentials(int $organizationId): array {
         'expires' => $expires,
         'token' => $token,
     ];
+}
+
+/** Presence tokens bind an individual user to the authenticated organization room.
+ * Do not reuse room-scoped scouting credentials for identity-bearing presence.
+ */
+function neptune_presence_realtime_credentials(int $organizationId, int $userId): array {
+    if ($userId < 1) throw new InvalidArgumentException('Invalid user');
+    $secret = neptune_realtime_secret();
+    if ($secret === '') throw new RuntimeException('Private realtime unavailable');
+    $room = neptune_scouting_realtime_room($organizationId);
+    $expires = time() + NEPTUNE_REALTIME_TOKEN_TTL;
+    $token = hash_hmac('sha256', 'v1|presence|'.$room.'|'.$userId.'|'.$expires, $secret);
+    return ['room'=>$room,'scope'=>'presence','user_id'=>$userId,'expires'=>$expires,'token'=>$token];
 }
 
 function neptune_scouting_lobby_snapshot(PDO $pdo,int $organizationId): array {

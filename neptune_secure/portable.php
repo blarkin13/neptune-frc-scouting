@@ -593,6 +593,28 @@ function neptune_portable_google_only_users(PDO $pdo, int $organizationId): arra
     return $rows;
 }
 
+/** Capture immutable baseline hashes for the organization package being built.
+ * Repeated builds refresh cloud-side staging values; already exported packages
+ * retain their own independent baseline copies. */
+function neptune_portable_refresh_match_bases(PDO $pdo,int $org): void {
+    require_once __DIR__.'/_portable_match_version.php';
+    $pdo->exec("CREATE TABLE IF NOT EXISTS neptune_portable_match_bases (
+        organization_id BIGINT UNSIGNED NOT NULL,
+        match_id BIGINT UNSIGNED NOT NULL,
+        base_hash CHAR(64) NOT NULL,
+        captured_at DATETIME NOT NULL,
+        PRIMARY KEY (organization_id,match_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $s=$pdo->prepare('SELECT * FROM matches WHERE organization_id=?');
+    $s->execute([$org]);
+    $up=$pdo->prepare('INSERT INTO neptune_portable_match_bases
+        (organization_id,match_id,base_hash,captured_at) VALUES(?,?,?,UTC_TIMESTAMP())
+        ON DUPLICATE KEY UPDATE base_hash=VALUES(base_hash),captured_at=VALUES(captured_at)');
+    foreach($s->fetchAll(PDO::FETCH_ASSOC) as $row){
+        $up->execute([$org,(int)$row['id'],neptune_portable_match_base_hash($row)]);
+    }
+}
+
 function neptune_portable_write_organization_snapshot_file(
     PDO $pdo,
     int $organizationId,
@@ -915,6 +937,43 @@ function neptune_portable_add_tree(
     $walk($sourceRoot);
 }
 
+/**
+ * Export assignment profile images as base64 JSONL: snapshot JSON is not a
+ * byte-safe representation of JPEG/PNG/WebP BLOB values. Each row is bound
+ * to the selected organization and to a user in the same organization.
+ * Keep this file private, just like organization.json and password hashes.
+ */
+function neptune_portable_write_user_photos_file(PDO $pdo,int $org,string $file): int
+{
+    $fh=@fopen($file,'wb');
+    if (!$fh) throw new RuntimeException('Could not create portable profile photo export.');
+    $count=0;
+    try {
+        fwrite($fh,json_encode(['format'=>'neptune-portable-user-photos-v1','organization_id'=>$org],JSON_THROW_ON_ERROR)."\n");
+        if (!neptune_portable_table_exists($pdo,'scouting_assignment_user_photos')) return 0;
+        $q=$pdo->prepare('SELECT p.user_id,p.mime_type,p.image_data FROM scouting_assignment_user_photos p JOIN users u ON u.id=p.user_id AND u.organization_id=p.organization_id WHERE p.organization_id=? ORDER BY p.user_id');
+        $q->execute([$org]);
+        while ($row=$q->fetch(PDO::FETCH_ASSOC)) {
+            $raw=$row['image_data'];
+            if (is_resource($raw)) $raw=stream_get_contents($raw);
+            if (!is_string($raw) || $raw==='' || strlen($raw)>4*1024*1024) continue;
+            $mime=(string)$row['mime_type'];
+            $image=@getimagesizefromstring($raw);
+            if (!in_array($mime,['image/jpeg','image/png','image/webp'],true) || !is_array($image) || ($image['mime']??'')!==$mime) continue;
+            $payload=[
+                'user_id'=>(int)$row['user_id'],
+                'mime_type'=>$mime,
+                'sha256'=>hash('sha256',$raw),
+                'image_b64'=>base64_encode($raw),
+            ];
+            if (fwrite($fh,json_encode($payload,JSON_THROW_ON_ERROR)."\n")===false) throw new RuntimeException('Could not export portable profile photo.');
+            $count++;
+        }
+        $q->closeCursor();
+    } finally {fclose($fh);}
+    return $count;
+}
+
 function neptune_portable_build_package(
     PDO $pdo,
     array $config,
@@ -956,6 +1015,7 @@ function neptune_portable_build_package(
     $bundleRoot = "Neptune_Portable_{$label}_{$stamp}";
     $snapshot = null;
     $snapshotTemp = null;
+    $photoTemp = null;
     $schemaTemp = null;
     $schemaInfo = null;
     $googleOnlyUsers = [];
@@ -995,6 +1055,7 @@ function neptune_portable_build_package(
 
         $schemaTemp = tempnam(sys_get_temp_dir(), 'neptune-live-schema-');
         if ($schemaTemp === false) throw new RuntimeException('Could not allocate temporary live schema file.');
+        if ($type === 'organization') neptune_portable_refresh_match_bases($pdo, (int)$organizationId);
         $schemaInfo = neptune_portable_write_live_schema($pdo, $schemaTemp);
         neptune_portable_add_file(
             $zip,
@@ -1023,12 +1084,18 @@ function neptune_portable_build_package(
             'README.txt',
             'MAC FIRST RUN.txt',
             'portable-common.sh',
+            'portable-realtime.sh',
+            'robot-recall-realtime.py',
             'import-organization.php',
             'prepare-offline-accounts.php',
+            'restore-user-photos.php',
         ];
         foreach ($scriptMap as $name) {
             $src = $scriptRoot . '/' . $name;
-            $dest = in_array($name, ['import-organization.php','prepare-offline-accounts.php'], true)
+            if (in_array($name, ['portable-realtime.sh','robot-recall-realtime.py'], true) && !is_file($src)) {
+                throw new RuntimeException('Required portable realtime file is missing: ' . $name);
+            }
+            $dest = in_array($name, ['import-organization.php','prepare-offline-accounts.php','restore-user-photos.php','robot-recall-realtime.py'], true)
                 ? $bundleRoot . '/portable-tools/' . $name
                 : $bundleRoot . '/' . $name;
             neptune_portable_add_file(
@@ -1183,6 +1250,18 @@ NEPTUNE_WINDOWS_SETUP
                 $zip, $snapshotTemp, $bundleRoot . '/portable/organization.json', 0600
             );
 
+            // Binary assignment avatars cannot survive organization.json's
+            // JSON_INVALID_UTF8_SUBSTITUTE conversion. Restore from a separate
+            // private, byte-safe export after the standard table import.
+            $photoTemp=tempnam(sys_get_temp_dir(),'neptune-profile-photos-');
+            if ($photoTemp===false) throw new RuntimeException('Could not allocate portable profile photo export.');
+            $photoCount=neptune_portable_write_user_photos_file($pdo,$organizationId,$photoTemp);
+            neptune_portable_add_file(
+                $zip,$photoTemp,$bundleRoot.'/portable/user-photos.jsonl',0600
+            );
+            $packageInfo['user_photos_exported']=$photoCount;
+
+
             $shellQuote = static function (string $value): string {
                 return "'" . str_replace("'", "'\\''", $value) . "'";
             };
@@ -1232,10 +1311,12 @@ NEPTUNE_WINDOWS_SETUP
 
         $zip->close();
         if ($snapshotTemp !== null) { @unlink($snapshotTemp); $snapshotTemp = null; }
+        if ($photoTemp !== null) { @unlink($photoTemp); $photoTemp = null; }
         if ($schemaTemp !== null) { @unlink($schemaTemp); $schemaTemp = null; }
     } catch (Throwable $e) {
         try { $zip->close(); } catch (Throwable $ignored) {}
         if ($snapshotTemp !== null) @unlink($snapshotTemp);
+        if ($photoTemp !== null) @unlink($photoTemp);
         if ($schemaTemp !== null) @unlink($schemaTemp);
         @unlink($tmp);
         if (is_array($token) && !empty($token['id'])) {

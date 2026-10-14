@@ -9,8 +9,145 @@ if (($_GET['view'] ?? '') === 'account') {
     if ($accountUserId <= 0 || $org <= 0) { access_denied(); }
     $accountRole = (string)($u['role'] ?? 'scout');
     $accountError = '';
+    // Only the signed-in member can retrieve their own profile photo here.
+    // Assignment Center's admin-only endpoint serves the same stored photo to admins.
+    if (isset($_GET['profile_photo'])) {
+        try {
+            $q=$pdo->prepare('SELECT p.mime_type,p.image_data FROM scouting_assignment_user_photos p INNER JOIN users u ON u.id=p.user_id AND u.organization_id=p.organization_id WHERE p.organization_id=? AND p.user_id=? AND u.active=1 LIMIT 1');
+            $q->execute([$org,$accountUserId]);
+            $profileImage=$q->fetch(PDO::FETCH_ASSOC);
+            if(!$profileImage || !in_array((string)$profileImage['mime_type'],['image/jpeg','image/png','image/webp'],true)) {http_response_code(404);exit;}
+            header('Content-Type: '.$profileImage['mime_type']);
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: private, no-store');
+            header('Content-Disposition: inline');
+            echo $profileImage['image_data'];exit;
+        }catch(Throwable $photoReadError){error_log('[Neptune account profile photo read] '.get_class($photoReadError));http_response_code(404);exit;}
+    }
+    // A profile photo is managed only by its owner in My Account.
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['account_action'] ?? '') === 'profile_photo') {
+        verify_csrf();
+        try {
+            $photoAction=(string)($_POST['photo_operation']??'');
+            if($photoAction==='upload') {
+                require_once dirname(__DIR__).'/admin/_assignment_center.php';
+                [$mime,$bytes]=sac_upload_image($_FILES['user_photo']??[],1024*1024);
+                $q=$pdo->prepare('INSERT INTO scouting_assignment_user_photos (organization_id,user_id,mime_type,image_data,updated_by,updated_at) VALUES (?,?,?,?,?,UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE mime_type=VALUES(mime_type),image_data=VALUES(image_data),updated_by=VALUES(updated_by),updated_at=UTC_TIMESTAMP()');
+                $q->bindValue(1,$org,PDO::PARAM_INT);$q->bindValue(2,$accountUserId,PDO::PARAM_INT);
+                $q->bindValue(3,$mime);$q->bindValue(4,$bytes,PDO::PARAM_LOB);
+                $q->bindValue(5,$accountUserId,PDO::PARAM_INT);$q->execute();
+            }elseif($photoAction==='remove') {
+                $q=$pdo->prepare('DELETE FROM scouting_assignment_user_photos WHERE organization_id=? AND user_id=?');
+                $q->execute([$org,$accountUserId]);
+            }elseif($photoAction==='google') {
+                if(($u['auth_method']??'')!=='google')throw new InvalidArgumentException('Sign in with Google to select your Google profile picture.');
+                $picture=(string)($_SESSION['google_profile_picture']??'');
+                if($picture==='')throw new InvalidArgumentException('No Google profile picture is available in this session.');
+                require_once dirname(__DIR__).'/auth/_scouting_assignment_photo_capture.php';
+                // The helper refuses to replace an existing uploaded picture.
+                $check=$pdo->prepare('SELECT 1 FROM scouting_assignment_user_photos WHERE organization_id=? AND user_id=? LIMIT 1');
+                $check->execute([$org,$accountUserId]);
+                if($check->fetchColumn())throw new InvalidArgumentException('Remove your current photo before choosing the Google photo.');
+                sac_capture_google_photo($pdo,[['id'=>$accountUserId,'organization_id'=>$org,'active'=>1]],$picture);
+                $check->execute([$org,$accountUserId]);
+                if(!$check->fetchColumn())throw new InvalidArgumentException('Google photo could not be saved. You can upload a photo instead.');
+            }else throw new InvalidArgumentException('Invalid photo action.');
+            header('Location: '.base_url('dashboard/index.php').'?view=account&photo_saved=1#account-profile',true,303);exit;
+        }catch(Throwable $photoError){
+            $accountError=$photoError instanceof InvalidArgumentException?$photoError->getMessage():'Could not update profile photo. Please try again.';
+            error_log('[Neptune My Account photo] '.get_class($photoError));
+        }
+    }
+    // Assignment status actions belong to the assignee, not to arbitrary submitted user IDs.
+    $assignmentFlash = '';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['account_action'] ?? '') === 'assignment_status') {
+        verify_csrf();
+        try {
+            require_once dirname(__DIR__).'/admin/_assignment_center.php';
+            $assignmentId=(int)($_POST['assignment_id']??0);
+            $operation=(string)($_POST['transition']??'');
+            if($assignmentId<1 || !in_array($operation,['acknowledge','complete'],true))throw new InvalidArgumentException('Invalid assignment action.');
+            $response=trim((string)($_POST['response_text']??''));
+            if(strlen($response)>4000)throw new InvalidArgumentException('Response is too long.');
+            $photo=null;
+            if(isset($_FILES['evidence_photo']) && ($_FILES['evidence_photo']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE){
+                $photo=sac_upload_image($_FILES['evidence_photo'],4*1024*1024);
+            }
+            $pdo->beginTransaction();
+            $q=$pdo->prepare('SELECT * FROM scouting_assignments WHERE id=? AND organization_id=? AND assignee_user_id=? FOR UPDATE');
+            $q->execute([$assignmentId,$org,$accountUserId]);
+            $assignment=$q->fetch(PDO::FETCH_ASSOC);
+            if(!$assignment)throw new InvalidArgumentException('Assignment no longer belongs to your account.');
+            [$nextStatus,$auditAction]=sac_status_transition((string)$assignment['status'],$operation);
+            if($operation==='complete' && $assignment['kind']==='request'){
+                if($assignment['request_kind']==='question' && $response==='' && trim((string)$assignment['response_text'])==='')throw new InvalidArgumentException('Provide an answer before completing this question.');
+                if($assignment['request_kind']==='photo'){
+                    $q=$pdo->prepare('SELECT COUNT(*) FROM scouting_assignment_evidence WHERE organization_id=? AND assignment_id=?');
+                    $q->execute([$org,$assignmentId]);
+                    if(!$photo && !(int)$q->fetchColumn())throw new InvalidArgumentException('Attach a photograph before completing this request.');
+                }
+            }
+            $q=$pdo->prepare("UPDATE scouting_assignments SET status=?,updated_by=?, acknowledged_at=IF(?='acknowledged',UTC_TIMESTAMP(),acknowledged_at),acknowledged_by=IF(?='acknowledged',?,acknowledged_by),completed_at=IF(?='completed',UTC_TIMESTAMP(),completed_at),completed_by=IF(?='completed',?,completed_by),response_text=IF(?='completed' AND kind='request' AND ?<>'',?,response_text) WHERE id=? AND organization_id=? AND assignee_user_id=?");
+            $q->execute([$nextStatus,$accountUserId,$nextStatus,$nextStatus,$accountUserId,$nextStatus,$nextStatus,$accountUserId,$nextStatus,$response,$response,$assignmentId,$org,$accountUserId]);
+            if($photo && $operation==='complete' && $assignment['kind']==='request'){
+                $q=$pdo->prepare('INSERT INTO scouting_assignment_evidence (organization_id,assignment_id,mime_type,image_data,uploaded_by,created_at) VALUES (?,?,?,?,?,UTC_TIMESTAMP())');
+                $q->bindValue(1,$org,PDO::PARAM_INT);$q->bindValue(2,$assignmentId,PDO::PARAM_INT);
+                $q->bindValue(3,$photo[0]);$q->bindValue(4,$photo[1],PDO::PARAM_LOB);$q->bindValue(5,$accountUserId,PDO::PARAM_INT);$q->execute();
+            }
+            $q=$pdo->prepare('INSERT INTO scouting_assignment_history (organization_id,event_id,assignment_id,action,previous_user_id,new_user_id,previous_status,new_status,actor_user_id,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP())');
+            $q->execute([$org,(int)$assignment['event_id'],$assignmentId,$auditAction,$accountUserId,$accountUserId,$assignment['status'],$nextStatus,$accountUserId,'Updated by assigned scouter from My Account']);
+            $pdo->commit();
+            header('Location: '.base_url('dashboard/index.php').'?view=account&assignment_saved=1#account-assignments',true,303);exit;
+        } catch(Throwable $e){
+            if($pdo->inTransaction())$pdo->rollBack();
+            $accountError=$e instanceof InvalidArgumentException?$e->getMessage():'Could not update assignment. Please try again.';
+            error_log('[Neptune My Account assignment status] '. $e->getMessage());
+        }
+    }
+    // One CSRF-protected transaction for a batch. Only currently assigned work owned
+    // by this signed-in member may be acknowledged; every row retains an audit event.
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['account_action'] ?? '') === 'bulk_acknowledge') {
+        verify_csrf();
+        try {
+            require_once dirname(__DIR__).'/admin/_assignment_center.php';
+            $submitted=$_POST['assignment_ids']??[];
+            if(!is_array($submitted) || !$submitted || count($submitted)>300) throw new InvalidArgumentException('Select 1–300 assignments to acknowledge.');
+            $ids=[];
+            foreach($submitted as $raw){
+                if(!is_scalar($raw) || !ctype_digit((string)$raw) || (int)$raw<1)throw new InvalidArgumentException('Invalid assignment selection.');
+                $ids[]=(int)$raw;
+            }
+            $ids=array_values(array_unique($ids));
+            sort($ids,SORT_NUMERIC);
+            if(!$ids || count($ids)>300)throw new InvalidArgumentException('Select 1–300 assignments to acknowledge.');
+            [$nextStatus,$auditAction]=sac_status_transition('assigned','acknowledge');
+            $pdo->beginTransaction();
+            $places=implode(',',array_fill(0,count($ids),'?'));
+            $q=$pdo->prepare("SELECT id,event_id,status FROM scouting_assignments WHERE organization_id=? AND assignee_user_id=? AND id IN ($places) ORDER BY id FOR UPDATE");
+            $q->execute(array_merge([$org,$accountUserId],$ids));
+            $locked=$q->fetchAll(PDO::FETCH_ASSOC);
+            if(count($locked)!==count($ids))throw new InvalidArgumentException('One or more selected assignments no longer belong to your account. Refresh and try again.');
+            foreach($locked as $row){
+                if($row['status']!=='assigned')throw new InvalidArgumentException('One or more selected assignments changed status. Refresh and try again.');
+            }
+            $update=$pdo->prepare("UPDATE scouting_assignments SET status=?,updated_by=?,acknowledged_at=UTC_TIMESTAMP(),acknowledged_by=? WHERE id=? AND organization_id=? AND assignee_user_id=? AND status='assigned'");
+            $history=$pdo->prepare('INSERT INTO scouting_assignment_history (organization_id,event_id,assignment_id,action,previous_user_id,new_user_id,previous_status,new_status,actor_user_id,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP())');
+            foreach($locked as $row){
+                $id=(int)$row['id'];
+                $update->execute([$nextStatus,$accountUserId,$accountUserId,$id,$org,$accountUserId]);
+                if($update->rowCount()!==1)throw new RuntimeException('Assignment changed during bulk acknowledgment.');
+                $history->execute([$org,(int)$row['event_id'],$id,$auditAction,$accountUserId,$accountUserId,'assigned',$nextStatus,$accountUserId,'Bulk acknowledged by assigned scouter from My Account']);
+            }
+            $pdo->commit();
+            header('Location: '.base_url('dashboard/index.php').'?view=account&acknowledged='.count($locked).'#account-assignments',true,303);exit;
+        }catch(Throwable $e){
+            if($pdo->inTransaction())$pdo->rollBack();
+            $accountError=$e instanceof InvalidArgumentException?$e->getMessage():'Could not acknowledge the selected assignments. Please try again.';
+            error_log('[Neptune My Account bulk acknowledge] '.get_class($e).' '.$e->getMessage());
+        }
+    }
     // Profile edits do not depend on the optional preferences table.
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['account_action'] ?? '') === '') {
         verify_csrf();
         $newName = trim((string)($_POST['display_name'] ?? ''));
         $nameLength = function_exists('mb_strlen') ? mb_strlen($newName, 'UTF-8') : strlen($newName);
@@ -80,8 +217,69 @@ if (($_GET['view'] ?? '') === 'account') {
     }
     usort($accountActivity, static fn($a,$b)=>strcmp((string)($b['activity_at']??''),(string)($a['activity_at']??'')));
     $accountActivity = array_slice($accountActivity,0,9);
+    // My Assignments permits assignee-only status updates through the guarded POST handler.
+    // Keep My Account available on installations where the optional assignment migration
+    // has not yet been applied.
+    $myAssignments = [];
+    $myAssignmentsError = false;
+    try {
+        $q = $pdo->prepare("SELECT a.id,a.event_id,a.kind,a.status,a.alliance,a.station,a.scouting_mode,
+            a.frc_team_number,a.request_kind,a.instructions,a.response_text,
+            a.assigned_at,a.acknowledged_at,a.completed_at,
+            e.name AS event_name,m.comp_level,m.set_number,m.match_number
+            FROM scouting_assignments a
+            INNER JOIN events e ON e.id=a.event_id AND e.organization_id=a.organization_id
+            LEFT JOIN matches m ON m.id=a.match_id AND m.event_id=a.event_id AND m.organization_id=a.organization_id
+            WHERE a.organization_id=? AND a.assignee_user_id=?
+            ORDER BY CASE a.status WHEN 'assigned' THEN 0 WHEN 'acknowledged' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END,
+                     a.assigned_at DESC,a.id DESC LIMIT 1000");
+        $q->execute([$org,$accountUserId]);
+        $myAssignments = $q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $assignmentError) {
+        $myAssignmentsError = true;
+        error_log('[Neptune My Account assignments] '. $assignmentError->getMessage());
+    }
+    // Group only genuinely consecutive match numbers; missing matches never imply
+    // they were assigned. Each assignment remains separately actionable and audited.
+    $assignmentDisplay=[];$matchBuckets=[];$standalone=[];
+    foreach($myAssignments as $assignment){
+        if((string)$assignment['kind']==='match' && (int)($assignment['match_number']??0)>0 && !empty($assignment['comp_level'])){
+            $key=implode('|',[(int)($assignment['event_id']??0),strtoupper((string)$assignment['comp_level']),(int)($assignment['set_number']??0),strtolower((string)($assignment['alliance']??'')),(int)($assignment['station']??0),(string)($assignment['scouting_mode']??'either')]);
+            $matchBuckets[$key][]=$assignment;
+        }else{$standalone[]=$assignment;}
+    }
+    foreach($matchBuckets as $bucket){
+        usort($bucket,static function($a,$b){return ((int)$a['match_number']<=>(int)$b['match_number']) ?: ((int)$a['id']<=>(int)$b['id']);});
+        $runs=[];$run=[];$previous=0;
+        foreach($bucket as $assignment){
+            $number=(int)$assignment['match_number'];
+            if($run && $number!==$previous+1){$runs[]=$run;$run=[];}
+            $run[]=$assignment;$previous=$number;
+        }
+        if($run)$runs[]=$run;
+        foreach($runs as $run){
+            if(count($run)>=3){$assignmentDisplay[]=['type'=>'range','items'=>$run];}
+            else foreach($run as $single)$assignmentDisplay[]=['type'=>'single','items'=>[$single]];
+        }
+    }
+    foreach($standalone as $single)$assignmentDisplay[]=['type'=>'single','items'=>[$single]];
+    // Short list labels are always computed from the underlying match record.
+    function account_assignment_match_label(array $row):string{
+        $level=strtoupper((string)($row['comp_level']??'QM'));
+        $prefix=['QM'=>'Q','QF'=>'QF','SF'=>'SF','F'=>'F','EF'=>'EF'][$level]??$level;
+        return $prefix.($level==='QM'?'':((int)($row['set_number']??1)).'-').(int)($row['match_number']??0);
+    }
+    $pendingAssignmentCount=count(array_filter($myAssignments,static fn($a)=>(string)$a['status']==='assigned'));
     $accountPhoto = '';
-    if (($u['auth_method'] ?? '') === 'google' && !empty($accountDetails['google_sub'])) {
+    $accountHasStoredPhoto=false;
+    try {
+        $q=$pdo->prepare('SELECT 1 FROM scouting_assignment_user_photos WHERE organization_id=? AND user_id=? LIMIT 1');
+        $q->execute([$org,$accountUserId]);
+        $accountHasStoredPhoto=(bool)$q->fetchColumn();
+    }catch(Throwable $photoAvailabilityError){error_log('[Neptune My Account photo availability] '.get_class($photoAvailabilityError));}
+    if($accountHasStoredPhoto) {
+        $accountPhoto=base_url('dashboard/index.php').'?view=account&profile_photo=1';
+    }elseif (($u['auth_method'] ?? '') === 'google' && !empty($accountDetails['google_sub'])) {
         $candidate = (string)($_SESSION['google_profile_picture'] ?? '');
         $parts = parse_url($candidate);
         $host = strtolower((string)($parts['host'] ?? ''));
@@ -131,49 +329,330 @@ if (($_GET['view'] ?? '') === 'account') {
 .account-save-inline button[hidden]{display:none!important}.account-save-inline{margin-top:14px}.account-save-inline button{font-size:.9rem;padding:9px 17px}
 .account-work-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.account-team-block{border-top:1px solid var(--border,var(--line,#39526a));margin-top:20px;padding-top:16px}.account-team-block h3{font-size:1rem;margin:0 0 11px}.account-team-chips{display:flex;flex-wrap:wrap;gap:8px}.account-team-chip{border:1px solid var(--border,var(--line,#39526a));border-radius:999px;padding:6px 10px;font-size:.82rem;color:var(--text,#e8f4fc)}
 @media(max-width:850px){.account-work-grid{grid-template-columns:1fr}}@media(max-width:600px){.account-identity-head{flex-wrap:wrap}.account-edit-link{margin-left:auto}.account-security-line{align-items:flex-start}}
+
+.account-assignment-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}.account-assignment-controls form{margin:0}.account-assignment-controls button{padding:8px 12px;border:1px solid var(--border,#364b66);border-radius:10px;cursor:pointer;background:var(--accent,#42b9e9);color:#061522;font-weight:800}.account-assignment-controls details{width:100%}.account-assignment-controls textarea{display:block;max-width:550px;width:100%;margin:8px 0}.account-assignment-controls input[type=file]{max-width:100%;margin:8px 0}.account-assignment-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.account-assignment-count{padding:7px 12px;border-radius:99px;border:1px solid var(--border,#364b66);font-weight:800;font-size:.83rem}.account-assignment-list{display:grid;gap:9px;margin-top:15px}.account-assignment-item{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--border,#364b66);border-radius:13px;min-width:0}.account-assignment-icon{flex:0 0 34px;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--accent,#42b9e9);background:color-mix(in srgb,var(--accent,#42b9e9) 12%,transparent)}.account-assignment-info{flex:1;min-width:0}.account-assignment-info strong{display:block;color:var(--text,#fff)}.account-assignment-info small{display:block;color:var(--muted,#aac3d3);margin-top:3px}.account-assignment-info p{font-size:.87rem;margin:7px 0 0;white-space:normal;overflow-wrap:anywhere}.account-assignment-status{border:1px solid var(--border,#364b66);border-radius:99px;padding:5px 8px;font-weight:800;font-size:.75rem;white-space:nowrap}.account-status-completed{border-color:#349c74}.account-status-acknowledged{border-color:#65bbd8}.account-status-cancelled{opacity:.65}@media(max-width:520px){.account-assignment-item{flex-wrap:wrap}.account-assignment-status{margin-left:46px}}
+
+/* One compact account identity card: photo, profile and security together. */
+.account-profile-unified{position:relative;overflow:hidden;padding:clamp(20px,3.5vw,38px);margin-bottom:16px}
+.account-profile-unified::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at top left,color-mix(in srgb,var(--accent,#42b9e9) 10%,transparent),transparent 70%)}
+.account-profile-unified>*{position:relative}
+.account-profile-top{margin-bottom:21px}
+.account-profile-top h1{font-size:clamp(1.9rem,4.4vw,3.2rem);line-height:1.04;margin:7px 0 8px;letter-spacing:-.035em;color:var(--text,#f0f8ff)}
+.account-profile-top p{font-size:.92rem;margin:0;color:var(--muted,#a4b8ca)}
+.account-profile-person{display:flex;gap:20px;align-items:center;min-width:0}
+.account-photo-trigger{position:relative;display:grid;place-items:center;padding:0;border-radius:25%;border:2px solid color-mix(in srgb,var(--accent,#42b9e9) 65%,transparent);width:94px;height:94px;min-width:94px;color:var(--accent,#42b9e9);cursor:pointer;overflow:visible;background:color-mix(in srgb,var(--accent,#42b9e9) 12%,var(--panel,#162a3d));box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.account-photo-trigger img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+.account-photo-trigger:focus-visible,.account-photo-modal button:focus-visible,.account-inline-edit:focus-visible{outline:3px solid var(--accent,#42b9e9);outline-offset:3px}
+.account-photo-camera-mark{position:absolute;right:-7px;bottom:-7px;display:grid;place-items:center;width:33px;height:33px;border-radius:50%;color:#061a2a;background:var(--accent,#42b9e9);border:3px solid var(--panel,#12243a);font-size:.85rem}
+.account-person-text{flex:1;min-width:0}
+.account-person-text h2{font-size:clamp(1.35rem,3vw,1.85rem);line-height:1.17;margin:0 0 4px;overflow-wrap:anywhere}
+.account-person-text p{color:var(--muted,#a4b8ca);margin:0 0 7px;font-size:.93rem}
+.account-person-actions{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:6px}
+.account-inline-edit{border:0;background:none;cursor:pointer;color:var(--accent,#42b9e9);padding:5px 0;font:inherit;font-weight:750;font-size:.86rem}
+.account-avatar-hint{color:var(--muted,#a4b8ca);font-size:.8rem;margin:10px 0 0}
+.account-name-editor[hidden],.account-photo-confirm[hidden],.account-photo-feedback[hidden]{display:none!important}
+.account-name-editor{margin-top:17px;padding:15px;background:color-mix(in srgb,var(--panel,#12243a) 85%,transparent);border:1px solid var(--border,#364b66);border-radius:13px;max-width:640px}
+.account-name-editor .account-form-field{margin-bottom:10px}
+.account-name-buttons{display:flex;gap:8px;flex-wrap:wrap}.account-name-buttons button{padding:9px 15px;border-radius:10px;border:1px solid var(--border,#364b66);cursor:pointer;font-weight:750;background:var(--accent,#42b9e9);color:#071a29}.account-name-buttons .account-cancel{background:transparent;color:var(--text,#fff)}
+.account-profile-details{border-top:1px solid var(--border,var(--line,#39526a));margin-top:21px;padding-top:8px}
+.account-profile-details summary{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;min-height:42px;font-weight:750;color:var(--text,#fff)}.account-profile-details summary::-webkit-details-marker{display:none}
+.account-profile-details summary .account-detail-expander{margin-left:auto;color:var(--muted,#a4b8ca);transition:transform .2s}.account-profile-details[open] summary .account-detail-expander{transform:rotate(180deg)}
+.account-profile-details .account-details{margin-top:16px}
+.account-profile-details .account-security-line{margin-top:18px}
+.account-photo-modal{color:var(--text,#fff);background:var(--panel,#102338);border:1px solid var(--border,#425a6e);width:min(420px,calc(100vw - 28px));max-height:calc(100dvh - 32px);overflow-y:auto;border-radius:22px;padding:22px;box-shadow:0 20px 80px rgba(0,0,0,.55)}
+.account-photo-modal::backdrop{background:rgba(1,8,19,.7);backdrop-filter:blur(5px)}
+.account-photo-modal header{display:flex;align-items:center;justify-content:space-between;gap:12px}.account-photo-modal header h2{margin:0;font-size:1.35rem}
+.account-photo-close{border:1px solid var(--border,#425a6e);background:transparent;color:var(--text,#fff);border-radius:12px;width:42px;height:42px;cursor:pointer}
+.account-photo-modal p{color:var(--muted,#a4b8ca);font-size:.87rem;line-height:1.5;margin:12px 0 16px}
+.account-photo-options{display:grid;gap:9px}
+.account-photo-options button{width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 15px;min-height:48px;border:1px solid var(--border,#425a6e);border-radius:13px;background:color-mix(in srgb,var(--panel,#11243a) 80%,white 4%);color:var(--text,#fff);font:inherit;cursor:pointer}
+.account-photo-options button:hover{border-color:var(--accent,#42b9e9)}.account-photo-options button i{width:22px;color:var(--accent,#42b9e9);text-align:center}
+.account-photo-options form{margin:0}.account-photo-options .account-photo-danger{color:var(--text,#fff)}.account-photo-options .account-photo-danger i{color:#ff8f9c}
+.account-photo-confirm{padding:12px;margin-top:12px;border:1px solid var(--border,#425a6e);border-radius:13px}.account-photo-confirm p{margin:0 0 10px}
+.account-photo-confirm-actions{display:flex;gap:8px}.account-photo-confirm-actions button{flex:1;min-height:42px;justify-content:center;font-weight:750}.account-photo-confirm-actions .account-photo-remove-final{background:#832b42;color:#fff}
+.account-photo-feedback{border:1px solid var(--border,#425a6e);border-radius:10px;padding:10px 12px;margin-top:13px;font-size:.85rem;line-height:1.4}
+.account-photo-upload-forms{position:absolute;inset:auto auto auto -10000px;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.account-photo-fallback{display:block;margin-top:14px}.account-photo-fallback input{width:100%}
+@media(max-width:550px){.account-profile-unified{padding:21px}.account-profile-person{gap:15px;align-items:center}.account-photo-trigger{width:76px;height:76px;min-width:76px}.account-photo-camera-mark{width:29px;height:29px}.account-person-text h2{font-size:1.25rem}.account-avatar-hint{margin-top:7px}}
+@media(prefers-reduced-motion:reduce){.account-profile-details summary .account-detail-expander{transition:none}}
+
+/* Compact assignment ranges and bulk acknowledgment, responsive without alert dialogs. */
+.account-bulk-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:12px;margin-top:14px;border:1px solid var(--border,#354b67);border-radius:13px;background:color-mix(in srgb,var(--accent,#42b9e9) 7%,transparent)}
+.account-bulk-toolbar>span{margin-right:auto;color:var(--text,#f7fbff);font-size:.88rem}
+.account-bulk-toolbar button{padding:9px 13px;border:1px solid var(--border,#435e79);border-radius:10px;font:inherit;font-weight:750;cursor:pointer;background:var(--accent,#42b9e9);color:#071b2a}
+.account-bulk-toolbar .account-bulk-secondary{background:transparent;color:var(--text,#f7fbff)}
+.account-bulk-toolbar button:disabled{opacity:.48;cursor:not-allowed}
+.account-bulk-status{font-size:.82rem;color:var(--muted,#abc0d1);margin:7px 2px 0}
+.account-range-group{border:1px solid var(--border,#364b66);border-radius:14px;overflow:hidden;background:color-mix(in srgb,var(--panel,#152a40) 93%,white 3%)}
+.account-range-header{display:flex;align-items:flex-start;gap:12px;padding:15px}
+.account-range-heading{flex:1;min-width:0}.account-range-heading strong{display:block;font-size:1rem;color:var(--text,#fff)}.account-range-heading small{display:block;font-size:.82rem;line-height:1.5;color:var(--muted,#a9bfce);margin-top:4px}
+.account-range-counts{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.account-range-counts span{font-size:.75rem;border:1px solid var(--border,#364b66);padding:4px 7px;border-radius:99px;color:var(--text,#f7fbff)}
+.account-range-select,.account-task-select{display:inline-flex;align-items:center;gap:7px;color:var(--text,#fff);cursor:pointer;font-size:.8rem;white-space:nowrap}.account-range-select input,.account-task-select input{width:19px;height:19px;flex:0 0 19px;accent-color:var(--accent,#42b9e9)}
+.account-range-details{border-top:1px solid var(--border,#364b66)}.account-range-details>summary{cursor:pointer;padding:11px 15px;color:var(--accent,#42b9e9);font-weight:750;list-style:none}.account-range-details>summary::-webkit-details-marker{display:none}.account-range-details>summary i{margin-left:6px;transition:transform .2s}.account-range-details[open]>summary i{transform:rotate(180deg)}
+.account-range-items{display:grid;gap:7px;padding:0 11px 11px}.account-range-item{background:color-mix(in srgb,var(--panel,#152a40) 78%,transparent)}
+.account-assignment-ranges>.account-assignment-item{margin:0}.account-task-select{flex:0 0 19px;padding-top:6px}
+@media(max-width:560px){.account-range-header{flex-wrap:wrap}.account-range-heading{min-width:min(100%,240px)}.account-range-select{width:100%;padding-bottom:5px}.account-bulk-toolbar>span{width:100%}.account-bulk-toolbar button{flex:1;min-width:120px}.account-bulk-toolbar button[type=submit]{flex-basis:100%}}
+
 </style>
 <div class="account-ocean" id="accountOcean" aria-hidden="true"></div>
-<section class="account-hero">
-  <div class="account-avatar" aria-label="Account profile picture"><?php if ($accountPhoto): ?><img src="<?=e($accountPhoto)?>" alt="Google profile picture" referrerpolicy="no-referrer"><?php else: ?><i class="fa-solid fa-user-astronaut" aria-hidden="true"></i><b><?=e(strtoupper($accountInitial))?></b><?php endif; ?></div>
-  <div><div class="account-kicker"><i class="fa-solid fa-compass"></i> NEPTUNE / PERSONAL COMMAND</div><h1>My Account</h1><p>Welcome back, <?=e($accountDetails['display_name'])?>. Review your account, scouting contributions, and recent activity.</p></div>
-</section>
-<?php if (!empty($_GET['saved'])): ?><div class="account-alert" role="status"><i class="fa-solid fa-circle-check"></i> Your profile has been saved.</div><?php endif; ?>
-<?php if ($accountError): ?><div class="account-alert" role="alert"><?=e($accountError)?></div><?php endif; ?>
-<nav class="account-tabs" aria-label="My Account sections"><a href="#account-profile">Profile</a><a href="#account-contributions">Contributions</a><a href="#account-activity">Activity</a></nav>
-<form method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account" id="account-settings-form">
-  <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
-  <section class="account-panel account-identity" id="account-profile">
-    <div class="account-identity-head">
-      <div class="account-avatar account-identity-avatar" aria-label="Account profile picture"><?php if ($accountPhoto): ?><img src="<?=e($accountPhoto)?>" alt="Google profile picture" referrerpolicy="no-referrer"><?php else: ?><i class="fa-solid fa-user-astronaut" aria-hidden="true"></i><?php endif; ?></div>
-      <div class="account-identity-name"><div class="account-kicker">YOUR NEPTUNE IDENTITY</div><h2><?=e($accountDetails['display_name'])?></h2><p class="account-hint"><?=e($accountDetails['organization_name'])?> · <?=e(ucfirst($accountDetails['role']))?></p><div class="account-provider"><i class="fa-brands fa-google" aria-hidden="true"></i> Google <?=!empty($accountDetails['google_sub'])?'linked':'not linked'?></div></div>
-      <a class="account-edit-link" href="#account-display-name"><i class="fa-solid fa-pen" aria-hidden="true"></i> Edit name</a>
+<section class="account-panel account-profile-unified" id="account-profile">
+  <header class="account-profile-top">
+    <div class="account-kicker"><i class="fa-solid fa-compass" aria-hidden="true"></i> NEPTUNE / PERSONAL COMMAND</div>
+    <h1>My Account</h1>
+    <p>Your profile, security, and scouting assignments in one place.</p>
+  </header>
+  <div class="account-profile-person">
+    <button id="accountAvatarButton" class="account-photo-trigger" type="button" aria-label="Change your profile photo" aria-haspopup="dialog" aria-controls="accountPhotoDialog" title="Change profile photo">
+      <?php if($accountPhoto):?><img src="<?=e($accountPhoto)?>" alt="" referrerpolicy="no-referrer"><?php else:?><i class="fa-solid fa-user-astronaut" aria-hidden="true"></i><?php endif;?>
+      <span class="account-photo-camera-mark" aria-hidden="true"><i class="fa-solid fa-camera"></i></span>
+    </button>
+    <div class="account-person-text">
+      <h2><?=e($accountDetails['display_name'])?></h2>
+      <p><?=e($accountDetails['organization_name'])?> · <?=e(ucfirst($accountDetails['role']))?></p>
+      <div class="account-person-actions">
+        <?php if(!empty($accountDetails['google_sub'])):?><span class="account-provider"><i class="fa-brands fa-google" aria-hidden="true"></i> Google linked</span><?php endif;?>
+        <button type="button" class="account-inline-edit" id="accountEditNameButton" aria-controls="accountNameEditor" aria-expanded="false"><i class="fa-solid fa-pen" aria-hidden="true"></i> Edit name</button>
+      </div>
     </div>
-    <div class="account-form-field account-name-field"><label for="account-display-name">Display name</label><input id="account-display-name" type="text" name="display_name" value="<?=e($accountDetails['display_name'])?>" maxlength="120" required autocomplete="nickname"></div>
+  </div>
+  <p class="account-avatar-hint"><i class="fa-solid fa-camera" aria-hidden="true"></i> Tap your photo to change it or take a new one.</p>
+  <form method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-profile" id="account-settings-form">
+    <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
+    <div class="account-name-editor" id="accountNameEditor" hidden>
+      <div class="account-form-field"><label for="account-display-name">Display name</label><input id="account-display-name" type="text" name="display_name" value="<?=e($accountDetails['display_name'])?>" maxlength="120" required autocomplete="nickname"></div>
+      <div class="account-name-buttons"><button type="submit" id="account-save-button"><i class="fa-solid fa-check" aria-hidden="true"></i> Save name</button><button type="button" class="account-cancel" id="accountCancelName">Cancel</button></div>
+    </div>
+  </form>
+  <details class="account-profile-details" id="accountDetails">
+    <summary><i class="fa-solid fa-shield-halved" aria-hidden="true" style="color:var(--accent,#42b9e9)"></i> Account details &amp; security <i class="fa-solid fa-chevron-down account-detail-expander" aria-hidden="true"></i></summary>
     <div class="account-details account-details-tight">
       <div><span class="account-detail-label">Username</span><span class="account-detail-value"><?=e($accountDetails['username'])?></span></div>
       <div><span class="account-detail-label">Email</span><span class="account-detail-value"><?=e($accountDetails['email'] ?: 'Not set')?></span></div>
       <div><span class="account-detail-label">Last sign-in</span><span class="account-detail-value"><?=e($accountDetails['last_login_at']??'Not recorded')?></span></div>
       <div><span class="account-detail-label">Organization</span><span class="account-detail-value"><?=e($accountDetails['organization_name'])?></span></div>
     </div>
-    <div class="account-security-line"><div><strong><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Account security</strong><span>Manage your Neptune local password</span></div><a href="<?=e(base_url('change-password.php'))?>" class="account-security-action">Manage password <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>
-    <div class="account-save account-save-inline"><button type="submit" id="account-save-button"><i class="fa-solid fa-floppy-disk"></i> Save display name</button></div>
-  </section>
-</form>
-<div class="account-grid account-work-grid">
+    <div class="account-security-line"><div><strong><i class="fa-solid fa-key" aria-hidden="true"></i> Account security</strong><span>Manage your Neptune local password</span></div><a href="<?=e(base_url('change-password.php'))?>" class="account-security-action">Manage password <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div>
+  </details>
+</section>
+<?php if (!empty($_GET['saved'])): ?><div class="account-alert" role="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Your profile has been saved.</div><?php endif; ?>
+<?php if (!empty($_GET['photo_saved'])): ?><div class="account-alert" role="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Your profile photo has been updated.</div><?php endif; ?>
+<?php if ($accountError): ?><div class="account-alert" role="alert"><?=e($accountError)?></div><?php endif; ?>
+<nav class="account-tabs" aria-label="My Account sections"><a href="#account-profile">Profile</a><a href="#account-contributions">Contributions</a><a href="#account-assignments">My Assignments</a><a href="#account-activity">Activity</a></nav>
+<dialog class="account-photo-modal" id="accountPhotoDialog" aria-labelledby="accountPhotoTitle">
+  <header><h2 id="accountPhotoTitle">Your profile photo</h2><button type="button" class="account-photo-close" id="accountPhotoClose" aria-label="Close photo options"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+  <p>Choose a photo or take one now. Your picture will appear in Neptune's scouting rosters.</p>
+  <div class="account-photo-options">
+    <button type="button" id="accountPhotoChoose"><i class="fa-solid fa-image" aria-hidden="true"></i> Choose from device</button>
+    <button type="button" id="accountPhotoCamera"><i class="fa-solid fa-camera" aria-hidden="true"></i> Take a photo</button>
+    <?php if(!$accountHasStoredPhoto && ($u['auth_method']??'')==='google' && !empty($accountDetails['google_sub']) && $accountPhoto):?>
+    <form method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-profile">
+      <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="profile_photo"><input type="hidden" name="photo_operation" value="google">
+      <button type="submit"><i class="fa-brands fa-google" aria-hidden="true"></i> Use my Google photo</button>
+    </form>
+    <?php endif;?>
+    <?php if($accountHasStoredPhoto):?><button type="button" class="account-photo-danger" id="accountPhotoAskRemove"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Remove saved photo</button><?php endif;?>
+  </div>
+  <?php if($accountHasStoredPhoto):?>
+  <div class="account-photo-confirm" id="accountPhotoRemoveConfirm" hidden>
+    <p>Remove your saved Neptune photo? Your avatar will return to the available Google photo or default icon.</p>
+    <form method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-profile" class="account-photo-confirm-actions">
+      <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="profile_photo"><input type="hidden" name="photo_operation" value="remove">
+      <button type="button" id="accountPhotoKeep">Keep photo</button><button type="submit" class="account-photo-remove-final"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Remove</button>
+    </form>
+  </div>
+  <?php endif;?>
+  <div class="account-photo-feedback" id="accountPhotoFeedback" role="status" aria-live="polite" hidden></div>
+  <div class="account-photo-upload-forms">
+    <form id="accountPhotoChooseForm" method="post" enctype="multipart/form-data" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-profile">
+      <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="profile_photo"><input type="hidden" name="photo_operation" value="upload">
+      <input id="accountPhotoFile" type="file" name="user_photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif">
+    </form>
+    <form id="accountPhotoCameraForm" method="post" enctype="multipart/form-data" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-profile">
+      <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="profile_photo"><input type="hidden" name="photo_operation" value="upload">
+      <input id="accountPhotoCameraFile" type="file" name="user_photo" accept="image/*" capture="user">
+    </form>
+  </div>
+  <noscript><form method="post" enctype="multipart/form-data" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-profile" class="account-photo-fallback"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="profile_photo"><input type="hidden" name="photo_operation" value="upload"><label for="accountPhotoFallbackFile">Choose a JPG, PNG, or WebP photo under 1 MB</label><input id="accountPhotoFallbackFile" type="file" name="user_photo" accept="image/jpeg,image/png,image/webp" required><button type="submit">Save photo</button></form></noscript>
+</dialog>
   <section class="account-panel" id="account-contributions"><h2><i class="fa-solid fa-chart-simple"></i> My contributions</h2><p class="account-hint">Completed scouting work credited to your account.</p>
     <div class="account-stat-row"><div class="account-stat"><b><?=number_format($accountCounts['match'])?></b><span>Matches scouted</span></div><div class="account-stat"><b><?=number_format($accountCounts['pit'])?></b><span>Pit reports</span></div><div class="account-stat"><b><?=number_format($accountCounts['pre'])?></b><span>Pre-scout reports</span></div></div>
     <?php if ($accountTeams): ?><div class="account-team-block"><h3><i class="fa-solid fa-people-group"></i> My teams</h3><div class="account-team-chips"><?php foreach ($accountTeams as $team): ?><span class="account-team-chip">#<?=e($team['frc_team_number'])?><?=!empty($team['name'])?' · '.e($team['name']):''?><?=!empty($team['is_primary'])?' ★':''?></span><?php endforeach; ?></div></div><?php endif; ?>
     <p class="account-note" style="margin:15px 0 0">Older records without a user attribution are not counted.</p>
   </section>
+<section class="account-panel" id="account-assignments">
+  <div class="account-assignment-head"><div><h2><i class="fa-solid fa-clipboard-list"></i> My Assignments</h2><p class="account-hint">Consecutive match assignments are shown as ranges. Expand any range to see every match and its status.</p></div>
+    <span class="account-assignment-count"><?=count($myAssignments)?> assignments</span></div>
+  <?php if(isset($_GET['assignment_saved'])): ?><div class="account-alert" role="status">Assignment status saved.</div><?php endif; ?>
+  <?php if(isset($_GET['acknowledged'])): ?><div class="account-alert" role="status"><?=(int)$_GET['acknowledged']?> assignment(s) acknowledged.</div><?php endif; ?>
+  <?php if($myAssignmentsError): ?><p class="account-note">Assignment records are unavailable in this environment. Ask an administrator to check the assignment database setup.</p>
+  <?php elseif(!$myAssignments): ?><p class="account-note">You do not have any scouting assignments yet.</p>
+  <?php else: ?>
+    <?php if($pendingAssignmentCount): ?>
+    <form id="accountBulkAcknowledgeForm" method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-assignments">
+      <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="bulk_acknowledge">
+      <div class="account-bulk-toolbar" role="group" aria-label="Bulk acknowledgment">
+        <span><b><?=$pendingAssignmentCount?></b> awaiting acknowledgment</span>
+        <button type="button" id="accountSelectPending" class="account-bulk-secondary">Select all pending</button>
+        <button type="button" id="accountClearPending" class="account-bulk-secondary">Clear</button>
+        <button type="submit" id="accountBulkSubmit" disabled>Acknowledge selected <span id="accountSelectedCount">(0)</span></button>
+      </div>
+      <div id="accountBulkSelectionStatus" class="account-bulk-status" role="status" aria-live="polite">Select the assignments you want to acknowledge.</div>
+    </form>
+    <?php endif; ?>
+    <div class="account-assignment-list account-assignment-ranges">
+    <?php foreach($assignmentDisplay as $group):
+      $isRange=$group['type']==='range';$items=$group['items'];$first=$items[0];$last=end($items);
+      $groupStatus=['assigned'=>0,'acknowledged'=>0,'completed'=>0,'cancelled'=>0];
+      foreach($items as $entry){$st=(string)$entry['status'];$groupStatus[$st]=($groupStatus[$st]??0)+1;}
+    ?>
+      <?php if($isRange): ?>
+        <div class="account-range-group">
+          <div class="account-range-header">
+            <?php if($groupStatus['assigned']>0): ?><label class="account-range-select"><input type="checkbox" class="account-range-toggle" aria-label="Select all pending assignments in this match range"><span>Select pending</span></label><?php endif; ?>
+            <div class="account-range-heading"><strong><?=e(account_assignment_match_label($first).'–'.account_assignment_match_label($last))?> · <?=e((string)$first['alliance'])?> <?=(int)$first['station']?></strong>
+              <small><?=count($items)?> consecutive matches, including every match between · <?=e((string)($first['event_name']??'Event'))?> · <?=e(ucfirst((string)($first['scouting_mode']??'either')))?> scouting</small>
+              <span class="account-range-counts"><?php if($groupStatus['assigned']): ?><span><?=$groupStatus['assigned']?> awaiting acknowledgment</span><?php endif; ?><?php if($groupStatus['acknowledged']): ?><span><?=$groupStatus['acknowledged']?> acknowledged</span><?php endif; ?><?php if($groupStatus['completed']): ?><span><?=$groupStatus['completed']?> completed</span><?php endif; ?><?php if($groupStatus['cancelled']): ?><span><?=$groupStatus['cancelled']?> cancelled</span><?php endif; ?></span>
+            </div>
+          </div>
+          <details class="account-range-details"><summary>View all <?=count($items)?> matches <i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>
+          <div class="account-range-items">
+      <?php endif; ?>
+      <?php foreach($items as $assignment):
+         $kind=(string)$assignment['kind'];$status=(string)$assignment['status'];
+         $title=$kind==='match'?(account_assignment_match_label($assignment).' · '.(string)$assignment['alliance'].' '.(int)$assignment['station']):($kind==='pit'?'Pit scouting · Team #'.(int)$assignment['frc_team_number']:'Request · '.ucfirst((string)($assignment['request_kind']??'task')));
+         $icon=$kind==='match'?'fa-flag-checkered':($kind==='pit'?'fa-robot':'fa-camera');
+      ?>
+        <article class="account-assignment-item <?= $isRange?'account-range-item':'' ?>">
+          <?php if($status==='assigned'): ?><label class="account-task-select"><input type="checkbox" class="account-assignment-select" name="assignment_ids[]" value="<?=(int)$assignment['id']?>" form="accountBulkAcknowledgeForm" aria-label="Select <?=e($title)?> for bulk acknowledgment"></label><?php endif; ?>
+          <span class="account-assignment-icon"><i class="fa-solid <?=e($icon)?>" aria-hidden="true"></i></span>
+          <div class="account-assignment-info"><strong><?=e($title)?></strong><small><?=e($assignment['event_name']??'Event')?><?php if($kind==='match'):?> · <?=e(ucfirst((string)($assignment['scouting_mode']??'either')))?> scouting<?php endif;?></small>
+          <?php if($kind==='request' && trim((string)($assignment['instructions']??''))!==''):?><p><?=nl2br(e((string)$assignment['instructions']))?></p><?php endif;?>
+          <?php if($kind==='request' && trim((string)($assignment['response_text']??''))!==''):?><p><b>Response:</b> <?=nl2br(e((string)$assignment['response_text']))?></p><?php endif;?>
+            <?php if(in_array($status,['assigned','acknowledged'],true)): ?>
+            <div class="account-assignment-controls">
+            <?php if($status==='assigned'): ?>
+              <form method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-assignments">
+                <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="assignment_status">
+                <input type="hidden" name="assignment_id" value="<?=(int)$assignment['id']?>"><input type="hidden" name="transition" value="acknowledge">
+                <button type="submit"><i class="fa-solid fa-check"></i> Acknowledge</button>
+              </form>
+            <?php endif; ?>
+            <details><summary>Mark complete<?= $kind==='request'?' / provide response':'' ?></summary>
+              <form method="post" enctype="multipart/form-data" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-assignments">
+                <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="assignment_status">
+                <input type="hidden" name="assignment_id" value="<?=(int)$assignment['id']?>"><input type="hidden" name="transition" value="complete">
+                <?php if($kind==='request'): ?>
+                  <label><small>Answer / notes<?=(($assignment['request_kind']??'')==='question')?' (required)':''?></small><textarea rows="3" name="response_text" maxlength="4000" placeholder="Enter your response"></textarea></label>
+                  <label><small>Attach photo (JPG, PNG, WebP, up to 4 MB)</small><input type="file" accept="image/jpeg,image/png,image/webp" name="evidence_photo"></label>
+                <?php endif; ?>
+                <button type="submit"><i class="fa-solid fa-check-double"></i> Save as completed</button>
+              </form>
+            </details>
+            </div>
+            <?php endif; ?>
+          </div><span class="account-assignment-status account-status-<?=e($status)?>"><?=e(ucfirst($status))?></span>
+        </article>
+      <?php endforeach; ?>
+      <?php if($isRange): ?></div></details></div><?php endif; ?>
+    <?php endforeach; ?></div>
+  <?php endif; ?>
+  <p class="account-note" style="margin-top:12px">Bulk acknowledgment affects only your assigned tasks and records a separate history entry for each. You can still complete each task individually; completing it does not automatically submit scouting observations.</p>
+</section>
   <section class="account-panel" id="account-activity"><h2><i class="fa-solid fa-clock-rotate-left"></i> Recent activity</h2><p class="account-hint">Your most recent completed scouting reports.</p>
     <?php if($accountActivity): ?><ul class="account-activity"><?php foreach($accountActivity as $item): ?><li><span class="account-activity-icon"><i class="fa-solid <?=e($item['icon'])?>"></i></span><div><a href="<?=e(base_url($item['href']))?>"><?=e($item['label'])?> · Team <?=e($item['frc_team_number'])?></a><small><?=e($item['event_name'])?> · <?=e($item['activity_at'])?></small></div></li><?php endforeach; ?></ul><?php else: ?><p class="account-note">No completed scouting records linked to your account yet.</p><?php endif; ?>
   </section>
-</div>
 <script>
 (function(){
+ const bulkForm=document.getElementById('accountBulkAcknowledgeForm');
+ if(bulkForm){
+   const checkboxes=Array.from(document.querySelectorAll('.account-assignment-select'));
+   const groups=Array.from(document.querySelectorAll('.account-range-group'));
+   const submit=document.getElementById('accountBulkSubmit');
+   const count=document.getElementById('accountSelectedCount');
+   const label=document.getElementById('accountBulkSelectionStatus');
+   const refresh=()=>{
+     const selected=checkboxes.filter(x=>x.checked).length;
+     if(submit)submit.disabled=selected===0 || selected>300;
+     if(count)count.textContent=`(${selected})`;
+     if(label)label.textContent=selected>300?'Select up to 300 assignments at a time.':(selected?`${selected} task${selected===1?'':'s'} selected for acknowledgment.`:'Select the assignments you want to acknowledge.');
+     for(const group of groups){
+       const child=Array.from(group.querySelectorAll('.account-assignment-select'));
+       const toggle=group.querySelector('.account-range-toggle');
+       if(!toggle)continue;
+       const checked=child.filter(x=>x.checked).length;
+       toggle.checked=child.length>0&&checked===child.length;
+       toggle.indeterminate=checked>0&&checked<child.length;
+     }
+   };
+   checkboxes.forEach(x=>x.addEventListener('change',refresh));
+   groups.forEach(group=>{const toggle=group.querySelector('.account-range-toggle');if(!toggle)return;
+     toggle.addEventListener('change',()=>{group.querySelectorAll('.account-assignment-select').forEach(input=>{input.checked=toggle.checked;});refresh();});
+   });
+   document.getElementById('accountSelectPending')?.addEventListener('click',()=>{checkboxes.forEach(x=>{x.checked=true;});refresh();});
+   document.getElementById('accountClearPending')?.addEventListener('click',()=>{checkboxes.forEach(x=>{x.checked=false;});refresh();});
+   bulkForm.addEventListener('submit',e=>{if(checkboxes.filter(x=>x.checked).length===0 || checkboxes.filter(x=>x.checked).length>300)e.preventDefault();});
+   refresh();
+ }
+
  const nameInput=document.getElementById('account-display-name');
+ const nameEditor=document.getElementById('accountNameEditor');
+ const nameEditButton=document.getElementById('accountEditNameButton');
+ const nameCancel=document.getElementById('accountCancelName');
  const saveBtn=document.getElementById('account-save-button');
- if(nameInput&&saveBtn){const original=nameInput.value;const refresh=()=>{saveBtn.hidden=nameInput.value===original};nameInput.addEventListener('input',refresh);refresh();}
+ if(nameInput&&nameEditor&&nameEditButton){
+   const original=nameInput.value;
+   const openEditor=()=>{nameEditor.hidden=false;nameEditButton.setAttribute('aria-expanded','true');nameInput.focus();};
+   const closeEditor=()=>{nameEditor.hidden=true;nameEditButton.setAttribute('aria-expanded','false');nameInput.value=original;};
+   nameEditButton.addEventListener('click',()=>nameEditor.hidden?openEditor():closeEditor());
+   nameCancel?.addEventListener('click',closeEditor);
+   nameInput.addEventListener('input',()=>{if(saveBtn)saveBtn.disabled=nameInput.value.trim()===original;});
+   if(saveBtn)saveBtn.disabled=true;
+ }
+ const photoDialog=document.getElementById('accountPhotoDialog');
+ const photoTrigger=document.getElementById('accountAvatarButton');
+ const photoFeedback=document.getElementById('accountPhotoFeedback');
+ const photoFile=document.getElementById('accountPhotoFile');
+ const cameraFile=document.getElementById('accountPhotoCameraFile');
+ const feedback=(message)=>{if(!photoFeedback)return;photoFeedback.hidden=!message;photoFeedback.textContent=message||'';};
+ photoTrigger?.addEventListener('click',()=>{feedback('');const confirmation=document.getElementById('accountPhotoRemoveConfirm');if(confirmation)confirmation.hidden=true;photoDialog?.showModal();});
+ document.getElementById('accountPhotoClose')?.addEventListener('click',()=>photoDialog?.close());
+ photoDialog?.addEventListener('click',e=>{if(e.target===photoDialog)photoDialog.close();});
+ document.getElementById('accountPhotoChoose')?.addEventListener('click',()=>photoFile?.click());
+ document.getElementById('accountPhotoCamera')?.addEventListener('click',()=>cameraFile?.click());
+ document.getElementById('accountPhotoAskRemove')?.addEventListener('click',()=>{const block=document.getElementById('accountPhotoRemoveConfirm');if(block){block.hidden=false;block.scrollIntoView({block:'nearest'});}});
+ document.getElementById('accountPhotoKeep')?.addEventListener('click',()=>{const block=document.getElementById('accountPhotoRemoveConfirm');if(block)block.hidden=true;});
+ const uploadMax=1024*1024;
+ function jpegBlob(canvas,quality){return new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));}
+ async function uploadPhoto(input){
+   const source=input?.files?.[0];if(!source)return;
+   const form=input.form;if(!form)return;
+   const save=()=>{feedback('Saving photo…');form.requestSubmit();};
+   const safeType=['image/jpeg','image/png','image/webp'].includes(source.type);
+   if(safeType && source.size<=uploadMax){save();return;}
+   if(source.size>25*1024*1024){feedback('This photo is too large. Please choose an image under 25 MB.');input.value='';return;}
+   feedback('Preparing your photo…');
+   let url=null;
+   try{
+     url=URL.createObjectURL(source);
+     const image=new Image();
+     await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});
+     const width=image.naturalWidth,height=image.naturalHeight;
+     if(!width||!height)throw new Error('Image has no dimensions');
+     const canvas=document.createElement('canvas');
+     const scale=Math.min(1,900/Math.max(width,height));
+     canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
+     const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Cannot prepare image');
+     ctx.drawImage(image,0,0,canvas.width,canvas.height);
+     let blob=null;
+     for(const quality of [.85,.72,.56]){blob=await jpegBlob(canvas,quality);if(blob&&blob.size<=uploadMax)break;}
+     if(!blob||blob.size>uploadMax)throw new Error('Unable to resize photo');
+     const cleaned=new File([blob],'neptune-profile.jpg',{type:'image/jpeg'});
+     const transfer=new DataTransfer();transfer.items.add(cleaned);input.files=transfer.files;
+     save();
+   }catch(e){feedback('That photo could not be prepared. Try a JPG, PNG, or WebP from your device.');input.value='';}
+   finally{if(url)URL.revokeObjectURL(url);}
+ }
+ photoFile?.addEventListener('change',()=>uploadPhoto(photoFile));
+ cameraFile?.addEventListener('change',()=>uploadPhoto(cameraFile));
  const field=document.getElementById('accountOcean');
  if(field && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
   for(let i=0;i<(window.innerWidth<640?12:27);i++){
