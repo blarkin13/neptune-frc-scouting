@@ -1,7 +1,14 @@
 </main>
 <?php if(!$hideChrome && ($u || ($isPublicHome??false))): ?>
 <?php
-$neptuneFooterCanDownloadServer = !empty($u) && in_array((string)($u['role'] ?? ''), ['owner', 'admin', 'strategy'], true);
+// Use the same portable-mode flag as admin/portable.php. The cloud builds
+// packages; the local installation only provides manual synchronization.
+$neptuneFooterPortableLocal = !empty($config['app']['portable_mode']);
+$neptuneFooterCanDownloadServer = !empty($u) && in_array(
+    (string)($u['role'] ?? ''),
+    $neptuneFooterPortableLocal ? ['owner', 'admin'] : ['owner', 'admin', 'strategy'],
+    true
+);
 ?>
 <footer class="neptune-site-footer" aria-label="Neptune footer">
   <div class="neptune-site-footer-inner">
@@ -16,9 +23,9 @@ $neptuneFooterCanDownloadServer = !empty($u) && in_array((string)($u['role'] ?? 
           <span>Open on Phone</span>
         </button>
         <?php if($neptuneFooterCanDownloadServer): ?>
-          <a class="neptune-footer-pill" href="<?=e(base_url('admin/portable.php'))?>" title="Portable Organization Server">
-            <i class="fa-solid fa-download" aria-hidden="true"></i>
-            <span>Download Server</span>
+          <a class="neptune-footer-pill" href="<?=e(base_url('admin/portable.php'))?>" title="<?=$neptuneFooterPortableLocal?'Sync Organization to AWS':'Download Portable Server'?>">
+            <i class="fa-solid <?=$neptuneFooterPortableLocal?'fa-cloud-arrow-up':'fa-download'?>" aria-hidden="true"></i>
+            <span><?=$neptuneFooterPortableLocal?'Sync Server':'Download Server'?></span>
           </a>
         <?php endif; ?>
         <button type="button" class="neptune-footer-pill" id="neptuneWalkthroughOpen" data-neptune-walkthrough-open aria-haspopup="dialog" aria-controls="neptuneWalkthroughModal">
@@ -296,4 +303,72 @@ body>main.wrap{flex:1 0 auto;width:100%;margin-top:0;margin-bottom:0}
 })();
 
 </script>
+<?php if(!empty($u) && !($isPublicHome??false)): ?>
+<script>
+window.NeptunePresenceConfig={
+ tokenUrl:<?=json_encode(base_url('api/presence-token.php'), JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ pageKind:()=>{
+  const path=location.pathname.toLowerCase(),q=new URLSearchParams(location.search);
+  if(/\/scout\/impact\.php$/.test(path))return 'tag-match';
+  if(/\/scout\/tag-context\.php$/.test(path))return (q.get('tag_tab')||q.get('tab'))==='pit'?'tag-pit':'tag-team';
+  if(/\/scout\/tag\.php$/.test(path)){const tab=q.get('tab')||'match';return tab==='match'?'tag-match':tab==='pit'?'tag-pit':'tag-team';}
+  if(/\/scout\/(?:match|index)\.php$/.test(path))return 'traditional';
+  return 'other';
+ }
+};
+</script>
+<script defer src="<?=e(base_url('assets/js/neptune-presence-ws.js'))?>?v=1"></script>
+<script>
+/* Online in Neptune means an authenticated foreground page checked in recently.
+   It is independent of the match-scouting heartbeat. */
+(()=>{
+  const endpoint=<?=json_encode(base_url('api/user-presence.php'), JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>;
+  const token=<?=json_encode(csrf_token(), JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>;
+  let lastAttempt=0;
+  // This reports a visible page category, not evidence that scouting data was saved.
+  function pageKind(){
+    const path=location.pathname.toLowerCase();
+    const query=new URLSearchParams(location.search);
+    if(/\/scout\/impact\.php$/.test(path))return 'tag-match';
+    if(/\/scout\/tag-context\.php$/.test(path)){
+      const tab=query.get('tag_tab')||query.get('tab')||'team';
+      return tab==='pit'?'tag-pit':'tag-team';
+    }
+    if(/\/scout\/tag\.php$/.test(path)){
+      const tab=query.get('tab')||'match';
+      return tab==='match'?'tag-match':tab==='pit'?'tag-pit':'tag-team';
+    }
+    if(/\/scout\/(?:match|index)\.php$/.test(path))return 'traditional';
+    return 'other';
+  }
+  function pulse(){
+    if(document.visibilityState!=='visible'||!navigator.onLine)return;
+    const now=Date.now();if(now-lastAttempt<25000)return;
+    lastAttempt=now;
+    fetch(endpoint,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({csrf:token,page_kind:pageKind()}),keepalive:true}).catch(()=>{});
+  }
+  pulse();setInterval(pulse,45000);
+  document.addEventListener('visibilitychange',pulse);
+  window.addEventListener('pageshow',pulse);
+  window.addEventListener('focus',pulse);
+})();
+</script>
+<?php endif; ?>
+<?php if(!empty($u) && !($isPublicHome??false)): ?>
+<script>
+window.NeptuneAssignmentNotificationsConfig={
+ endpoint:<?=json_encode(base_url('api/assignment-notifications.php'),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ csrf:<?=json_encode(csrf_token(),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ accountUrl:<?=json_encode(base_url('dashboard/index.php').'?view=account#account-assignments',JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ organizationId:<?=(int)$u['organization_id']?>,
+ userId:<?=(int)$u['id']?>
+};
+</script>
+<link rel="stylesheet" href="<?=e(base_url('assets/css/neptune-assignment-notifications.css'))?>?v=1">
+<script defer src="<?=e(base_url('assets/js/neptune-assignment-notifications.js'))?>?v=1"></script>
+<?php endif; ?>
+<?php if(!empty($u) && !($isPublicHome??false)): ?>
+<script>if(window.NeptuneAssignmentNotificationsConfig){window.NeptuneAssignmentNotificationsConfig.pushEndpoint=<?=json_encode(base_url('api/assignment-push.php'))?>;window.NeptuneAssignmentNotificationsConfig.pushBase=<?=json_encode(base_url(''))?>;}</script>
+<script defer src="<?=e(base_url('assets/js/neptune-assignment-push.js'))?>?v=1"></script>
+<?php endif; ?>
 </body></html>

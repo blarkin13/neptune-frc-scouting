@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/portable.php';
+require_once dirname(__DIR__,3).'/neptune_secure/_portable_match_version.php';
 
 if (!isset($pdo) || !($pdo instanceof PDO)) {
     nps_json(['ok'=>false,'error'=>'Database unavailable.'],500);
@@ -45,12 +46,61 @@ try{
     nps_json(['ok'=>false,'error'=>'Unauthorized.'],401);
 }
 
+/** Stage C: reject contradictory tenant/event identifiers before any section writes. */
+function nps_validate_batch_scope(array $rows,int $org,int $event,string $section): void {
+    foreach($rows as $index=>$row){
+        if(!is_array($row))continue; // Existing per-section shape handling remains unchanged.
+        foreach(['organization_id'=>$org,'event_id'=>$event] as $key=>$expected){
+            if(!array_key_exists($key,$row) || $row[$key]===null || $row[$key]==='')continue;
+            // A zero event_id is used for event-independent tag observations.
+            if($key==='event_id' && $section==='tag_observations' && (string)$row[$key]==='0')continue;
+            if(!is_scalar($row[$key]) || !preg_match('/^[0-9]+$/D',(string)$row[$key]) || (int)$row[$key]!==$expected){
+                throw new InvalidArgumentException('Row '.($index+1).' has an invalid '.$key.'.');
+            }
+        }
+    }
+}
+
 function nps_user(PDO $pdo,int $id,int $org): ?int {
     if($id<=0)return null;
-    $s=$pdo->prepare('SELECT id FROM users WHERE id=? AND organization_id=? AND active=1 LIMIT 1');
+    $s=$pdo->prepare('SELECT id FROM users WHERE id=? AND organization_id=? LIMIT 1');
     $s->execute([$id,$org]);
     return $s->fetchColumn()?(int)$id:null;
 }
+/** Allow an exact replay of historical tag-match data already present in AWS.
+ * A missing legacy user never authorizes an INSERT or UPDATE. All other
+ * organization/event/observation/match checks remain mandatory.
+ */
+function nps_tag_match_identical(array $existing,array $incoming,int $resolvedMatch,int $resolvedGame): bool {
+    // Reject malformed user references even for an already-stored record.
+    $incomingUser=$incoming['user_id']??null;
+    if(!is_int($incomingUser) && (!is_string($incomingUser) || !preg_match('/^[0-9]+$/D',$incomingUser)))return false;
+    if((int)$incomingUser<=0)return false;
+    $expected=[
+        'match_id'=>$resolvedMatch,
+        'game_id'=>$resolvedGame,
+        'user_id'=>(int)$incomingUser,
+        'frc_team_number'=>(int)($incoming['frc_team_number']??0),
+        'alliance'=>(string)($incoming['alliance']??''),
+        'station'=>isset($incoming['station'])?(int)$incoming['station']:null,
+        'scoring_contribution'=>isset($incoming['scoring_contribution'])&&$incoming['scoring_contribution']!==''?(int)$incoming['scoring_contribution']:null,
+        'tags_json'=>(string)($incoming['tags_json']??'[]'),
+        'tag_weights_json'=>$incoming['tag_weights_json']??null,
+        'note'=>$incoming['note']??null,
+        'created_at'=>$incoming['created_at']??null,
+        'updated_at'=>$incoming['updated_at']??null,
+    ];
+    foreach($expected as $key=>$value){
+        $actual=$existing[$key]??null;
+        if($actual===null || $value===null){
+            if($actual!==$value)return false;
+        } elseif((string)$actual!==(string)$value){
+            return false;
+        }
+    }
+    return true;
+}
+
 function nps_team(PDO $pdo,int $id,int $org): ?int {
     if($id<=0)return null;
     $s=$pdo->prepare('SELECT id FROM teams WHERE id=? AND organization_id=? LIMIT 1');
@@ -90,7 +140,20 @@ function nps_match_id(PDO $pdo,int $org,int $event,array $row): ?int {
     return $found>0?$found:null;
 }
 function nps_valid_uuid(string $uuid): bool {
-    return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$uuid);
+    return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD',$uuid);
+}
+/** Historical imported rows may carry canonical 128-bit identifiers with
+ * non-RFC version/variant nibbles. Preserve their bytes as stable opaque IDs;
+ * never generate new IDs, and never accept nil / malformed identifiers. */
+function nps_valid_historical_uuid(string $uuid): bool {
+    return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iD',$uuid)
+        && str_replace('-', '', strtolower($uuid)) !== str_repeat('0',32);
+}
+function nps_valid_scout_session_uuid(string $uuid, string $status): bool {
+    return nps_valid_uuid($uuid) || ($status === 'closed' && nps_valid_historical_uuid($uuid));
+}
+function nps_valid_scout_action_uuid(string $uuid, string $source): bool {
+    return nps_valid_uuid($uuid) || ($source === 'legacy_import' && nps_valid_historical_uuid($uuid));
 }
 function nps_enum(string $v,array $allowed,string $fallback): string {
     return in_array($v,$allowed,true)?$v:$fallback;
@@ -102,10 +165,16 @@ if($section==='manual_scores'){
     catch(Throwable $e){error_log('[Portable manual score schema] '.$e->getMessage());nps_json(['ok'=>false,'error'=>'Manual score tables are unavailable on the destination.'],503);}
 }
 
-$counts=['processed'=>0,'inserted'=>0,'updated'=>0,'existing'=>0,'skipped'=>0];
+$counts=['processed'=>0,'inserted'=>0,'updated'=>0,'existing'=>0,'skipped'=>0,'conflicts'=>0,'skip_reasons'=>[]];
+function nps_skipped(array &$counts, string $reason): void {
+    $counts['skipped']++;
+    $counts['skip_reasons'][$reason]=($counts['skip_reasons'][$reason]??0)+1;
+}
+$matchConflicts=[];
 
 try{
     $pdo->beginTransaction();
+    nps_validate_batch_scope($rows,$org,$event,$section);
 
     switch($section){
         case 'event':
@@ -140,8 +209,8 @@ try{
         case 'matches':
             $game=nps_event_game($pdo,$event,$org);
             $find=$pdo->prepare(
-                'SELECT id FROM matches
-                 WHERE organization_id=? AND event_id=? AND comp_level=? AND set_number=? AND match_number=? AND field_id=? LIMIT 1'
+                'SELECT * FROM matches
+                 WHERE organization_id=? AND event_id=? AND comp_level=? AND set_number=? AND match_number=? AND field_id=? LIMIT 1 FOR UPDATE'
             );
             $insert=$pdo->prepare(
                 'INSERT INTO matches
@@ -153,12 +222,17 @@ try{
             $update=$pdo->prepare(
                 'UPDATE matches SET
                     tba_match_key=?,scheduled_time=?,started_at=?,ended_at=?,paused_at=?,
-                    total_pause_seconds=?,run_number=?,red_score=COALESCE(red_score,?),blue_score=COALESCE(blue_score,?),
-                    winning_alliance=CASE WHEN winning_alliance=\'Unknown\' THEN ? ELSE winning_alliance END,state=?
+                    total_pause_seconds=?,run_number=?,red_score=?,blue_score=?,
+                    winning_alliance=?,state=?
                  WHERE id=? AND organization_id=? AND event_id=?'
             );
             foreach($rows as $r){
                 if(!is_array($r)){ $counts['skipped']++; continue; }
+                if((isset($r['organization_id']) && (int)$r['organization_id']!==$org)
+                    || (isset($r['event_id']) && (int)$r['event_id']!==$event)
+                    || (isset($r['game_id']) && (int)$r['game_id']!==$game)){
+                    $counts['skipped']++;continue;
+                }
                 $level=trim((string)($r['comp_level']??'qm'));
                 $set=max(1,(int)($r['set_number']??1));
                 $num=(int)($r['match_number']??0);
@@ -167,7 +241,8 @@ try{
                 $state=nps_enum((string)($r['state']??'scheduled'),['scheduled','ready','running','paused','ended'],'scheduled');
                 $win=nps_enum((string)($r['winning_alliance']??'Unknown'),['Red','Blue','Tie','Unknown'],'Unknown');
                 $find->execute([$org,$event,$level,$set,$num,$field]);
-                $cloudId=(int)$find->fetchColumn();
+                $cloudMatch=$find->fetch(PDO::FETCH_ASSOC) ?: null;
+                $cloudId=(int)($cloudMatch['id']??0);
                 $vals=[
                     $r['tba_match_key']??null,$r['scheduled_time']??null,$r['started_at']??null,$r['ended_at']??null,
                     $r['paused_at']??null,max(0,(int)($r['total_pause_seconds']??0)),max(1,(int)($r['run_number']??1)),
@@ -176,8 +251,37 @@ try{
                     $win,$state
                 ];
                 if($cloudId>0){
-                    $update->execute(array_merge($vals,[$cloudId,$org,$event]));
-                    $counts['updated']++;
+                    // Stage B optimistic concurrency: compare portable's immutable
+                    // export baseline with current cloud state under FOR UPDATE lock.
+                    $keys=['tba_match_key','scheduled_time','started_at','ended_at','paused_at',
+                        'total_pause_seconds','run_number','red_score','blue_score','winning_alliance','state'];
+                    $incoming=array_combine($keys,$vals);
+                    $different=[];
+                    foreach($keys as $key){
+                        $oldVal=$cloudMatch[$key]??null;
+                        $newVal=$incoming[$key];
+                        if($oldVal==='' || $oldVal===null)$oldVal=null;
+                        if($newVal==='' || $newVal===null)$newVal=null;
+                        if($oldVal===null && $newVal===null)continue;
+                        if((string)$oldVal!==(string)$newVal)$different[]=$key;
+                    }
+                    if(!$different){
+                        $counts['existing']++;
+                    }else{
+                        $base=strtolower(trim((string)($r['base_hash']??'')));
+                        $current=neptune_portable_match_base_hash($cloudMatch);
+                        if(preg_match('/^[0-9a-f]{64}$/',$base) && hash_equals($current,$base)){
+                            $update->execute(array_merge($vals,[$cloudId,$org,$event]));
+                            $counts['updated']++;
+                        }else{
+                            $counts['conflicts']++;
+                            if(count($matchConflicts)<30)$matchConflicts[]=[
+                                'match_id'=>$cloudId,'match_number'=>$num,'field_id'=>$field,
+                                'reason'=>$base===''?'base_version_unavailable':'stale_base_version',
+                                'fields'=>$different,
+                            ];
+                        }
+                    }
                 }else{
                     $insert->execute([
                         $org,$event,$game,$r['tba_match_key']??null,$level,$set,$num,$field,
@@ -212,7 +316,7 @@ try{
             break;
 
         case 'scout_sessions':
-            $exists=$pdo->prepare('SELECT id FROM scout_sessions WHERE uuid=? AND organization_id=? LIMIT 1');
+            $exists=$pdo->prepare('SELECT id,event_id FROM scout_sessions WHERE uuid=? AND organization_id=? LIMIT 1');
             $insert=$pdo->prepare(
                 'INSERT INTO scout_sessions
                  (uuid,organization_id,event_id,match_id,user_id,scout_name,frc_team_number,alliance,station,field_id,
@@ -230,11 +334,15 @@ try{
                 $uuid=strtolower(trim((string)($r['uuid']??'')));
                 $mid=nps_match_id($pdo,$org,$event,$r);
                 $all=nps_enum((string)($r['alliance']??''),['Red','Blue'],'');
-                if(!nps_valid_uuid($uuid)||!$mid||$all===''){ $counts['skipped']++; continue; }
+                if(!nps_valid_scout_session_uuid($uuid,(string)($r['status']??''))){nps_skipped($counts,'invalid_session_uuid');continue;}
+                if(!$mid){nps_skipped($counts,'session_match_unresolved');continue;}
+                if($all===''){nps_skipped($counts,'invalid_session_alliance');continue;}
                 $uid=nps_user($pdo,(int)($r['user_id']??0),$org);
                 $status=nps_enum((string)($r['status']??'assigned'),['assigned','connected','scouting','submitted','closed'],'assigned');
                 $exists->execute([$uuid,$org]);
-                $id=(int)$exists->fetchColumn();
+                $oldSession=$exists->fetch(PDO::FETCH_ASSOC);
+                $id=(int)($oldSession['id']??0);
+                if($id>0 && (int)$oldSession['event_id']!==$event)throw new RuntimeException('Scout session UUID already belongs to a different event.');
                 if($id>0){
                     $update->execute([$event,$mid,$uid,$r['scout_name']??null,(int)$r['frc_team_number'],$all,
                         isset($r['station'])?(int)$r['station']:null,max(1,(int)($r['field_id']??1)),
@@ -253,7 +361,7 @@ try{
 
         case 'scouting_actions':
             $exists=$pdo->prepare('SELECT id,deleted_at FROM scouting_actions WHERE uuid=? AND organization_id=? LIMIT 1');
-            $session=$pdo->prepare('SELECT id FROM scout_sessions WHERE uuid=? AND organization_id=? LIMIT 1');
+            $session=$pdo->prepare('SELECT id FROM scout_sessions WHERE uuid=? AND organization_id=? AND event_id=? AND match_id=? LIMIT 1');
             $insert=$pdo->prepare(
                 'INSERT INTO scouting_actions
                  (uuid,organization_id,owner_team_id,event_id,match_id,scout_session_id,game_id,frc_team_number,alliance,
@@ -270,7 +378,10 @@ try{
                 $uuid=strtolower(trim((string)($r['uuid']??'')));
                 $mid=nps_match_id($pdo,$org,$event,$r);
                 $all=nps_enum((string)($r['alliance']??''),['Red','Blue'],'');
-                if(!nps_valid_uuid($uuid)||!$mid||$all===''||trim((string)($r['action_code']??''))===''){ $counts['skipped']++; continue; }
+                if(!nps_valid_scout_action_uuid($uuid,(string)($r['source']??''))){nps_skipped($counts,'invalid_action_uuid');continue;}
+                if(!$mid){nps_skipped($counts,'action_match_unresolved');continue;}
+                if($all===''){nps_skipped($counts,'invalid_action_alliance');continue;}
+                if(trim((string)($r['action_code']??''))===''){nps_skipped($counts,'missing_action_code');continue;}
                 $exists->execute([$uuid,$org]);
                 $existing=$exists->fetch(PDO::FETCH_ASSOC);
                 if($existing){
@@ -284,8 +395,8 @@ try{
                 }
                 $sid=null;
                 $suuid=strtolower(trim((string)($r['scout_session_uuid']??'')));
-                if(nps_valid_uuid($suuid)){
-                    $session->execute([$suuid,$org]);
+                if(nps_valid_historical_uuid($suuid)){
+                    $session->execute([$suuid,$org,$event,$mid]);
                     $sid=(int)$session->fetchColumn() ?: null;
                 }
                 $owner=nps_team($pdo,(int)($r['owner_team_id']??0),$org);
@@ -455,26 +566,51 @@ try{
 
         case 'tag_observation_tags':
             if(!neptune_portable_table_exists($pdo,'tag_scouting_observation_tags'))break;
-            $obs=$pdo->prepare('SELECT id FROM tag_scouting_observations WHERE uuid=? AND organization_id=? LIMIT 1');
-            $tagSeed=$pdo->prepare('SELECT id FROM tag_scouting_tags WHERE seed_key=? LIMIT 1');
-            $tagSlug=$pdo->prepare('SELECT id FROM tag_scouting_tags WHERE organization_id=? AND slug=? LIMIT 1');
+            $obs=$pdo->prepare('SELECT id FROM tag_scouting_observations WHERE uuid=? AND organization_id=? AND (event_id=? OR event_id IS NULL) LIMIT 1');
+            $tagOrgSeed=$pdo->prepare('SELECT id FROM tag_scouting_tags WHERE organization_id=? AND seed_key=? LIMIT 1');
+            $tagOrgSlug=$pdo->prepare('SELECT id FROM tag_scouting_tags WHERE organization_id=? AND slug=? LIMIT 1');
+            $tagGlobalSeed=$pdo->prepare('SELECT id FROM tag_scouting_tags WHERE organization_id IS NULL AND seed_key=? LIMIT 1');
+            $tagGlobalSlug=$pdo->prepare('SELECT id FROM tag_scouting_tags WHERE organization_id IS NULL AND slug=? LIMIT 1');
             $up=$pdo->prepare(
                 'INSERT INTO tag_scouting_observation_tags(observation_id,tag_id,weight)
                  VALUES(?,?,?) ON DUPLICATE KEY UPDATE weight=VALUES(weight)'
             );
             foreach($rows as $r){
-                if(!is_array($r)){ $counts['skipped']++; continue; }
+                if(!is_array($r)){nps_skipped($counts,'invalid_tag_link_row');continue;}
                 $uuid=strtolower(trim((string)($r['observation_uuid']??'')));
-                if(!nps_valid_uuid($uuid)){ $counts['skipped']++; continue; }
-                $obs->execute([$uuid,$org]);$oid=(int)$obs->fetchColumn();
-                if($oid<=0){$counts['skipped']++;continue;}
-                $tid=0;$seed=trim((string)($r['seed_key']??''));
-                if($seed!==''){$tagSeed->execute([$seed]);$tid=(int)$tagSeed->fetchColumn();}
-                if($tid<=0){
-                    $slug=trim((string)($r['slug']??''));
-                    if($slug!==''){$tagSlug->execute([$org,$slug]);$tid=(int)$tagSlug->fetchColumn();}
+                if(!nps_valid_uuid($uuid)){nps_skipped($counts,'invalid_observation_uuid');continue;}
+                $obs->execute([$uuid,$org,$event]);$oid=(int)$obs->fetchColumn();
+                if($oid<=0){nps_skipped($counts,'observation_unresolved');continue;}
+
+                // Tags can be global (NULL organization_id) or custom to this
+                // organization. Never resolve another tenant's tag definition.
+                $tagScope = $r['tag_organization_id'] ?? null;
+                $declared = array_key_exists('tag_organization_id',$r);
+                if($tagScope!==null && $tagScope!=='') {
+                    if(!is_scalar($tagScope) || !preg_match('/^[0-9]+$/D',(string)$tagScope) || (int)$tagScope!==$org){
+                        throw new InvalidArgumentException('Tag reference belongs to another organization.');
+                    }
                 }
-                if($tid<=0){$counts['skipped']++;continue;}
+                $preferGlobal = $declared && ($tagScope===null || $tagScope==='');
+                $seed=trim((string)($r['seed_key']??''));
+                $slug=trim((string)($r['slug']??''));
+                $tid=0;
+                $lookups = $preferGlobal
+                    ? [[$tagGlobalSeed,$seed,false],[$tagGlobalSlug,$slug,false]]
+                    : [[$tagOrgSeed,$seed,true],[$tagOrgSlug,$slug,true]];
+                // Legacy clients omit tag_organization_id. They may reference
+                // a globally seeded tag, so permit that fallback only then.
+                if(!$declared) {
+                    $lookups[] = [$tagGlobalSeed,$seed,false];
+                    $lookups[] = [$tagGlobalSlug,$slug,false];
+                }
+                foreach($lookups as [$query,$value,$owned]){
+                    if($value==='')continue;
+                    $query->execute($owned?[$org,$value]:[$value]);
+                    $tid=(int)$query->fetchColumn();
+                    if($tid>0)break;
+                }
+                if($tid<=0){nps_skipped($counts,'tag_definition_unresolved');continue;}
                 $up->execute([$oid,$tid,isset($r['weight'])&&$r['weight']!==''?(int)$r['weight']:null]);
                 $counts['processed']++;$counts['updated']++;
             }
@@ -508,8 +644,16 @@ try{
 
         case 'tag_match_data':
             if(!neptune_portable_table_exists($pdo,'tag_scouting_match_data'))break;
-            $obs=$pdo->prepare('SELECT id FROM tag_scouting_observations WHERE uuid=? AND organization_id=? LIMIT 1');
+            $obs=$pdo->prepare('SELECT id FROM tag_scouting_observations WHERE uuid=? AND organization_id=? AND (event_id=? OR event_id IS NULL) LIMIT 1');
             $game=nps_event_game($pdo,$event,$org);
+            // Scoped lookup for exact historical replays. Never bypass the user
+            // check for new or changed data merely because a row ID exists.
+            $existingMatchData=$pdo->prepare(
+                'SELECT match_id,game_id,user_id,frc_team_number,alliance,station,scoring_contribution,
+                        tags_json,tag_weights_json,note,created_at,updated_at
+                 FROM tag_scouting_match_data
+                 WHERE organization_id=? AND event_id=? AND observation_id=? LIMIT 2'
+            );
             $s=$pdo->prepare(
                 'INSERT INTO tag_scouting_match_data
                  (observation_id,organization_id,event_id,match_id,game_id,user_id,frc_team_number,alliance,station,
@@ -521,11 +665,25 @@ try{
             foreach($rows as $r){
                 if(!is_array($r)){ $counts['skipped']++; continue; }
                 $uuid=strtolower(trim((string)($r['observation_uuid']??'')));
-                $obs->execute([$uuid,$org]);$oid=(int)$obs->fetchColumn();
+                $obs->execute([$uuid,$org,$event]);$oid=(int)$obs->fetchColumn();
                 $mid=nps_match_id($pdo,$org,$event,$r);
                 $uid=nps_user($pdo,(int)($r['user_id']??0),$org);
                 $all=nps_enum((string)($r['alliance']??''),['Red','Blue'],'');
-                if($oid<=0||!$mid||!$uid||$all===''){ $counts['skipped']++; continue; }
+                if($oid<=0){nps_skipped($counts,'match_data_observation_unresolved');continue;}
+                if(!$mid){nps_skipped($counts,'match_data_match_unresolved');continue;}
+                if($all===''){nps_skipped($counts,'invalid_match_data_alliance');continue;}
+                if(!$uid){
+                    // Historical exports can contain orphaned user references
+                    // that already exist byte-for-byte in the AWS database.
+                    // An exact replay is safe to acknowledge without writes.
+                    $existingMatchData->execute([$org,$event,$oid]);
+                    $matches=$existingMatchData->fetchAll(PDO::FETCH_ASSOC);
+                    if(count($matches)===1 && nps_tag_match_identical($matches[0],$r,$mid,$game)){
+                        $counts['existing']++;
+                        continue;
+                    }
+                    nps_skipped($counts,'match_data_user_unresolved');continue;
+                }
                 $s->execute([$oid,$org,$event,$mid,$game,$uid,(int)$r['frc_team_number'],$all,
                     isset($r['station'])?(int)$r['station']:null,
                     isset($r['scoring_contribution'])&&$r['scoring_contribution']!==''?(int)$r['scoring_contribution']:null,
@@ -634,8 +792,12 @@ try{
         'event_id'=>$event,
         'section'=>$section,
         'counts'=>$counts,
+        'conflicts'=>$matchConflicts,
         'server_time_utc'=>gmdate('c'),
     ]);
+}catch(InvalidArgumentException $e){
+    if($pdo->inTransaction())$pdo->rollBack();
+    nps_json(['ok'=>false,'error'=>'Invalid portable sync reference.','detail'=>$e->getMessage()],422);
 }catch(Throwable $e){
     if($pdo->inTransaction())$pdo->rollBack();
     error_log('[Neptune portable sync] '.$section.' '.$e->getMessage());

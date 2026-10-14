@@ -112,6 +112,8 @@ $validWinning = static fn($v) => in_array($v, ['Red','Blue','Tie','Unknown'], tr
 
 $counts = [
     'matches_updated' => 0,
+    'matches_existing' => 0,
+    'matches_conflicted' => 0,
     'sessions_inserted' => 0,
     'sessions_updated' => 0,
     'actions_inserted' => 0,
@@ -124,32 +126,47 @@ try {
 
     // Match IDs come from the production snapshot. We update only matching rows
     // belonging to the requested organization; we never create schedule rows here.
-    $matchStmt = $pdo->prepare(
-        "UPDATE matches SET
-            started_at=?, ended_at=?, paused_at=?, total_pause_seconds=?,
-            run_number=?, red_score=?, blue_score=?, winning_alliance=?, state=?
-         WHERE id=? AND organization_id=?"
+    $matchLookup = $pdo->prepare(
+        'SELECT * FROM matches WHERE id=? AND organization_id=? FOR UPDATE'
     );
-
+    $matchConflicts = [];
     foreach ($matches as $m) {
         if (!is_array($m)) continue;
         $matchId = (int)($m['id'] ?? 0);
         if ($matchId < 1) continue;
-
-        $matchStmt->execute([
-            $m['started_at'] ?? null,
-            $m['ended_at'] ?? null,
-            $m['paused_at'] ?? null,
-            max(0, (int)($m['total_pause_seconds'] ?? 0)),
-            max(1, (int)($m['run_number'] ?? 1)),
-            isset($m['red_score']) && $m['red_score'] !== '' ? (int)$m['red_score'] : null,
-            isset($m['blue_score']) && $m['blue_score'] !== '' ? (int)$m['blue_score'] : null,
-            $validWinning((string)($m['winning_alliance'] ?? 'Unknown')),
-            $validState((string)($m['state'] ?? 'scheduled')),
-            $matchId,
-            $organizationId,
-        ]);
-        $counts['matches_updated'] += $matchStmt->rowCount() > 0 ? 1 : 0;
+        $matchLookup->execute([$matchId, $organizationId]);
+        $cloud = $matchLookup->fetch(PDO::FETCH_ASSOC);
+        if (!$cloud) continue;
+        // An optional event reference must match the actual cloud event.
+        if (isset($m['event_id']) && (int)$m['event_id'] !== (int)$cloud['event_id']) {
+            $counts['matches_conflicted']++;
+            if (count($matchConflicts) < 30) $matchConflicts[] = ['match_id'=>$matchId,'reason'=>'event_mismatch'];
+            continue;
+        }
+        $incoming = [
+            'started_at' => $m['started_at'] ?? null,
+            'ended_at' => $m['ended_at'] ?? null,
+            'paused_at' => $m['paused_at'] ?? null,
+            'total_pause_seconds' => max(0, (int)($m['total_pause_seconds'] ?? 0)),
+            'run_number' => max(1, (int)($m['run_number'] ?? 1)),
+            'red_score' => isset($m['red_score']) && $m['red_score'] !== '' ? (int)$m['red_score'] : null,
+            'blue_score' => isset($m['blue_score']) && $m['blue_score'] !== '' ? (int)$m['blue_score'] : null,
+            'winning_alliance' => $validWinning((string)($m['winning_alliance'] ?? 'Unknown')),
+            'state' => $validState((string)($m['state'] ?? 'scheduled')),
+        ];
+        $different=[];
+        foreach ($incoming as $field=>$value) {
+            $current=$cloud[$field]??null;
+            if($current===null && $value===null)continue;
+            if((string)$current !== (string)$value)$different[]=$field;
+        }
+        if ($different) {
+            // Do not accept an unversioned offline rewrite of the cloud match.
+            $counts['matches_conflicted']++;
+            if(count($matchConflicts)<30)$matchConflicts[] = [
+                'match_id'=>$matchId,'reason'=>'base_version_unavailable','fields'=>$different
+            ];
+        } else { $counts['matches_existing']++; }
     }
 
     $sessionExists = $pdo->prepare('SELECT id FROM scout_sessions WHERE uuid=? LIMIT 1');
@@ -311,6 +328,7 @@ try {
         'ok' => true,
         'organization_id' => $organizationId,
         'counts' => $counts,
+        'conflicts' => $matchConflicts,
         'server_time_utc' => gmdate('c'),
     ]);
 } catch (Throwable $e) {

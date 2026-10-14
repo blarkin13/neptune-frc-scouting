@@ -73,6 +73,51 @@ function neptune_portable_fetch_all(PDO $pdo, string $sql, array $params = []): 
     return $s->fetchAll(PDO::FETCH_ASSOC);
 }
 
+require_once __DIR__.'/_portable_match_version.php';
+
+/** Local-only acknowledgment journal. A receipt is created only when every row
+ * in a section batch is acknowledged. A section with rejected rows is retried.
+ * Acknowledgments never cause an AWS upload on their own; sync remains manual.
+ */
+function neptune_portable_sync_receipts_prepare(PDO $pdo): void
+{
+    static $done = [];
+    $id = spl_object_id($pdo);
+    if (isset($done[$id])) return;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS portable_sync_batch_receipts (
+        organization_id BIGINT UNSIGNED NOT NULL,
+        event_id BIGINT UNSIGNED NOT NULL,
+        section VARCHAR(64) NOT NULL,
+        batch_index INT UNSIGNED NOT NULL,
+        content_hash CHAR(64) NOT NULL,
+        synced_at DATETIME NOT NULL,
+        PRIMARY KEY (organization_id,event_id,section,batch_index)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $done[$id] = true;
+}
+
+function neptune_portable_batch_fingerprint(string $section, array $batch): string
+{
+    // The match baseline changes after a successful upload; it is concurrency
+    // metadata, not a local edit. Do not retransmit identical match state for it.
+    if ($section === 'matches') {
+        foreach ($batch as &$row) {
+            if (is_array($row)) unset($row['base_hash']);
+        }
+        unset($row);
+    }
+    $encoded = json_encode([$section,$batch], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($encoded === false) throw new RuntimeException('Could not fingerprint portable sync batch.');
+    return hash('sha256', $encoded);
+}
+
+function neptune_portable_batch_fully_accepted(array $counts, int $expected): bool
+{
+    return (int)($counts['skipped'] ?? -1) === 0
+        && (int)($counts['conflicts'] ?? -1) === 0
+        && (int)($counts['processed'] ?? 0) + (int)($counts['existing'] ?? 0) >= $expected;
+}
+
 function neptune_portable_send_section(
     PDO $pdo,
     array $settings,
@@ -82,15 +127,33 @@ function neptune_portable_send_section(
     int $batchSize = 250
 ): array {
     $rows = neptune_portable_fetch_all($pdo, $sql, $params);
-    $summary = ['section' => $section, 'rows' => count($rows), 'batches' => 0, 'responses' => []];
+    $summary = [
+        'section' => $section, 'rows' => count($rows), 'batches' => 0,
+        'unchanged_batches' => 0, 'unchanged_rows' => 0, 'skipped' => 0, 'unacknowledged_rows' => 0,
+        'responses' => [],
+    ];
+    if (!$rows) return $summary;
 
-    if (!$rows) {
-        // Send an empty section only when it carries semantic value; otherwise
-        // there is nothing for the cloud to do.
-        return $summary;
-    }
+    neptune_portable_sync_receipts_prepare($pdo);
+    $lookup = $pdo->prepare('SELECT content_hash FROM portable_sync_batch_receipts
+        WHERE organization_id=? AND event_id=? AND section=? AND batch_index=? LIMIT 1');
+    $acknowledge = $pdo->prepare('INSERT INTO portable_sync_batch_receipts
+        (organization_id,event_id,section,batch_index,content_hash,synced_at)
+        VALUES(?,?,?,?,?,UTC_TIMESTAMP())
+        ON DUPLICATE KEY UPDATE content_hash=VALUES(content_hash),synced_at=VALUES(synced_at)');
 
-    foreach (array_chunk($rows, max(1, $batchSize)) as $batch) {
+    foreach (array_chunk($rows, max(1, $batchSize)) as $index => $batch) {
+        $identity = [$settings['organization_id'],$settings['event_id'],$section,$index];
+        $fingerprint = neptune_portable_batch_fingerprint($section, $batch);
+        $lookup->execute($identity);
+        $previous = $lookup->fetchColumn();
+        $lookup->closeCursor();
+        if (is_string($previous) && hash_equals($previous, $fingerprint)) {
+            $summary['unchanged_batches']++;
+            $summary['unchanged_rows'] += count($batch);
+            continue;
+        }
+
         $response = neptune_portable_http_json(
             $settings['cloud_url'] . '/api/portable-sync.php',
             $settings['sync_token'],
@@ -101,11 +164,49 @@ function neptune_portable_send_section(
                 'rows' => $batch,
             ]
         );
+        $counts = is_array($response['counts'] ?? null) ? $response['counts'] : [];
+        $accepted = neptune_portable_batch_fully_accepted($counts, count($batch));
+
+        // A confirmed match batch may move its baseline forward. A conflicting
+        // or partial batch must remain on its old baseline for safe retry.
+        if ($section === 'matches' && $accepted) {
+            $up=$pdo->prepare('INSERT INTO neptune_portable_match_bases
+              (organization_id,match_id,base_hash,captured_at) VALUES(?,?,?,UTC_TIMESTAMP())
+              ON DUPLICATE KEY UPDATE base_hash=VALUES(base_hash),captured_at=VALUES(captured_at)');
+            foreach ($batch as $matchRow) {
+                $id=(int)($matchRow['id']??0);
+                if ($id>0) $up->execute([(int)$settings['organization_id'],$id,
+                    neptune_portable_match_base_hash($matchRow)]);
+            }
+        }
+
+        // A skipped or unknown response is NOT a receipt: it will be retried on
+        // the next manual sync and shown as incomplete to the administrator.
+        if ($accepted) {
+            $acknowledge->execute([...$identity,$fingerprint]);
+        }
+        $summary['skipped'] += (int)($counts['skipped'] ?? count($batch));
+        if (!$accepted) $summary['unacknowledged_rows'] += count($batch);
         $summary['batches']++;
-        $summary['responses'][] = $response['counts'] ?? [];
+        $summary['responses'][] = $counts;
     }
 
     return $summary;
+}
+
+/** Locate Neptune's public app root in AWS and installed Mac/WSL packages.
+ * Never silently upload unrelated files from an incorrect directory.
+ */
+function neptune_portable_public_root(): string
+{
+    $base=dirname(__DIR__);
+    foreach([$base.'/www/Neptune',$base.'/public_html/Neptune'] as $candidate){
+        $real=realpath($candidate);
+        if($real!==false && is_dir($real) && is_file($real.'/api/portable-sync.php')){
+            return rtrim($real,'/').'/';
+        }
+    }
+    throw new RuntimeException('Neptune application directory could not be located for media sync.');
 }
 
 function neptune_portable_upload_media(
@@ -201,11 +302,11 @@ function neptune_portable_sync_event_to_cloud(PDO $pdo, array $config, int $even
 
     $sections[] = neptune_portable_send_section(
         $pdo, $settings, 'matches',
-        'SELECT id,organization_id,event_id,game_id,tba_match_key,comp_level,set_number,match_number,field_id,
-                scheduled_time,started_at,ended_at,paused_at,total_pause_seconds,run_number,
-                red_score,blue_score,winning_alliance,state
-         FROM matches
-         WHERE organization_id=? AND event_id=?
+        'SELECT m.id,m.organization_id,m.event_id,m.game_id,m.tba_match_key,m.comp_level,m.set_number,m.match_number,m.field_id,
+                m.scheduled_time,m.started_at,m.ended_at,m.paused_at,m.total_pause_seconds,m.run_number,
+                m.red_score,m.blue_score,m.winning_alliance,m.state,b.base_hash
+         FROM matches m LEFT JOIN neptune_portable_match_bases b ON b.organization_id=m.organization_id AND b.match_id=m.id
+         WHERE m.organization_id=? AND m.event_id=?
          ORDER BY field_id,comp_level,set_number,match_number',
         [$org,$event]
     );
@@ -389,10 +490,14 @@ function neptune_portable_sync_event_to_cloud(PDO $pdo, array $config, int $even
              ORDER BY p.id",
             [$org,$event]
         );
-        $root = dirname(__DIR__) . '/public_html/Neptune/';
+        $root = neptune_portable_public_root();
         foreach ($rows as $row) {
             $media['pit_total']++;
             $rel = ltrim(str_replace('\\','/',(string)$row['file_path']),'/');
+            if($rel==='' || str_contains($rel, "\0") || preg_match('~(?:^|/)\.\.(?:/|$)~',$rel)){
+                $media['pit_skipped']++;
+                continue;
+            }
             $result = neptune_portable_upload_media(
                 $settings,
                 'pit',
@@ -419,10 +524,14 @@ function neptune_portable_sync_event_to_cloud(PDO $pdo, array $config, int $even
              ORDER BY tm.id",
             [$org,$event]
         );
-        $root = dirname(__DIR__) . '/public_html/Neptune/';
+        $root = neptune_portable_public_root();
         foreach ($rows as $row) {
             $media['tag_total']++;
             $rel = ltrim(str_replace('\\','/',(string)$row['storage_relpath']),'/');
+            if($rel==='' || str_contains($rel, "\0") || preg_match('~(?:^|/)\.\.(?:/|$)~',$rel)){
+                $media['tag_skipped']++;
+                continue;
+            }
             $result = neptune_portable_upload_media(
                 $settings,
                 'tag',
@@ -465,6 +574,14 @@ function neptune_portable_sync_to_cloud(PDO $pdo, array $config): array
     $s = $pdo->prepare('SELECT id,name,start_date,end_date FROM events WHERE organization_id=? ORDER BY COALESCE(start_date,"9999-12-31"),id');
     $s->execute([$org]);
     $events = $s->fetchAll(PDO::FETCH_ASSOC);
+    if (!$events) throw new RuntimeException('There are no organization events to synchronize.');
+    // Even a completely unchanged sync must prove AWS is reachable and the
+    // organization-bound token remains valid; never report offline as success.
+    neptune_portable_http_json(
+        $settings['cloud_url'] . '/api/portable-sync.php',
+        $settings['sync_token'],
+        ['organization_id'=>$org,'event_id'=>(int)$events[0]['id'],'section'=>'event','rows'=>[]]
+    );
 
     $eventResults = [];
     $errors = [];
@@ -488,11 +605,36 @@ function neptune_portable_sync_to_cloud(PDO $pdo, array $config): array
         );
     }
 
+    $totalSkipped = 0;
+    $totalUploaded = 0;
+    $totalUnchanged = 0;
+    $totalBatches = 0;
+    $totalUnacknowledged = 0;
+    $totalMediaSkipped = 0;
+    foreach ($eventResults as $result) {
+        $totalMediaSkipped += (int)($result['media']['pit_skipped'] ?? 0) + (int)($result['media']['tag_skipped'] ?? 0);
+        foreach ($result['sections'] as $section) {
+            $totalSkipped += (int)($section['skipped'] ?? 0);
+            $totalUploaded += (int)($section['rows'] ?? 0) - (int)($section['unchanged_rows'] ?? 0);
+            $totalUnchanged += (int)($section['unchanged_rows'] ?? 0);
+            $totalBatches += (int)($section['batches'] ?? 0);
+            $totalUnacknowledged += (int)($section['unacknowledged_rows'] ?? 0);
+        }
+    }
     return [
-        'ok' => true,
+        'ok' => $totalUnacknowledged === 0 && $totalMediaSkipped === 0,
+        'incomplete' => $totalUnacknowledged > 0 || $totalMediaSkipped > 0,
         'cloud_url' => $settings['cloud_url'],
         'organization_id' => $org,
         'events_synced' => count($eventResults),
+        'totals' => [
+            'rows_sent' => $totalUploaded,
+            'rows_unchanged' => $totalUnchanged,
+            'batches_sent' => $totalBatches,
+            'rows_skipped' => $totalSkipped,
+            'rows_unacknowledged' => $totalUnacknowledged,
+            'media_skipped' => $totalMediaSkipped,
+        ],
         'events' => $eventResults,
         'completed_at_utc' => gmdate('c'),
     ];

@@ -22,6 +22,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             $hash=password_hash($password,PASSWORD_DEFAULT);
             $pdo->prepare('UPDATE users SET password_hash=?,must_change_password=0,password_changed_at=UTC_TIMESTAMP() WHERE id=? AND organization_id=?')
                 ->execute([$hash,(int)$u['id'],(int)$u['organization_id']]);
+            $_SESSION['user']['credential_revision']=hash('sha256',$hash);
             $_SESSION['user']['must_change_password']=0;
             session_regenerate_id(true);
             header('Location: '.base_url('dashboard/index.php'));

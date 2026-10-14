@@ -20,10 +20,26 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     verify_csrf();
     $action=(string)($_POST['action']??'');
 
-    if($portableLocal && $action==='sync_to_cloud'){
+    if($portableLocal && in_array($action,['sync_to_cloud','download_from_cloud','sync_both'],true)){
+        // Release the browser session lock while lengthy manual uploads run.
+        // Presence and connection-status polling can continue independently.
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
         try{
+            // Download FIRST during a two-way sync. Uploading the older portable
+            // copy first could overwrite a recently edited cloud observation.
+            $prePullSummary=null;
+            if($action==='sync_both'){
+                require_once dirname(__DIR__,3).'/neptune_secure/portable-sync-pull-client.php';
+                $prePullSummary=neptune_portable_pull_cloud($pdo,$config);
+                $syncSummary=['download'=>$prePullSummary];
+                if((int)($prePullSummary['conflicts']??0)>0){
+                    throw new RuntimeException('AWS download identified conflicting tag observations; upload was not started. Review the conflict samples in the report.');
+                }
+            }
+            if($action!=='download_from_cloud'){
             require_once dirname(__DIR__,3).'/neptune_secure/portable-sync-client.php';
             $syncSummary=neptune_portable_sync_to_cloud($pdo,$config);
+            if($prePullSummary!==null)$syncSummary['download']=$prePullSummary;
             // The portable client predates manual alliance scores. Send these as a
             // separate event-scoped section; conflicts abort sync rather than overwrite.
             if(neptune_portable_table_exists($pdo,'tag_manual_alliance_scores')){
@@ -45,8 +61,22 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     );
                 }
             }
+            // Include manual score sections in the overall completion status.
+            foreach(($syncSummary['manual_scores'] ?? []) as $part){
+                $syncSummary['totals']['rows_skipped'] += (int)($part['skipped']??0);
+                $syncSummary['totals']['rows_sent'] += (int)($part['rows']??0) - (int)($part['unchanged_rows']??0);
+                $syncSummary['totals']['rows_unchanged'] += (int)($part['unchanged_rows']??0);
+                $syncSummary['totals']['batches_sent'] += (int)($part['batches']??0);
+                $syncSummary['totals']['rows_unacknowledged'] += (int)($part['unacknowledged_rows']??0);
+            }
+            // A missing local media file is not an unacknowledged database row.
+            // Retain overall incomplete status, but report the two conditions separately.
+            $syncSummary['database_incomplete'] = (int)($syncSummary['totals']['rows_unacknowledged']??0)>0;
+            $syncSummary['media_incomplete'] = (int)($syncSummary['totals']['media_skipped']??0)>0;
+            $syncSummary['incomplete'] = $syncSummary['database_incomplete'] || $syncSummary['media_incomplete'];
+            $syncSummary['ok'] = !$syncSummary['incomplete'];
             // Record only fully successful organization-wide uploads.
-            try {
+            if (!$syncSummary['incomplete']) try {
                 $pdo->exec('CREATE TABLE IF NOT EXISTS portable_sync_tracking (organization_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, last_success_utc DATETIME NOT NULL)');
                 $st=$pdo->prepare('INSERT INTO portable_sync_tracking (organization_id,last_success_utc) VALUES (?, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE last_success_utc=VALUES(last_success_utc)');
                 $st->execute([(int)($config['portable']['organization_id']??0)]);
@@ -54,7 +84,33 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                 error_log('Neptune portable sync succeeded but status marker could not be saved: '.$trackingError->getMessage());
             }
 
-            $flash=['type'=>'good','message'=>'Organization sync completed successfully.'];
+            $flash=$syncSummary['database_incomplete']
+                ? ['type'=>'bad','message'=>'AWS received sync requests, but some database records were not acknowledged. Review the summary.']
+                : ($syncSummary['media_incomplete']
+                    ? ['type'=>'warn','message'=>'All database records synchronized. Some local media files are missing or could not be uploaded.']
+                    : ['type'=>'good','message'=>'Organization upload completed successfully.']);
+            if($action==='sync_both' && !empty($syncSummary['database_incomplete'])){
+                throw new RuntimeException('Upload contained unacknowledged database records; AWS download was not started.');
+            }
+            }
+            if($action!=='sync_to_cloud'){
+                if($action==='download_from_cloud'){
+                    require_once dirname(__DIR__,3).'/neptune_secure/portable-sync-pull-client.php';
+                    $pullSummary=neptune_portable_pull_cloud($pdo,$config);
+                }else{
+                    $pullSummary=$prePullSummary; // never redownload immediately after upload
+                }
+                if(!is_array($syncSummary))$syncSummary=[];
+                $syncSummary['download']=$pullSummary;
+                $flash=['type'=>'good','message'=>$action==='sync_both'
+                    ? 'Two-way database synchronization completed (AWS download first).'
+                    : 'Cloud scouting download completed.'];
+                if((int)($pullSummary['conflicts']??0)>0)
+                    $flash=['type'=>'warn','message'=>'Cloud scouting downloaded with unresolved observation conflicts. No conflicting local observations were changed.'];
+                if(!empty($syncSummary['media_incomplete'])){
+                    $flash=['type'=>'warn','message'=>'Two-way database synchronization completed; some original local media files remain missing.'];
+                }
+            }
         }catch(Throwable $e){
             $flash=['type'=>'bad','message'=>'Organization sync failed.','detail'=>$e->getMessage()];
         }
@@ -134,6 +190,25 @@ include dirname(__DIR__).'/partials_header.php';
 .npd-status{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}.npd-stat{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
 .npd-stat small{display:block;color:var(--muted);margin-bottom:4px}.npd-stat b{overflow-wrap:anywhere}.npd-actions{display:flex;gap:10px;flex-wrap:wrap}.npd-actions form{margin:0}
 .npd-sync-details{margin-top:14px}.npd-sync-details pre{max-height:360px;overflow:auto;white-space:pre-wrap;font-size:.75rem}
+/* Indeterminate progress: server performs one long POST and does not stream per-batch progress. */
+.npd-sync-modal{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:20px;background:rgba(2,8,21,.78);backdrop-filter:blur(5px)}
+.npd-sync-modal[hidden]{display:none!important}
+.npd-sync-modal-card{width:min(100%,590px);max-height:calc(100vh - 40px);overflow:auto;box-shadow:0 25px 90px rgba(0,0,0,.6);margin:0!important}
+body.npd-sync-modal-open{overflow:hidden}
+
+.npd-sync-progress{margin-top:16px;padding:18px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:14px;background:var(--panel2)}
+.npd-sync-long-wait[hidden]{display:none!important}
+.npd-sync-progress-head{display:flex;align-items:center;gap:14px}
+.npd-sync-spinner{width:32px;height:32px;flex:none;border:4px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:npd-sync-spin .95s linear infinite}
+.npd-sync-progress-head strong{display:block;font-size:1rem}
+.npd-sync-progress-head p{margin:4px 0 0;line-height:1.5}
+.npd-sync-progress-track{height:5px;position:relative;overflow:hidden;margin:15px 0 10px;background:var(--line);border-radius:8px}
+.npd-sync-progress-track:after{content:"";position:absolute;top:0;bottom:0;left:-35%;width:35%;border-radius:8px;background:var(--accent);animation:npd-sync-sweep 1.7s ease-in-out infinite}
+.npd-sync-progress .npd-sync-progress-meta{margin:0;font-size:.85rem}
+.npd-sync-progress .npd-sync-long-wait{margin:8px 0 0;font-size:.86rem;font-weight:650}
+@keyframes npd-sync-spin{to{transform:rotate(360deg)}}
+@keyframes npd-sync-sweep{to{left:105%}}
+@media(prefers-reduced-motion:reduce){.npd-sync-spinner,.npd-sync-progress-track:after{animation:none}.npd-sync-progress-track:after{left:0;width:50%}}
 @media(max-width:900px){.npd-grid{grid-template-columns:1fr}.npd-flow{grid-template-columns:1fr 1fr}.npd-status{grid-template-columns:1fr}}
 @media(max-width:560px){.npd-flow{grid-template-columns:1fr}.npd-hero{display:block}}
 </style>
@@ -151,7 +226,7 @@ include dirname(__DIR__).'/partials_header.php';
 </header>
 
 <?php if($flash):?>
-<div class="notice <?=$flash['type']==='bad'?'bad':'good'?>">
+<div class="<?=$flash['type']==='warn'?'npd-warning':'notice '.($flash['type']==='bad'?'bad':'good')?>">
 <b><?=e($flash['message'])?></b>
 <?php if(!empty($flash['detail'])):?><div style="margin-top:5px;white-space:pre-wrap"><?=e($flash['detail'])?></div><?php endif;?>
 </div>
@@ -215,13 +290,13 @@ Contains your organization's account password hashes and scouting data. Google-l
 
 <article class="npd-card">
 <div class="module-eyebrow"><span>CLOUD SYNC</span><small>Organization-wide</small></div>
-<h2>Sync Organization to AWS</h2>
+<h2>Manual cloud synchronization</h2>
 <div class="npd-status" aria-live="polite">
 <div class="npd-stat"><small>AWS connection</small><b id="neptune-cloud-status">Checking…</b></div>
 <div class="npd-stat"><small>Last successful upload (UTC)</small><b><?=e($lastSyncUtc?($lastSyncUtc.' UTC'):'Not recorded')?></b></div>
 <div class="npd-stat"><small>Changes waiting</small><b>Not calculated</b><small>Use Sync after scouting; local changes are not tracked individually yet.</small></div>
 </div>
-<p id="neptune-sync-guidance">Sync runs only when you press the button. Connection availability does not start an upload.</p>
+<p id="neptune-sync-guidance">Sync runs only when you press a button; connection availability does not automatically transfer data. Two-way sync uploads first, then imports missing AWS scouting observations into the portable server without overwriting local records.</p>
 <script>
 (function(){
   const target=document.getElementById('neptune-cloud-status');
@@ -239,14 +314,108 @@ Contains your organization's account password hashes and scouting data. Google-l
 </script>
 
 <p>Synchronizes each local event back to the cloud using the organization-bound portable token. Authentication settings, passwords, Google linkage, MFA and user roles are not pushed to AWS.</p>
-<form method="post">
+<div class="npd-sync-buttons" style="display:flex;flex-wrap:wrap;gap:10px"><form method="post" class="neptune-sync-form" id="neptune-sync-form">
 <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
 <input type="hidden" name="action" value="sync_to_cloud">
-<button type="submit"><i class="fa-solid fa-cloud-arrow-up"></i> Sync Organization to AWS</button>
+<button type="submit" id="neptune-sync-submit"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i> Upload to AWS</button>
 </form>
+<form method="post" class="neptune-sync-form"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="action" value="download_from_cloud"><button type="submit"><i class="fa-solid fa-cloud-arrow-down"></i> Download AWS scouting</button></form>
+<form method="post" class="neptune-sync-form"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="action" value="sync_both"><button type="submit"><i class="fa-solid fa-rotate"></i> Sync Both Ways</button></form></div>
+<p style="font-size:.85rem;margin-top:8px">AWS downloads import missing scouting records and safely reconcile newer cloud tag-observation notes/status/source keys/associations. Competing local and cloud edits are reported instead of overwritten. Sync Both Ways downloads first, then uploads; standalone Upload should only be used when cloud-only edits do not need merging. Pit/pre-scouting, strategy and media downloads remain unsupported.</p>
+<div class="npd-sync-modal" id="neptune-sync-progress" role="dialog" aria-modal="true" aria-labelledby="neptune-sync-modal-title" aria-describedby="neptune-sync-modal-description" hidden>
+ <div class="npd-sync-progress npd-sync-modal-card" tabindex="-1" id="neptune-sync-modal-card" role="status" aria-live="polite">
+  <div class="npd-sync-progress-head">
+    <div class="npd-sync-spinner" aria-hidden="true"></div>
+    <div>
+      <strong id="neptune-sync-modal-title">Sync in progress — please wait</strong>
+      <p id="neptune-sync-modal-description">Synchronizing with AWS. Keep this tab open; the first download may examine existing historical records and can take several minutes.</p>
+    </div>
+  </div>
+  <div class="npd-sync-progress-track" aria-hidden="true"></div>
+  <p class="npd-sync-progress-meta">Elapsed: <span id="neptune-sync-elapsed" aria-hidden="true">0:00</span> · The animation shows activity, not a percentage complete.</p>
+  <p class="npd-sync-long-wait" id="neptune-sync-long-wait" hidden>Still working. Neptune will display the final results when AWS responds. Please don't refresh or click Sync again.</p>
+ </div>
+</div>
+<script>
+(function(){
+  const forms=Array.from(document.querySelectorAll('form.neptune-sync-form'));
+  const buttons=forms.map(f=>f.querySelector('button[type=submit]'));
+  const originals=buttons.map(b=>b.innerHTML);
+  const panel=document.getElementById('neptune-sync-progress');
+  const elapsed=document.getElementById('neptune-sync-elapsed');
+  const longWait=document.getElementById('neptune-sync-long-wait');
+  if(!forms.length||!panel||!elapsed||!longWait)return;
+  let running=false,startedAt=0,timerId=0;
+  function tick(){
+    const seconds=Math.max(0,Math.floor((Date.now()-startedAt)/1000));
+    elapsed.textContent=Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');
+    if(seconds>=60)longWait.hidden=false;
+  }
+  function reset(){
+    running=false;clearInterval(timerId);
+    buttons.forEach((b,i)=>{b.disabled=false;b.innerHTML=originals[i];});
+    forms.forEach(f=>f.removeAttribute('aria-busy'));panel.hidden=true;longWait.hidden=true;
+    document.body.classList.remove('npd-sync-modal-open');
+    delete document.body.dataset.neptuneSyncing;
+  }
+  forms.forEach(function(form){form.addEventListener('submit',function(event){
+    event.preventDefault();
+    if(running)return; // Prevent duplicate uploads, including repeated Enter presses.
+    running=true;
+    buttons.forEach(b=>b.disabled=true);
+    form.querySelector('button[type=submit]').textContent='Syncing with AWS…';
+    forms.forEach(f=>f.setAttribute('aria-busy','true'));
+    document.body.dataset.neptuneSyncing='1';
+    panel.hidden=false;
+    document.body.classList.add('npd-sync-modal-open');
+    const card=document.getElementById('neptune-sync-modal-card');
+    if(card)card.focus({preventScroll:true});
+    startedAt=Date.now();tick();
+    timerId=setInterval(tick,1000);
+    // Allow Safari to paint the indicator before starting the original PHP POST.
+    requestAnimationFrame(function(){setTimeout(function(){
+      HTMLFormElement.prototype.submit.call(form);
+    },100)});
+  });});
+  window.addEventListener('pageshow',function(event){if(event.persisted)reset();});
+})();
+</script>
 <?php if($syncSummary):?>
-<details class="npd-sync-details" open>
-<summary>Sync report</summary>
+<div class="npd-card" style="margin-top:14px">
+  <strong><?=!empty($syncSummary['database_incomplete'])
+      ? 'Database sync incomplete — review required'
+      : (!empty($syncSummary['media_incomplete']) ? 'Database synchronized — media needs attention' : 'Sync completed')?></strong>
+  <?php $totals=$syncSummary['totals']??[]; ?>
+  <?php if(isset($syncSummary['download'])):?><p><strong>AWS → Portable:</strong> <?=e(number_format((int)$syncSummary['download']['inserted']))?> new records imported · <?=e(number_format((int)($syncSummary['download']['updated']??0)))?> existing tag observations updated · <?=e(number_format((int)$syncSummary['download']['existing']))?> previously present · <?=e((string)$syncSummary['download']['pages'])?> cloud import pages.</p>
+<?php if((int)($syncSummary['download']['conflicts']??0)>0):?><p><strong>Attention:</strong> <?=e((string)$syncSummary['download']['conflicts'])?> existing observations have competing cloud/local changes and were preserved. Review the conflict samples in the report.</p><?php endif;?><?php endif;?>
+  <?php if(isset($syncSummary['events_synced'])):?><p>Events: <?=e((string)($syncSummary['events_synced']??0))?> ·
+     Rows sent: <?=e(number_format((int)($totals['rows_sent']??0)))?> ·
+     Unchanged rows: <?=e(number_format((int)($totals['rows_unchanged']??0)))?> ·
+     Batches sent: <?=e((string)($totals['batches_sent']??0))?> ·
+     Skipped: <?=e(number_format((int)($totals['rows_skipped']??0)))?> ·
+     <strong>Unacknowledged: <?=e(number_format((int)($totals['rows_unacknowledged']??0)))?></strong> ·
+     Media missing/skipped: <?=e((string)($totals['media_skipped']??0))?></p><?php endif;?>
+  <?php if(!empty($syncSummary['incomplete'])): ?>
+    <?php if(!empty($syncSummary['database_incomplete'])): ?>
+    <p>Database batches with unacknowledged rows will be retried on the next manual sync.</p>
+    <?php else: ?>
+    <p>All database batches were acknowledged. Missing media remains outstanding; another manual sync cannot upload files that are no longer present locally.</p>
+    <?php endif; ?>
+    <?php foreach(($syncSummary['events']??[]) as $eventReport): foreach(($eventReport['sections']??[]) as $item):
+      if((int)($item['unacknowledged_rows']??0)<=0)continue;
+      $causes=[];foreach(($item['responses']??[]) as $response){foreach(($response['skip_reasons']??[]) as $reason=>$count){$causes[$reason]=($causes[$reason]??0)+(int)$count;}}
+      ?>
+      <p>Event <?=e((string)$eventReport['event_id'])?> · <?=e((string)$item['section'])?>:
+        <?=e((string)($item['skipped']??0))?> skipped in <?=e((string)($item['unacknowledged_rows']??0))?> unacknowledged rows<?= $causes ? ' (' . e(implode(', ',array_map(static fn($r,$n)=>$r.': '.$n,array_keys($causes),array_values($causes)))) . ')' : '' ?></p>
+    <?php endforeach;
+      $missing=(int)($eventReport['media']['pit_skipped']??0)+(int)($eventReport['media']['tag_skipped']??0);
+      if($missing>0): ?>
+      <p>Event <?=e((string)$eventReport['event_id'])?> · Media: <?=e((string)$missing)?> missing, empty, or too large locally</p>
+      <?php endif; endforeach; ?>
+  <?php endif; ?>
+</div>
+<details class="npd-sync-details">
+<summary>Detailed JSON report</summary>
 <pre><?=e(json_encode($syncSummary,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES))?></pre>
 </details>
 <?php endif;?>
