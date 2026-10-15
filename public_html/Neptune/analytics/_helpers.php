@@ -1,6 +1,7 @@
 <?php
 require_once dirname(__DIR__).'/_event_selection.php';
 require_once __DIR__.'/_scoring_source.php';
+require_once __DIR__.'/_tag_activity_source.php';
 function neptune_event_robot_stats(PDO $pdo,int $org,int $eventId): array {
     $stats=[];
     $s=$pdo->prepare('SELECT frc_team_number,nickname FROM event_teams WHERE event_id=? ORDER BY frc_team_number');$s->execute([$eventId]);
@@ -36,6 +37,37 @@ function neptune_event_robot_stats(PDO $pdo,int $org,int $eventId): array {
             $stats[$n]['scoring_matches']++;
         }
     }
+    // Only fill absent activity evidence, never invent traditional action rows.
+    $activity=neptune_tag_activity_matches($pdo,$org,$eventId);
+    foreach($stats as $n=>&$x){
+        $x['tag_observation_matches']=0;
+        $x['tag_activity_signals']=0;
+        $x['tag_activity_matches']=0;
+        $x['tag_defense_matches']=0;
+        $x['tag_defense_known_matches']=0;
+        $x['tag_defense_mixed_matches']=0;
+        foreach($activity[$n]??[] as $matchId=>$evidence){
+            $x['tag_observation_matches']++;
+            // A traditional action in this robot-match takes priority for activity.
+            if(!isset($scoutedTeamMatches[$n][$matchId])){
+                $x['tag_activity_signals']+=(int)$evidence['activity_signal_count'];
+                $x['tag_activity_matches']++;
+            }
+            if(!isset($scoutedTeamMatches[$n][$matchId])){
+                $status=(string)$evidence['defense_status'];
+                if($status!=='unknown')$x['tag_defense_known_matches']++;
+                if($status==='attempted'||$status==='observed')$x['tag_defense_matches']++;
+                if($status==='mixed')$x['tag_defense_mixed_matches']++;
+            }
+        }
+        $x['activity_display_source']=$x['actions']>0?'traditional':
+            ($x['tag_activity_matches']>0?'tag':'none');
+        $x['defense_display_source']=$x['scouted_matches']>0?'traditional':
+            ($x['tag_defense_known_matches']>0?'tag':'none');
+        $x['tag_defense_match_rate']=$x['tag_defense_known_matches']>0?
+            $x['tag_defense_matches']/$x['tag_defense_known_matches']:null;
+    }
+    unset($x);
     foreach($stats as &$x){
         $x['has_scoring_data']=$x['scoring_matches']>0;
         $x['points_source']=$x['tag_estimated_matches']>0

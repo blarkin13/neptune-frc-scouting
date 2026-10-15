@@ -145,7 +145,7 @@ if($tab==='phase-maps'&&$archiveReady){
     $s=$pdo->prepare("SELECT score_breakdown_json,tba_event_key,tba_match_key FROM augur_epa_alliance_samples WHERE season_year=? AND score_breakdown_json IS NOT NULL AND score_breakdown_json<>'' ORDER BY updated_at DESC LIMIT 1");$s->execute([$year]);if($r=$s->fetch()){$decoded=json_decode((string)$r['score_breakdown_json'],true);if(is_array($decoded)){$phaseSample=aoo_flatten_numeric($decoded);$phaseSampleMeta=['event'=>$r['tba_event_key'],'match'=>$r['tba_match_key']];}}
 }
 
-$pageTitle='AUGUR · Operations & Data Maintenance';$moduleName='AUGUR';
+$pageTitle='AUGUR Operations';$moduleName='AUGUR';
 include dirname(__DIR__).'/partials_header.php';
 ?>
 <style>
@@ -158,7 +158,7 @@ include dirname(__DIR__).'/partials_header.php';
 @media(max-width:1000px){.ao-grid{grid-template-columns:1fr 1fr}.ao-two{grid-template-columns:1fr}.ao-schedule{grid-template-columns:1fr 1fr}.epm-grid{grid-template-columns:1fr}}@media(max-width:620px){.ao-grid,.ao-schedule,.epa-summary,.epa-controls,.epm-year{grid-template-columns:1fr}}
 </style>
 <section class="module-page">
-<header class="module-page-header"><div><div class="module-code">AUGUR · OPERATIONS</div><h1>AUGUR Data Operations</h1><p>Monitor automation, maintain Neptune's TBA-derived archive, rebuild analytics models, and manage season phase mappings from one place.</p><div class="neptune-hero-pills" aria-label="Page quick guide"><span class="neptune-hero-pill"><i class="fa-solid fa-heart-pulse"></i><strong>1</strong> Check automation</span><span class="neptune-hero-pill"><i class="fa-solid fa-rotate"></i><strong>2</strong> Run maintenance</span><span class="neptune-hero-pill"><i class="fa-solid fa-box-archive"></i><strong>3</strong> Maintain archive</span><span class="neptune-hero-pill"><i class="fa-solid fa-diagram-project"></i><strong>4</strong> Map phases</span></div></div><div class="toolbar"><a class="btn secondary" href="<?=aoo_e(base_url('analytics/augur-ratings.php'))?>"><i class="fa-solid fa-globe"></i> Public Ratings</a></div></header>
+<header class="module-page-header"><div><div class="module-code">AUTOMATION &amp; DATA</div><h1>AUGUR Operations</h1><p>Monitor automation, maintain Neptune's TBA-derived archive, rebuild analytics models, and manage season phase mappings from one place.</p><div class="neptune-hero-pills" aria-label="Page quick guide"><span class="neptune-hero-pill"><i class="fa-solid fa-heart-pulse"></i><strong>1</strong> Check automation</span><span class="neptune-hero-pill"><i class="fa-solid fa-rotate"></i><strong>2</strong> Run maintenance</span><span class="neptune-hero-pill"><i class="fa-solid fa-box-archive"></i><strong>3</strong> Maintain archive</span><span class="neptune-hero-pill"><i class="fa-solid fa-diagram-project"></i><strong>4</strong> Map phases</span></div></div><div class="toolbar"><a class="btn secondary" href="<?=aoo_e(base_url('analytics/augur-ratings.php'))?>"><i class="fa-solid fa-globe"></i> Public Ratings</a></div></header>
 
 <nav class="ao-tabs" aria-label="AUGUR operations sections">
 <?php if($isPlatformOwner):?><a class="ao-tab <?=$tab==='overview'?'active':''?>" href="<?=aoo_e(base_url('admin/augur-operations.php?tab=overview&year='.$year))?>"><i class="fa-solid fa-gauge-high"></i> Overview</a><a class="ao-tab <?=$tab==='jobs'?'active':''?>" href="<?=aoo_e(base_url('admin/augur-operations.php?tab=jobs'))?>"><i class="fa-solid fa-clock-rotate-left"></i> Scheduled Jobs</a><?php endif;?>

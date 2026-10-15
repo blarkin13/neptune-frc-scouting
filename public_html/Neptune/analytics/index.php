@@ -89,6 +89,17 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
     </a>
     <?php endif;?>
 
+    <?php if($canDatabaseLab):?>
+    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/data-quality.php'))?>">
+      <div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-clipboard-check"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-chart-line"></i> Strategy+</span></div>
+      <span class="neptune-hub-card-kicker">Review scouting reliability</span>
+      <h3>Scouting Data Quality Center</h3>
+      <p>Find incomplete sessions, repeated submissions, scoring outliers, and low-confidence teams. Review and audit findings without altering scouting records.</p>
+      <div class="neptune-hub-meta"><span>Coverage</span><span>Duplicates</span><span>Outliers</span><span>Reviews</span></div>
+      <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
+    </a>
+    <?php endif;?>
+
     <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/robot-lookup.php'))?>">
       <div class="neptune-hub-card-top">
         <span class="neptune-hub-icon"><i class="fa-solid fa-magnifying-glass"></i></span>

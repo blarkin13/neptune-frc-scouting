@@ -197,11 +197,11 @@ if (($_GET['view'] ?? '') === 'account') {
     $accountCounts = ['match'=>0,'pit'=>0,'pre'=>0];
     $accountActivity = [];
     $activityDefinitions = [
-        'match' => ["SELECT ss.frc_team_number,ss.created_at AS activity_at,e.name AS event_name FROM scout_sessions ss JOIN events e ON e.id=ss.event_id AND e.organization_id=ss.organization_id WHERE ss.user_id=? AND ss.organization_id=? AND ss.status IN ('submitted','closed') ORDER BY ss.created_at DESC LIMIT 8",
+        'match' => ["SELECT ss.frc_team_number,ss.created_at AS activity_at,e.name AS event_name FROM scout_sessions ss JOIN events e ON e.id=ss.event_id AND e.organization_id=ss.organization_id WHERE ss.user_id=? AND ss.organization_id=? AND ss.status IN ('submitted','closed') ORDER BY ss.created_at DESC LIMIT 25",
                     "SELECT COUNT(*) FROM scout_sessions WHERE user_id=? AND organization_id=? AND status IN ('submitted','closed')", 'fa-crosshairs', 'Match scouted', 'scouting.php'],
-        'pit' => ["SELECT ps.frc_team_number,COALESCE(ps.completed_at,ps.updated_at) AS activity_at,e.name AS event_name FROM pit_scouting ps JOIN events e ON e.id=ps.event_id AND e.organization_id=ps.organization_id WHERE ps.submitted_by=? AND ps.organization_id=? AND ps.status='complete' ORDER BY activity_at DESC LIMIT 8",
+        'pit' => ["SELECT ps.frc_team_number,COALESCE(ps.completed_at,ps.updated_at) AS activity_at,e.name AS event_name FROM pit_scouting ps JOIN events e ON e.id=ps.event_id AND e.organization_id=ps.organization_id WHERE ps.submitted_by=? AND ps.organization_id=? AND ps.status='complete' ORDER BY activity_at DESC LIMIT 25",
                   "SELECT COUNT(*) FROM pit_scouting WHERE submitted_by=? AND organization_id=? AND status='complete'", 'fa-clipboard-check', 'Pit report completed', 'pit/index.php'],
-        'pre' => ["SELECT prs.frc_team_number,COALESCE(prs.completed_at,prs.updated_at) AS activity_at,e.name AS event_name FROM pre_scouting prs JOIN events e ON e.id=prs.event_id AND e.organization_id=prs.organization_id WHERE prs.submitted_by=? AND prs.organization_id=? AND prs.status='complete' ORDER BY activity_at DESC LIMIT 8",
+        'pre' => ["SELECT prs.frc_team_number,COALESCE(prs.completed_at,prs.updated_at) AS activity_at,e.name AS event_name FROM pre_scouting prs JOIN events e ON e.id=prs.event_id AND e.organization_id=prs.organization_id WHERE prs.submitted_by=? AND prs.organization_id=? AND prs.status='complete' ORDER BY activity_at DESC LIMIT 25",
                   "SELECT COUNT(*) FROM pre_scouting WHERE submitted_by=? AND organization_id=? AND status='complete'", 'fa-magnifying-glass', 'Pre-scout completed', 'prescout/index.php'],
     ];
     foreach ($activityDefinitions as $kind=>$definition) {
@@ -216,7 +216,7 @@ if (($_GET['view'] ?? '') === 'account') {
         } catch (Throwable $accountActivityError) { error_log('[Neptune My Account activity '. $kind .'] '.$accountActivityError->getMessage()); }
     }
     usort($accountActivity, static fn($a,$b)=>strcmp((string)($b['activity_at']??''),(string)($a['activity_at']??'')));
-    $accountActivity = array_slice($accountActivity,0,9);
+    $accountActivity = array_slice($accountActivity,0,25);
     // My Assignments permits assignee-only status updates through the guarded POST handler.
     // Keep My Account available on installations where the optional assignment migration
     // has not yet been applied.
@@ -231,7 +231,8 @@ if (($_GET['view'] ?? '') === 'account') {
             INNER JOIN events e ON e.id=a.event_id AND e.organization_id=a.organization_id
             LEFT JOIN matches m ON m.id=a.match_id AND m.event_id=a.event_id AND m.organization_id=a.organization_id
             WHERE a.organization_id=? AND a.assignee_user_id=?
-            ORDER BY CASE a.status WHEN 'assigned' THEN 0 WHEN 'acknowledged' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END,
+              AND a.status IN ('assigned','acknowledged')
+            ORDER BY CASE a.status WHEN 'assigned' THEN 0 ELSE 1 END,
                      a.assigned_at DESC,a.id DESC LIMIT 1000");
         $q->execute([$org,$accountUserId]);
         $myAssignments = $q->fetchAll(PDO::FETCH_ASSOC);
@@ -392,6 +393,43 @@ if (($_GET['view'] ?? '') === 'account') {
 .account-assignment-ranges>.account-assignment-item{margin:0}.account-task-select{flex:0 0 19px;padding-top:6px}
 @media(max-width:560px){.account-range-header{flex-wrap:wrap}.account-range-heading{min-width:min(100%,240px)}.account-range-select{width:100%;padding-bottom:5px}.account-bulk-toolbar>span{width:100%}.account-bulk-toolbar button{flex:1;min-width:120px}.account-bulk-toolbar button[type=submit]{flex-basis:100%}}
 
+
+/* Neptune account collapsible panels, help pills and mission-complete empty state */
+.account-collapsible{padding:0;overflow:hidden}
+.account-collapsible>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer;padding:clamp(20px,2.7vw,30px);min-height:78px}
+.account-collapsible>summary::-webkit-details-marker{display:none}
+.account-collapsible>summary h2{margin:0;display:flex;align-items:center;gap:10px}
+.account-collapsible>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:18px}
+.account-fold-right{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.account-fold-chevron{color:var(--accent);font-size:.9rem;transition:transform .2s}
+.account-collapsible[open] .account-fold-chevron{transform:rotate(180deg)}
+.account-collapsible[open]>summary{border-bottom:1px solid var(--border,var(--line))}
+.account-fold-body{padding:clamp(18px,2.7vw,30px)}
+.account-help-row{display:flex;gap:9px;flex-wrap:wrap;margin:0 0 13px}
+.account-help-pill{display:inline-flex;align-items:center;gap:7px;border-radius:100px;padding:7px 12px;background:color-mix(in srgb,var(--accent) 8%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 32%,var(--line));color:var(--text);font-size:.81rem;font-weight:750;cursor:pointer}
+.account-help-pill:hover,.account-help-pill:focus-visible{border-color:var(--accent)}
+.account-help-pill i{color:var(--accent)}
+.account-help-dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:21px;padding:24px;width:min(92vw,510px);max-height:calc(100dvh - 32px);overflow-y:auto;box-shadow:0 22px 90px rgba(0,0,0,.55)}
+.account-help-dialog::backdrop{background:rgba(3,11,24,.74);backdrop-filter:blur(4px)}
+.account-help-dialog-head{display:flex;justify-content:space-between;gap:15px;align-items:start}
+.account-help-dialog h3{font-size:1.3rem;margin:0 0 10px}
+.account-help-dialog p{line-height:1.6;color:var(--muted);margin:8px 0}
+.account-help-close{display:grid;place-items:center;min-width:40px;min-height:40px;border:1px solid var(--line);border-radius:11px;background:transparent;color:var(--text);cursor:pointer}
+.account-activity-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:13px}
+.account-activity-toolbar label{font-size:.81rem;color:var(--muted);font-weight:800}
+.account-activity-toolbar select{margin-left:7px;border:1px solid var(--line);background:var(--panel2,var(--panel));color:var(--text);border-radius:9px;padding:7px 11px;font:inherit}
+.account-activity li[hidden]{display:none!important}
+/* Restrained empty state; no illustration or alternate color palette. */
+.account-empty-bubbles{position:relative;isolation:isolate;overflow:hidden;min-height:215px;display:grid;place-items:center;margin:6px 0 0;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel2),var(--panel));color:var(--text)}
+.account-empty-bubble-field{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.account-empty-bubble{position:absolute;left:var(--bx);bottom:-24px;width:var(--size);height:var(--size);border-radius:50%;border:1px solid color-mix(in srgb,var(--accent) 46%,transparent);background:radial-gradient(circle at 33% 28%,color-mix(in srgb,var(--accent) 24%,transparent),transparent 67%);box-shadow:inset -2px -2px 5px color-mix(in srgb,var(--accent) 9%,transparent);opacity:0;animation:account-bubble-rise var(--dur) var(--delay) linear infinite}
+.account-empty-copy{position:relative;z-index:1;text-align:center;max-width:460px;padding:58px 24px;text-shadow:none}
+.account-empty-copy .account-empty-kicker{display:block;font-size:.73rem;letter-spacing:.13em;text-transform:uppercase;color:var(--module-accent-readable,var(--accent));font-weight:900;margin-bottom:11px}
+.account-empty-copy h3{margin:0 0 9px;font-size:clamp(1.35rem,2.5vw,1.75rem);letter-spacing:-.025em;color:var(--text)}
+.account-empty-copy p{margin:0;color:var(--muted);font-size:.9rem;line-height:1.55}
+@keyframes account-bubble-rise{0%{transform:translate3d(0,10px,0) scale(.65);opacity:0}14%{opacity:.42}75%{opacity:.30}100%{transform:translate3d(var(--drift),-290px,0) scale(1.12);opacity:0}}
+@media(max-width:550px){.account-collapsible>summary{align-items:flex-start}.account-fold-right{justify-content:flex-end}.account-empty-bubbles{min-height:220px}.account-empty-copy{padding:55px 23px}}
+@media(prefers-reduced-motion:reduce){.account-empty-bubble{animation:none!important;opacity:.15;bottom:var(--static-y,20%)}}
 </style>
 <div class="account-ocean" id="accountOcean" aria-hidden="true"></div>
 <section class="account-panel account-profile-unified" id="account-profile">
@@ -478,13 +516,43 @@ if (($_GET['view'] ?? '') === 'account') {
     <?php if ($accountTeams): ?><div class="account-team-block"><h3><i class="fa-solid fa-people-group"></i> My teams</h3><div class="account-team-chips"><?php foreach ($accountTeams as $team): ?><span class="account-team-chip">#<?=e($team['frc_team_number'])?><?=!empty($team['name'])?' · '.e($team['name']):''?><?=!empty($team['is_primary'])?' ★':''?></span><?php endforeach; ?></div></div><?php endif; ?>
     <p class="account-note" style="margin:15px 0 0">Older records without a user attribution are not counted.</p>
   </section>
-<section class="account-panel" id="account-assignments">
-  <div class="account-assignment-head"><div><h2><i class="fa-solid fa-clipboard-list"></i> My Assignments</h2><p class="account-hint">Consecutive match assignments are shown as ranges. Expand any range to see every match and its status.</p></div>
-    <span class="account-assignment-count"><?=count($myAssignments)?> assignments</span></div>
+<details class="account-panel account-collapsible" id="account-assignments" open>
+  <summary><h2><i class="fa-solid fa-clipboard-list"></i> My Assignments</h2><span class="account-fold-right"><span class="account-assignment-count"><?=count($myAssignments)?> active</span><i class="fa-solid fa-chevron-down account-fold-chevron" aria-hidden="true"></i></span></summary>
+  <div class="account-fold-body">
+    <div class="account-help-row" aria-label="Assignment help"><button type="button" class="account-help-pill" data-account-help="ranges"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Assignment ranges</button><button type="button" class="account-help-pill" data-account-help="bulk"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Bulk acknowledgment</button></div>
   <?php if(isset($_GET['assignment_saved'])): ?><div class="account-alert" role="status">Assignment status saved.</div><?php endif; ?>
   <?php if(isset($_GET['acknowledged'])): ?><div class="account-alert" role="status"><?=(int)$_GET['acknowledged']?> assignment(s) acknowledged.</div><?php endif; ?>
   <?php if($myAssignmentsError): ?><p class="account-note">Assignment records are unavailable in this environment. Ask an administrator to check the assignment database setup.</p>
-  <?php elseif(!$myAssignments): ?><p class="account-note">You do not have any scouting assignments yet.</p>
+  <?php elseif(!$myAssignments): ?>
+  <div class="account-empty-bubbles" role="status" aria-label="No active scouting assignments">
+    <div class="account-empty-bubble-field" aria-hidden="true">
+      <span class="account-empty-bubble" style="--bx:4%;--size:8px;--delay:-2s;--dur:5s;--drift:19px;--static-y:21%"></span>
+      <span class="account-empty-bubble" style="--bx:10%;--size:11px;--delay:-6s;--dur:10s;--drift:-17px;--static-y:24%"></span>
+      <span class="account-empty-bubble" style="--bx:16%;--size:7px;--delay:-8s;--dur:3s;--drift:12px;--static-y:27%"></span>
+      <span class="account-empty-bubble" style="--bx:22%;--size:13px;--delay:-3s;--dur:12s;--drift:17px;--static-y:30%"></span>
+      <span class="account-empty-bubble" style="--bx:29%;--size:9px;--delay:-7s;--dur:8s;--drift:-14px;--static-y:33%"></span>
+      <span class="account-empty-bubble" style="--bx:35%;--size:8px;--delay:-1s;--dur:4s;--drift:20px;--static-y:36%"></span>
+      <span class="account-empty-bubble" style="--bx:41%;--size:14px;--delay:-10s;--dur:7s;--drift:-12px;--static-y:38%"></span>
+      <span class="account-empty-bubble" style="--bx:48%;--size:7px;--delay:-5s;--dur:9s;--drift:16px;--static-y:42%"></span>
+      <span class="account-empty-bubble" style="--bx:53%;--size:11px;--delay:-2s;--dur:5s;--drift:-20px;--static-y:44%"></span>
+      <span class="account-empty-bubble" style="--bx:60%;--size:9px;--delay:-9s;--dur:12s;--drift:15px;--static-y:47%"></span>
+      <span class="account-empty-bubble" style="--bx:66%;--size:15px;--delay:-4s;--dur:6s;--drift:-15px;--static-y:50%"></span>
+      <span class="account-empty-bubble" style="--bx:72%;--size:6px;--delay:-6s;--dur:10s;--drift:9px;--static-y:53%"></span>
+      <span class="account-empty-bubble" style="--bx:79%;--size:12px;--delay:-12s;--dur:11s;--drift:-14px;--static-y:56%"></span>
+      <span class="account-empty-bubble" style="--bx:85%;--size:8px;--delay:-3s;--dur:4s;--drift:18px;--static-y:59%"></span>
+      <span class="account-empty-bubble" style="--bx:91%;--size:13px;--delay:-9s;--dur:8s;--drift:-12px;--static-y:61%"></span>
+      <span class="account-empty-bubble" style="--bx:96%;--size:6px;--delay:-5s;--dur:6s;--drift:15px;--static-y:64%"></span>
+      <span class="account-empty-bubble" style="--bx:2%;--size:12px;--delay:-11s;--dur:9s;--drift:11px;--static-y:20%"></span>
+      <span class="account-empty-bubble" style="--bx:13%;--size:6px;--delay:-4s;--dur:9s;--drift:18px;--static-y:25%"></span>
+      <span class="account-empty-bubble" style="--bx:26%;--size:7px;--delay:-10s;--dur:6s;--drift:-9px;--static-y:31%"></span>
+      <span class="account-empty-bubble" style="--bx:39%;--size:10px;--delay:-6s;--dur:11s;--drift:14px;--static-y:37%"></span>
+      <span class="account-empty-bubble" style="--bx:57%;--size:5px;--delay:-8s;--dur:9s;--drift:-8px;--static-y:46%"></span>
+      <span class="account-empty-bubble" style="--bx:69%;--size:10px;--delay:-2s;--dur:8s;--drift:11px;--static-y:51%"></span>
+      <span class="account-empty-bubble" style="--bx:82%;--size:6px;--delay:-7s;--dur:6s;--drift:-12px;--static-y:57%"></span>
+      <span class="account-empty-bubble" style="--bx:94%;--size:8px;--delay:-11s;--dur:10s;--drift:9px;--static-y:63%"></span>
+    </div>
+    <div class="account-empty-copy"><span class="account-empty-kicker"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> All clear</span><h3>No active scouting assignments.</h3><p>You're all caught up. New assignments will appear here when they're ready.</p></div>
+  </div>
   <?php else: ?>
     <?php if($pendingAssignmentCount): ?>
     <form id="accountBulkAcknowledgeForm" method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-assignments">
@@ -555,13 +623,48 @@ if (($_GET['view'] ?? '') === 'account') {
       <?php if($isRange): ?></div></details></div><?php endif; ?>
     <?php endforeach; ?></div>
   <?php endif; ?>
-  <p class="account-note" style="margin-top:12px">Bulk acknowledgment affects only your assigned tasks and records a separate history entry for each. You can still complete each task individually; completing it does not automatically submit scouting observations.</p>
-</section>
-  <section class="account-panel" id="account-activity"><h2><i class="fa-solid fa-clock-rotate-left"></i> Recent activity</h2><p class="account-hint">Your most recent completed scouting reports.</p>
-    <?php if($accountActivity): ?><ul class="account-activity"><?php foreach($accountActivity as $item): ?><li><span class="account-activity-icon"><i class="fa-solid <?=e($item['icon'])?>"></i></span><div><a href="<?=e(base_url($item['href']))?>"><?=e($item['label'])?> · Team <?=e($item['frc_team_number'])?></a><small><?=e($item['event_name'])?> · <?=e($item['activity_at'])?></small></div></li><?php endforeach; ?></ul><?php else: ?><p class="account-note">No completed scouting records linked to your account yet.</p><?php endif; ?>
-  </section>
+  </div>
+</details>
+  <details class="account-panel account-collapsible" id="account-activity" open>
+    <summary><h2><i class="fa-solid fa-clock-rotate-left"></i> Recent activity</h2><span class="account-fold-right"><i class="fa-solid fa-chevron-down account-fold-chevron" aria-hidden="true"></i></span></summary>
+    <div class="account-fold-body"><div class="account-activity-toolbar"><p class="account-note">Latest scouting reports credited to your account.</p><label for="accountActivityLimit">Show <select id="accountActivityLimit" aria-label="Maximum recent activity items"><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select></label></div>
+    <?php if($accountActivity): ?><ul class="account-activity" id="accountRecentActivityList"><?php foreach($accountActivity as $item): ?><li><span class="account-activity-icon"><i class="fa-solid <?=e($item['icon'])?>"></i></span><div><a href="<?=e(base_url($item['href']))?>"><?=e($item['label'])?> · Team <?=e($item['frc_team_number'])?></a><small><?=e($item['event_name'])?> · <?=e($item['activity_at'])?></small></div></li><?php endforeach; ?></ul><?php else: ?><p class="account-note">No completed scouting records linked to your account yet.</p><?php endif; ?>
+    </div>
+  </details>
+<dialog class="account-help-dialog" id="accountHelpDialog" aria-labelledby="accountHelpTitle"><div class="account-help-dialog-head"><h3 id="accountHelpTitle"></h3><button type="button" class="account-help-close" id="accountHelpClose" aria-label="Close assignment help"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><div id="accountHelpText"></div></dialog>
 <script>
 (function(){
+ const helpDialog=document.getElementById('accountHelpDialog');
+ const helpTitle=document.getElementById('accountHelpTitle');
+ const helpText=document.getElementById('accountHelpText');
+ const helpContent={
+   ranges:['Consecutive match assignments','When one scout is assigned several consecutive matches at the same alliance station, Neptune groups those matches into a single expandable range. Each match is still its own assignment with its own status.'],
+   bulk:['Bulk acknowledgment','You can select multiple pending assignments and acknowledge them at once. Each receives a separate history entry. Acknowledging means you saw the assignment; it does not submit scouting data or mark the match complete.']
+ };
+ document.querySelectorAll('[data-account-help]').forEach(button=>button.addEventListener('click',()=>{
+   const [title,description]=helpContent[button.dataset.accountHelp]||[];
+   if(!title||!helpDialog)return;
+   helpTitle.textContent=title;helpText.textContent='';
+   const paragraph=document.createElement('p');paragraph.textContent=description;helpText.append(paragraph);
+   helpDialog.showModal();
+ }));
+ document.getElementById('accountHelpClose')?.addEventListener('click',()=>helpDialog?.close());
+ helpDialog?.addEventListener('click',event=>{
+   const box=helpDialog.getBoundingClientRect();
+   if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)helpDialog.close();
+ });
+ const activityLimit=document.getElementById('accountActivityLimit');
+ const activityRows=Array.from(document.querySelectorAll('#accountRecentActivityList > li'));
+ if(activityLimit){
+   let saved=null;try{saved=window.sessionStorage?.getItem('neptune-account-activity-limit');}catch(_){}
+   if(['5','10','20'].includes(saved))activityLimit.value=saved;
+   const applyLimit=()=>{const limit=Number(activityLimit.value)||5;activityRows.forEach((item,index)=>{item.hidden=index>=limit;});};
+   activityLimit.addEventListener('change',()=>{try{window.sessionStorage?.setItem('neptune-account-activity-limit',activityLimit.value);}catch(_){}applyLimit();});
+   applyLimit();
+ }
+ document.querySelectorAll('a[href="#account-assignments"],a[href="#account-activity"]').forEach(anchor=>anchor.addEventListener('click',()=>{
+   document.querySelector(anchor.getAttribute('href'))?.setAttribute('open','');
+ }));
  const bulkForm=document.getElementById('accountBulkAcknowledgeForm');
  if(bulkForm){
    const checkboxes=Array.from(document.querySelectorAll('.account-assignment-select'));
@@ -666,27 +769,90 @@ if (($_GET['view'] ?? '') === 'account') {
 <?php include dirname(__DIR__).'/partials_footer.php'; exit;
 }
 
-// Public Neptune GitHub repository.
-$githubRepoUrl = 'https://github.com/blarkin13/neptune-frc-scouting';
+// Operational homepage. The My Account view above remains unchanged.
+$opsRole = strtolower((string)($u['role'] ?? 'scouter'));
+$opsCanManage = in_array($opsRole, ['admin','owner'], true);
+$opsCanSeeOrgActivity = in_array($opsRole, ['strategy','admin','owner'], true);
+$opsUserId = (int)($u['id'] ?? 0);
+$opsEvent = null;
+$opsMatch = null;
+$opsAssignment = null;
+$opsOpenAssignments = 0;
+$opsTagReports = 0;
+$opsMatchesComplete = 0;
+$opsRecentTags = [];
+$opsDataError = false;
+$opsMatchTeams = [];
+$opsMatchAssignments = [];
 
-$s=$pdo->prepare("SELECT e.*,g.name game_name,
- (SELECT COUNT(*) FROM event_teams et WHERE et.event_id=e.id) team_count,
- (SELECT COUNT(*) FROM matches m WHERE m.event_id=e.id) match_count,
- (SELECT COUNT(*) FROM pre_scouting prs WHERE prs.event_id=e.id AND prs.organization_id=e.organization_id AND prs.status='complete') pre_complete,
- (SELECT COUNT(*) FROM pit_scouting ps WHERE ps.event_id=e.id AND ps.organization_id=e.organization_id AND ps.status='complete') pit_complete
- FROM events e JOIN games g ON g.id=e.game_id
- WHERE e.organization_id=? AND e.active=1
- ORDER BY e.is_current DESC,
- CASE e.event_status WHEN 'running' THEN 0 WHEN 'schedule_ready' THEN 1 WHEN 'pit_open' THEN 2 WHEN 'planned' THEN 3 ELSE 4 END,
- CASE WHEN CURDATE() BETWEEN e.start_date AND e.end_date THEN 0 WHEN e.start_date>=CURDATE() THEN 1 ELSE 2 END,
- ABS(DATEDIFF(COALESCE(e.start_date,CURDATE()),CURDATE())),e.id DESC LIMIT 1");
-$s->execute([$org]);$event=$s->fetch()?:null;
-$nextMatch=null;
-if($event&&((int)$event['match_count'])>0){
-    $s=$pdo->prepare("SELECT m.* FROM matches m WHERE m.organization_id=? AND m.event_id=? AND m.state IN ('running','paused','ready','scheduled') ORDER BY FIELD(m.state,'running','paused','ready','scheduled'),FIELD(m.comp_level,'qm','ef','qf','sf','f'),m.set_number,m.match_number LIMIT 1");
-    $s->execute([$org,$event['id']]);$nextMatch=$s->fetch()?:null;
+try {
+    $q = $pdo->prepare("SELECT e.*,g.name game_name,
+        (SELECT COUNT(*) FROM event_teams et WHERE et.event_id=e.id) team_count,
+        (SELECT COUNT(*) FROM matches m WHERE m.event_id=e.id AND m.organization_id=e.organization_id) match_count,
+        (SELECT COUNT(DISTINCT prs.frc_team_number) FROM pre_scouting prs JOIN event_teams etp ON etp.event_id=e.id AND etp.frc_team_number=prs.frc_team_number WHERE prs.event_id=e.id AND prs.organization_id=e.organization_id AND prs.status='complete') pre_complete,
+        (SELECT COUNT(DISTINCT ps.frc_team_number) FROM pit_scouting ps JOIN event_teams etp ON etp.event_id=e.id AND etp.frc_team_number=ps.frc_team_number WHERE ps.event_id=e.id AND ps.organization_id=e.organization_id AND ps.status='complete') pit_complete
+        FROM events e JOIN games g ON g.id=e.game_id
+        WHERE e.organization_id=? AND e.active=1
+        ORDER BY e.is_current DESC,
+        CASE e.event_status WHEN 'running' THEN 0 WHEN 'schedule_ready' THEN 1 WHEN 'pit_open' THEN 2 WHEN 'planned' THEN 3 ELSE 4 END,
+        CASE WHEN CURDATE() BETWEEN e.start_date AND e.end_date THEN 0 WHEN e.start_date>=CURDATE() THEN 1 ELSE 2 END,
+        ABS(DATEDIFF(COALESCE(e.start_date,CURDATE()),CURDATE())),e.id DESC LIMIT 1");
+    $q->execute([$org]); $opsEvent=$q->fetch(PDO::FETCH_ASSOC)?:null;
+    if ($opsEvent) {
+        $eid=(int)$opsEvent['id'];
+        $q=$pdo->prepare("SELECT m.* FROM matches m WHERE m.organization_id=? AND m.event_id=? AND m.state IN ('running','paused','ready','scheduled') ORDER BY FIELD(m.state,'running','paused','ready','scheduled'),FIELD(m.comp_level,'qm','ef','qf','sf','f'),m.set_number,m.match_number LIMIT 1");
+        $q->execute([$org,$eid]);$opsMatch=$q->fetch(PDO::FETCH_ASSOC)?:null;
+        if ($opsMatch) {
+            $currentMatchId=(int)$opsMatch['id'];
+            try {
+                $mq=$pdo->prepare("SELECT alliance,station,frc_team_number FROM match_teams WHERE match_id=? ORDER BY FIELD(alliance,'Red','Blue'),station");
+                $mq->execute([$currentMatchId]);$opsMatchTeams=$mq->fetchAll(PDO::FETCH_ASSOC)?:[];
+                $aq=$pdo->prepare("SELECT a.id,a.alliance,a.station,a.frc_team_number,a.status,a.assignee_user_id,u.display_name, u.active, COALESCE(p.last_seen_at,'') last_seen_at, COALESCE(sp.last_seen_at,'') scout_seen FROM scouting_assignments a LEFT JOIN users u ON u.id=a.assignee_user_id AND u.organization_id=a.organization_id LEFT JOIN (SELECT user_id,MAX(last_seen_at) last_seen_at FROM neptune_user_presence WHERE organization_id=? GROUP BY user_id) p ON p.user_id=a.assignee_user_id LEFT JOIN (SELECT user_id,MAX(last_seen_at) last_seen_at FROM scout_sessions WHERE organization_id=? AND match_id=? GROUP BY user_id) sp ON sp.user_id=a.assignee_user_id WHERE a.organization_id=? AND a.event_id=? AND a.match_id=? AND a.kind='match' ORDER BY FIELD(a.alliance,'Red','Blue'),a.station,a.id DESC");
+                $aq->execute([$org,$org,$currentMatchId,$org,$eid,$currentMatchId]);$opsMatchAssignments=$aq->fetchAll(PDO::FETCH_ASSOC)?:[];
+            } catch(Throwable $assignmentQueryError) {
+                // Some installations do not have optional presence tables. Preserve assignments without presence.
+                try {
+                    $aq=$pdo->prepare("SELECT a.id,a.alliance,a.station,a.frc_team_number,a.status,a.assignee_user_id,u.display_name,u.active,NULL last_seen_at,NULL scout_seen FROM scouting_assignments a LEFT JOIN users u ON u.id=a.assignee_user_id AND u.organization_id=a.organization_id WHERE a.organization_id=? AND a.event_id=? AND a.match_id=? AND a.kind='match' ORDER BY FIELD(a.alliance,'Red','Blue'),a.station,a.id DESC");
+                    $aq->execute([$org,$eid,$currentMatchId]);$opsMatchAssignments=$aq->fetchAll(PDO::FETCH_ASSOC)?:[];
+                } catch(Throwable $assignmentError){error_log('[Neptune Pit TV assignments] '.get_class($assignmentError));}
+            }
+        }
+
+        $q=$pdo->prepare("SELECT COUNT(*) FROM scouting_assignments WHERE organization_id=? AND event_id=? AND assignee_user_id=? AND status IN ('assigned','acknowledged')");
+        $q->execute([$org,$eid,$opsUserId]);$opsOpenAssignments=(int)$q->fetchColumn();
+        $q=$pdo->prepare("SELECT a.id,a.kind,a.alliance,a.station,a.frc_team_number,a.status,a.match_id,m.match_number,m.comp_level,m.set_number FROM scouting_assignments a LEFT JOIN matches m ON m.id=a.match_id AND m.organization_id=a.organization_id WHERE a.organization_id=? AND a.event_id=? AND a.assignee_user_id=? AND a.status IN ('assigned','acknowledged') ORDER BY CASE WHEN a.kind='match' THEN 0 ELSE 1 END, COALESCE(m.match_number,99999), a.id LIMIT 1");
+        $q->execute([$org,$eid,$opsUserId]);$opsAssignment=$q->fetch(PDO::FETCH_ASSOC)?:null;
+        $q=$pdo->prepare('SELECT COUNT(*) FROM tag_scouting_match_data WHERE organization_id=? AND event_id=?');
+        $q->execute([$org,$eid]);$opsTagReports=(int)$q->fetchColumn();
+        $q=$pdo->prepare("SELECT COUNT(*) FROM matches WHERE organization_id=? AND event_id=? AND state IN ('ended','completed','complete','final')");
+        $q->execute([$org,$eid]);$opsMatchesComplete=(int)$q->fetchColumn();
+        if ($opsCanSeeOrgActivity) {
+            $q=$pdo->prepare('SELECT frc_team_number,alliance,station,UNIX_TIMESTAMP(updated_at) AS saved_epoch FROM tag_scouting_match_data WHERE organization_id=? AND event_id=? ORDER BY updated_at DESC,id DESC LIMIT 5');
+            $q->execute([$org,$eid]);
+        } else {
+            $q=$pdo->prepare('SELECT frc_team_number,alliance,station,UNIX_TIMESTAMP(updated_at) AS saved_epoch FROM tag_scouting_match_data WHERE organization_id=? AND event_id=? AND user_id=? ORDER BY updated_at DESC,id DESC LIMIT 5');
+            $q->execute([$org,$eid,$opsUserId]);
+        }
+        $opsRecentTags=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
+    }
+} catch (Throwable $opsErr) {
+    error_log('[Neptune Operations Dashboard] '.get_class($opsErr).': '.$opsErr->getMessage());
+    $opsDataError=true;
 }
-$pitPct=$event&&(int)$event['team_count']?round((int)$event['pit_complete']*100/(int)$event['team_count']):0;
+$opsTeams=(int)($opsEvent['team_count']??0);
+$opsMatches=(int)($opsEvent['match_count']??0);
+$opsPit=(int)($opsEvent['pit_complete']??0);
+$opsPre=(int)($opsEvent['pre_complete']??0);
+$opsPitPct=$opsTeams>0?min(100,round($opsPit*100/$opsTeams)):0;
+$opsPrePct=$opsTeams>0?min(100,round($opsPre*100/$opsTeams)):0;
+// Readiness is an indicator, not a prediction: 25% each for roster loaded,
+// schedule loaded, pit coverage and pre-scout coverage. Unconfigured events show no score.
+$opsReadinessScore=$opsTeams>0 ? (int)round((100 + ($opsMatches>0?100:0) + $opsPitPct + $opsPrePct)/4) : 0;
+
+// Adapt the existing, scoped operational event data to the original hero.
+$event = $opsEvent;
+$nextMatch = $opsMatch;
+$pitPct = $opsPitPct;
 $pageTitle='Home';$moduleName='NEPTUNE';include dirname(__DIR__).'/partials_header.php';
 ?>
 <!-- Dashboard-only ocean atmosphere. Does not affect scouting screens or sign-in. -->
@@ -706,30 +872,7 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
 @media(prefers-reduced-motion:reduce){.nd-ocean__rays,.nd-ocean__bubble{animation:none!important}.nd-ocean__bubble{display:none!important}}
 </style>
 <div class="nd-ocean" aria-hidden="true"><div class="nd-ocean__wash"></div><div class="nd-ocean__rays"></div><div class="nd-ocean__particles" id="ndBubbleField"></div></div>
-<script>
-(function(){
-  const field=document.getElementById('ndBubbleField');
-  const heroField=document.querySelector('.nd-hero-bubbles');
-  if(!field||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-  const count=window.matchMedia('(max-width: 640px)').matches?14:32;
-  for(let i=0;i<count;i++){
-    const b=document.createElement('span');b.className='nd-ocean__bubble';
-    b.style.setProperty('--x',(Math.random()*100).toFixed(2)+'%');
-    b.style.setProperty('--size',(3+Math.random()*15).toFixed(1)+'px');
-    b.style.setProperty('--duration',(12+Math.random()*20).toFixed(2)+'s');
-    b.style.setProperty('--delay',(-Math.random()*32).toFixed(2)+'s');
-    b.style.setProperty('--drift',((Math.random()-.5)*170).toFixed(1)+'px');
-    b.style.setProperty('--alpha',(.11+Math.random()*.33).toFixed(2));
-    field.appendChild(b);
-    if(heroField && i < (count>20?18:10)){ const h=b.cloneNode(false); h.style.setProperty('--duration',(9+Math.random()*13).toFixed(2)+'s'); h.style.setProperty('--delay',(-Math.random()*22).toFixed(2)+'s'); heroField.appendChild(h); }
-  }
-  let ticking=false;
-  window.addEventListener('scroll',()=>{
-    if(ticking)return;ticking=true;
-    requestAnimationFrame(()=>{document.querySelector('.nd-ocean')?.style.setProperty('--nd-scroll',Math.min(window.scrollY,3500)+'px');ticking=false});
-  },{passive:true});
-})();
-</script>
+
 
 <style id="neptune-home-metal-logo-switch">
 .home-hero .home-hero-logo{display:block!important;width:clamp(260px,31vw,440px)!important;height:clamp(260px,31vw,440px)!important;max-width:100%!important;margin:0 auto 20px!important;object-fit:contain!important;object-position:center!important;background:transparent!important;border:0!important;box-shadow:none!important}
@@ -779,6 +922,45 @@ body:has(.nd-ocean) .home-hero::after { content:none !important; }
 @media(max-width:1120px){.home-hero{grid-template-columns:minmax(0,1fr)!important}.home-hero .status-panel{width:100%;max-width:none}}
 @media(max-width:700px){.home-hero{padding:22px!important;gap:24px!important}.nd-hero-intro{flex-direction:column;align-items:flex-start}.home-hero .home-hero-logo{width:min(70vw,260px)!important;height:min(70vw,260px)!important;max-width:100%!important;align-self:center}.home-hero h1.neptune-deep-title{font-size:clamp(2.5rem,10vw,4rem)!important}.nd-hero-copy{max-width:none}}
 </style>
+
+<style>
+/* Intentionally scoped to authenticated Home; shared Neptune theme variables and components remain authoritative. */
+.ops-home{display:grid;gap:20px;padding-bottom:24px}
+.ops-home .ops-hero{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:clamp(20px,3vw,36px);position:relative;overflow:hidden}
+.ops-home .ops-hero:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 100% 0%,color-mix(in srgb,var(--accent,#54bdda) 14%,transparent),transparent 62%);pointer-events:none}
+.ops-home .ops-hero>*{position:relative;z-index:1}
+.ops-home .ops-kicker{letter-spacing:.14em;text-transform:uppercase;font-weight:800;font-size:.75rem;color:var(--accent,#54bdda)}
+.ops-home .ops-panel h1{font-size:clamp(1.9rem,3.5vw,3.2rem);line-height:1.12;margin:8px 0 12px}
+.ops-home .ops-panel h2,.ops-home .ops-section-head h2{font-size:clamp(1.12rem,1.65vw,1.45rem);margin:0}
+.ops-home .ops-hero p{margin:0;max-width:58ch;line-height:1.55}
+.ops-home .ops-hero-status{min-width:min(285px,100%);border:1px solid var(--border,rgba(127,160,170,.26));border-radius:14px;padding:18px;background:color-mix(in srgb,var(--surface,#162632) 77%,transparent)}
+.ops-home .ops-hero-status strong{display:block;font-size:1.2rem;margin:4px 0}
+.ops-home .ops-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.ops-home .ops-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.ops-home .ops-metric{padding:18px;min-width:0}
+.ops-home .ops-metric b{font-size:clamp(1.6rem,2.5vw,2.4rem);display:block;line-height:1.1;margin:9px 0 6px;font-variant-numeric:tabular-nums}
+.ops-home .ops-metric .ops-metric-label{font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;font-weight:800;opacity:.8}
+.ops-home .ops-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:16px}
+.ops-home .ops-panel{padding:20px;min-width:0}
+.ops-home .ops-panel p{line-height:1.55}
+.ops-home .ops-big{font-size:clamp(1.5rem,2.5vw,2.3rem);font-weight:800;line-height:1.2;margin:14px 0 10px}
+.ops-home .ops-detail{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.ops-home .ops-links{display:flex;gap:9px;flex-wrap:wrap;margin-top:17px}
+.ops-home .ops-progress{height:8px;border-radius:10px;background:color-mix(in srgb,var(--accent,#54bdda) 12%,transparent);overflow:hidden;margin-top:14px}
+.ops-home .ops-progress span{display:block;height:100%;border-radius:10px;background:var(--accent,#54bdda)}
+.ops-home .ops-events{display:grid;gap:12px}
+.ops-home .ops-event-row{display:flex;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--border,rgba(127,160,170,.25));align-items:center}
+.ops-home .ops-event-row:last-child{border-bottom:0;padding-bottom:0}
+.ops-home .ops-empty{padding:16px 0;color:var(--muted,#8393a7)}
+.ops-home .ops-task{border-left:3px solid var(--accent,#54bdda);padding:11px 14px;background:color-mix(in srgb,var(--accent,#54bdda) 8%,transparent);border-radius:0 10px 10px 0;margin-top:14px}
+.ops-home .ops-attention{padding:12px 16px;border:1px solid var(--border,rgba(127,160,170,.2));border-radius:12px;margin:8px 0}
+.ops-home .ops-help{font-size:.87rem}
+@media(max-width:1060px){.ops-home .ops-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:780px){.ops-home .ops-hero{flex-direction:column;align-items:stretch}.ops-home .ops-grid{grid-template-columns:minmax(0,1fr)}.ops-home .ops-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.ops-home .ops-metric{padding:14px}.ops-home .ops-panel{padding:16px}.ops-home .ops-metric b{font-size:1.75rem}}
+.ops-home .nd-quick-access{margin:0}
+</style>
+<div class="ops-home">
 <section class="card home-hero">
   <div class="nd-hero-bubbles" aria-hidden="true"></div>
   <div class="nd-hero-main">
@@ -817,140 +999,333 @@ body:has(.nd-ocean) .home-hero::after { content:none !important; }
 
 </section>
 
-<section class="platform-modules" aria-labelledby="moduleMapTitle">
-  <div class="home-links-heading module-map-heading">
-    <div class="section-kicker"><i class="fa-solid fa-diagram-project"></i> NEPTUNE MODULES</div>
-    <h2 id="moduleMapTitle">One platform. Six focused systems.</h2>
-  </div>
-  <div class="module-grid">
-    <a class="module-card" href="<?=e(base_url('scouting.php'))?>"><span class="module-card-access"><i class="fa-solid fa-user-group"></i> All users</span><span class="module-card-icon"><i class="fa-solid fa-crosshairs"></i></span><span><b>SCOUTING</b><small>TRIDENT</small><em>Match · Pit · Pre-Scouting</em></span></a>
-    <a class="module-card" href="<?=e(base_url('admin/index.php'))?>"><span class="module-card-access"><i class="fa-solid fa-user-group"></i> All users</span><span class="module-card-icon"><i class="fa-solid fa-tower-broadcast"></i></span><span><b>COMMAND CENTER</b><small>SATURN</small><em>Event Operations · Organization · Role-gated tools</em></span></a>
-    <a class="module-card" href="<?=e(base_url('analytics/index.php'))?>"><span class="module-card-access"><i class="fa-solid fa-user-group"></i> All users</span><span class="module-card-icon"><i class="fa-solid fa-chart-line"></i></span><span><b>ANALYTICS &amp; STRATEGY</b><small>AUGUR</small><em>Robot Intelligence · Match Board · Match Strategy</em></span></a>
-    <a class="module-card" href="<?=e(base_url('admin/index.php#mercury'))?>"><span class="module-card-access"><i class="fa-solid fa-lock"></i> Role-gated</span><span class="module-card-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span><span><b>SYSTEM MAINTENANCE</b><small>MERCURY</small><em>Health · Styling · Files · Updates · Diagnostics</em></span></a>
-    <a class="module-card" href="<?=e(base_url('admin/index.php#vulcan'))?>"><span class="module-card-access"><i class="fa-solid fa-user-shield"></i> Admin+</span><span class="module-card-icon"><i class="fa-solid fa-hammer"></i></span><span><b>BUILDERS &amp; CONFIGURATION</b><small>VULCAN</small><em>Game Builder · Pit Form · Pre-Scout Form</em></span></a>
-    <?php if($canDatabaseLab):?><a class="module-card" href="<?=e(base_url('dashboard/data.php'))?>"><span class="module-card-access"><i class="fa-solid fa-chart-line"></i> Strategy+</span><span class="module-card-icon"><i class="fa-solid fa-database"></i></span><span><b>DATA LAYER</b><small>SALT</small><em>Organization Data · Database Lab</em></span></a><?php endif;?>
-  </div>
-</section>
-
-<section class="dashboard-intro-grid" aria-label="About and setup">
-  <article class="card platform-about">
-    <div class="section-kicker"><i class="fa-solid fa-water"></i> ABOUT THE PLATFORM</div>
-    <h2>Built as a connected FRC operating system</h2>
-    <p>Neptune is the platform. TRIDENT handles scouting, SATURN runs event operations, AUGUR turns observations into strategy, MERCURY maintains the platform, VULCAN builds the season configuration, and SALT stores the data. The modules share one organization, event, game, and robot intelligence model.</p>
-    <div class="platform-feature-row">
-      <span><i class="fa-solid fa-cloud-arrow-down"></i> TBA event data</span>
-      <span><i class="fa-solid fa-crosshairs"></i> TRIDENT scouting</span>
-      <span><i class="fa-solid fa-tower-broadcast"></i> SATURN command</span>
-      <span><i class="fa-solid fa-chart-line"></i> AUGUR intelligence</span>
-      <span><i class="fa-solid fa-screwdriver-wrench"></i> MERCURY maintenance</span>
-      <span><i class="fa-solid fa-hammer"></i> VULCAN configuration</span>
-      <span><i class="fa-solid fa-database"></i> SALT data</span>
-    </div>
-    <button class="btn" type="button" id="openHowToNeptune"><i class="fa-solid fa-circle-play"></i> How to Use Neptune</button>
-  </article>
-
-  <article class="card platform-setup">
-    <div class="section-kicker"><i class="fa-solid fa-code"></i> RUN NEPTUNE YOURSELF</div>
-    <h2>Hosted or local</h2>
-    <p class="muted">Neptune is designed to run on a normal PHP/MySQL server or on a local development machine. The application stays under <code>public_html/Neptune</code> while credentials and API keys stay outside the web root in <code>neptune_secure</code>.</p>
-    <div class="setup-methods">
-      <div>
-        <i class="fa-solid fa-server setup-method-icon"></i>
-        <div><b>Hosted</b><span>Upload Neptune to your web server, create the MySQL database, import <code>sql/neptune_schema.sql</code>, configure <code>neptune_secure/config.php</code>, and add your TBA API key.</span></div>
-      </div>
-      <div>
-        <i class="fa-solid fa-laptop-code setup-method-icon"></i>
-        <div><b>Local</b><span>Use PHP 8+, MySQL/MariaDB, and a local web server. Keep the same public/private folder structure so local testing matches production.</span></div>
-      </div>
-    </div>
-    <div class="toolbar setup-links">
-      <button class="btn secondary" type="button" id="openSetupNeptune"><i class="fa-solid fa-book"></i> Setup Instructions</button>
-      <?php if($githubRepoUrl!==''):?>
-        <a class="btn secondary" href="<?=e($githubRepoUrl)?>" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub Repository</a>
-      <?php else:?>
-        <span class="btn secondary disabled" title="Set $githubRepoUrl in dashboard/index.php when the repository is ready"><i class="fa-brands fa-github"></i> GitHub Repository — coming soon</span>
-      <?php endif;?>
-    </div>
-  </article>
-</section>
-
-
-<dialog class="dashboard-info-dialog" id="howToNeptuneDialog" aria-labelledby="howToNeptuneTitle">
-  <div class="dashboard-dialog-shell">
-    <div class="dashboard-dialog-toolbar">
-      <span>NEPTUNE GUIDE</span>
-      <button class="btn secondary dashboard-dialog-close" type="button" data-close-dialog aria-label="Close guide"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-    <div class="dashboard-dialog-body">
-      <div class="dialog-title-icon"><i class="fa-solid fa-compass"></i></div>
-      <h2 id="howToNeptuneTitle">How to Use Neptune</h2>
-      <p class="muted">A typical competition moves through Neptune in this order.</p>
-      <div class="howto-steps">
-        <div><span>1</span><div><b>VULCAN · Build the game</b><p>Configure the season's match actions, button layout, scoring values, timing, and pit questions. Save the game definition for reuse at every event that season.</p></div></div>
-        <div><span>2</span><div><b>SATURN · Open the event</b><p>Create the event before matches begin. Load the team roster manually or from The Blue Alliance and make it Neptune's Current Event.</p></div></div>
-        <div><span>3</span><div><b>TRIDENT · Pre-scout teams</b><p>Before the event, contact teams from the roster. Neptune reuses known answers from earlier events in the same game and adds TBA team information.</p></div></div>
-        <div><span>4</span><div><b>TRIDENT · Pit scout</b><p>At the event, scouts confirm robot capabilities, autonomous options, endgame abilities, reliability notes, and photos.</p></div></div>
-        <div><span>5</span><div><b>SATURN · Sync the schedule</b><p>When FIRST publishes the schedule, refresh from The Blue Alliance. Neptune fills every match with the official Red and Blue field stations.</p></div></div>
-        <div><span>6</span><div><b>SATURN + TRIDENT · Run live scouting</b><p>Command makes the next match ready and starts it. Agents select their assigned field station and record actions in real time while Neptune keeps the match timer synchronized.</p></div></div>
-        <div><span>7</span><div><b>AUGUR · Use the intelligence</b><p>Review Robot Cards, the Pit Match Board, individual robot details, past match data, cycle times, success rates, defense, pit information, and shared scouting data.</p></div></div>
-      </div>
-      <div class="notice"><i class="fa-solid fa-rotate"></i> If an official match is restarted, use <b>Re-scout / Ready Again</b>. Neptune voids the superseded scouting run so only the new run contributes to analytics.</div>
-    </div>
-  </div>
-</dialog>
-
-<dialog class="dashboard-info-dialog" id="setupNeptuneDialog" aria-labelledby="setupNeptuneTitle">
-  <div class="dashboard-dialog-shell">
-    <div class="dashboard-dialog-toolbar">
-      <span>INSTALLATION</span>
-      <button class="btn secondary dashboard-dialog-close" type="button" data-close-dialog aria-label="Close setup instructions"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-    <div class="dashboard-dialog-body">
-      <div class="dialog-title-icon"><i class="fa-solid fa-screwdriver-wrench"></i></div>
-      <h2 id="setupNeptuneTitle">Set Up Neptune</h2>
-      <div class="setup-guide-grid">
-        <section>
-          <h3><i class="fa-solid fa-server"></i> Hosted server</h3>
-          <ol>
-            <li>Use a server with PHP 8+, MySQL/MariaDB, HTTPS, and a normal PHP web root.</li>
-            <li>Place the public application in <code>public_html/Neptune/</code>.</li>
-            <li>Place <code>neptune_secure/</code> beside <code>public_html</code>, never inside it.</li>
-            <li>Create the Neptune database and import <code>sql/neptune_schema.sql</code> as the baseline schema.</li>
-            <li>Copy <code>neptune_secure/config.example.php</code> to <code>neptune_secure/config.php</code> and enter the database credentials and TBA API key.</li>
-            <li>Open <code>/Neptune/register.php</code> (or use <b>Register an organization</b> on the sign-in page) to create the first organization and owner. Neptune does not use <code>admin/install.php</code>.</li>
-            <li>Sign in as the first owner and run <b>System Check</b>. The first organization is the platform organization and receives platform-only administration/maintenance tools.</li>
-            <li>Future schema-changing Neptune packages self-apply tracked migrations. Review them in <b>Maintenance Console → DB migration history</b>; do not manually replay old migration files.</li>
-          </ol>
-        </section>
-        <section>
-          <h3><i class="fa-solid fa-laptop-code"></i> Local development</h3>
-          <ol>
-            <li>Install PHP 8+, MySQL/MariaDB, and Apache/Nginx, or use PHP's built-in development server.</li>
-            <li>Keep <code>public_html/</code> and <code>neptune_secure/</code> as sibling folders just like production.</li>
-            <li>Create a local Neptune database and import <code>sql/neptune_schema.sql</code>.</li>
-            <li>Create a local <code>neptune_secure/config.php</code> with local database credentials.</li>
-            <li>If using PHP's built-in server from the project root, run <code>php -S localhost:8080 -t public_html</code> and open <code>http://localhost:8080/Neptune/</code>.</li>
-            <li>Create the first organization through <code>/Neptune/register.php</code>. There is no browser installer under <code>admin/</code>.</li>
-          </ol>
-        </section>
-      </div>
-      <div class="notice"><i class="fa-brands fa-github"></i> Source code, installation files, and updates are available from the Neptune GitHub repository.</div>
-    </div>
-  </div>
-</dialog>
 
 <script>
 (function(){
-  const pairs=[
-    [document.getElementById('openHowToNeptune'),document.getElementById('howToNeptuneDialog')],
-    [document.getElementById('openSetupNeptune'),document.getElementById('setupNeptuneDialog')]
-  ];
-  pairs.forEach(([open,dialog])=>{
-    if(!open||!dialog)return;
-    open.addEventListener('click',()=>{if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')});
-    dialog.querySelectorAll('[data-close-dialog]').forEach(btn=>btn.addEventListener('click',()=>dialog.close()));
-    dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close()});
-  });
+  const field=document.getElementById('ndBubbleField');
+  const heroField=document.querySelector('.nd-hero-bubbles');
+  if(!field||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const count=window.matchMedia('(max-width: 640px)').matches?14:32;
+  for(let i=0;i<count;i++){
+    const b=document.createElement('span');b.className='nd-ocean__bubble';
+    b.style.setProperty('--x',(Math.random()*100).toFixed(2)+'%');
+    b.style.setProperty('--size',(3+Math.random()*15).toFixed(1)+'px');
+    b.style.setProperty('--duration',(12+Math.random()*20).toFixed(2)+'s');
+    b.style.setProperty('--delay',(-Math.random()*32).toFixed(2)+'s');
+    b.style.setProperty('--drift',((Math.random()-.5)*170).toFixed(1)+'px');
+    b.style.setProperty('--alpha',(.11+Math.random()*.33).toFixed(2));
+    field.appendChild(b);
+    if(heroField && i < (count>20?18:10)){ const h=b.cloneNode(false); h.style.setProperty('--duration',(9+Math.random()*13).toFixed(2)+'s'); h.style.setProperty('--delay',(-Math.random()*22).toFixed(2)+'s'); heroField.appendChild(h); }
+  }
+  let ticking=false;
+  window.addEventListener('scroll',()=>{
+    if(ticking)return;ticking=true;
+    requestAnimationFrame(()=>{document.querySelector('.nd-ocean')?.style.setProperty('--nd-scroll',Math.min(window.scrollY,3500)+'px');ticking=false});
+  },{passive:true});
+})();
+</script>
+<?php if($opsDataError):?><div class="notice" role="status"><i class="fa-solid fa-triangle-exclamation"></i> Some live dashboard metrics are temporarily unavailable. Scouting tools remain accessible.</div><?php endif;?>
+<?php if($opsEvent):?>
+
+<style id="neptune-pit-tv-style">
+.ops-tv-btn{display:inline-flex;align-items:center;gap:.45rem;white-space:nowrap;text-decoration:none;font-size:.83rem!important;padding:.48rem .75rem!important}
+.ops-tv-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.ops-tv-heading .ops-section-head{flex:1;margin:0}
+.ops-tv-cover{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.ops-tv-cover .ops-metric{min-width:0}
+.ops-tv-cover-note{margin:14px 0 0}
+#ntv-stage{display:none;position:fixed;inset:0;overflow:auto;z-index:2147483000;background:var(--background,var(--bg,#071321));color:var(--text,#e9f5ff);padding:clamp(18px,3.5vw,64px)}
+body.ntv-open{overflow:hidden}
+body.ntv-open #ntv-stage{display:block}
+/* v23: TV presentation is a root-level, viewport-locked surface, not nested page content. */
+html:has(body.ntv-open){overflow:hidden!important}
+body.ntv-open{overflow:hidden!important}
+body.ntv-open #ntv-stage{
+ position:fixed!important;inset:0!important;top:0!important;left:0!important;
+ width:100vw!important;max-width:none!important;height:100dvh!important;max-height:100dvh!important;
+ overflow-x:hidden!important;overflow-y:auto!important;z-index:2147483640!important;
+ margin:0!important;transform:none!important;isolation:isolate;
+}
+body.ntv-open #ntv-stage .ntv-top{position:sticky!important;top:0!important;z-index:50!important;
+ display:flex!important;align-items:center!important;justify-content:space-between!important;
+ background:var(--background,var(--bg,#071321))!important;
+}
+body.ntv-open #ntv-stage .ntv-titleblock{min-width:0!important}
+body.ntv-open #ntv-stage .ntv-actions{display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:wrap!important;position:relative!important;z-index:51!important}
+body.ntv-open #ntv-stage .ntv-actions>*{pointer-events:auto!important;flex-shrink:0!important}
+@media(max-width:940px){body.ntv-open #ntv-stage .ntv-top{align-items:flex-start!important}body.ntv-open #ntv-stage .ntv-actions{width:100%;margin-left:0!important}}
+
+.ntv-top{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:clamp(24px,3vw,50px);border-bottom:1px solid var(--border,rgba(153,190,212,.24));padding-bottom:16px}
+.ntv-brand{font-size:clamp(12px,1.2vw,19px);letter-spacing:.18em;text-transform:uppercase;color:var(--accent,#41c6e9);font-weight:850}
+.ntv-heading{font-size:clamp(30px,4.2vw,70px);line-height:1.08;letter-spacing:-.03em;margin:8px 0}
+.ntv-event{color:var(--muted,#a8c0d2);font-size:clamp(14px,1.5vw,23px)}
+.ntv-actions{display:flex;gap:10px;flex-wrap:wrap}
+.ntv-actions button,.ntv-actions a{cursor:pointer}
+.ntv-content .ops-metrics,.ntv-content .ops-tv-cover{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:clamp(12px,1.8vw,28px)}
+.ntv-content .ops-metric{min-height:150px;display:flex;flex-direction:column;justify-content:center;padding:clamp(16px,2vw,32px)}
+.ntv-content .ops-metric b{font-size:clamp(32px,4vw,72px);line-height:1.15}
+.ntv-content .ops-metric .ops-metric-label{font-size:clamp(14px,1.3vw,22px)}
+.ntv-content .ops-panel{min-height:35vh;padding:clamp(18px,2.5vw,38px)}
+.ntv-content .ops-big{font-size:clamp(40px,6vw,94px)}
+.ntv-content .ops-section-head h2{font-size:clamp(22px,2.4vw,40px)}
+.ntv-content .ops-attention{font-size:clamp(16px,1.45vw,24px)}
+.ntv-content .ops-links,.ntv-content .ops-section-head>a{display:none!important}
+.ntv-content .muted{font-size:clamp(14px,1.2vw,20px)}
+.ntv-content .ops-progress{height:12px}
+.ntv-content .ops-cover-progress{height:22px;border-radius:99px;background:var(--border,rgba(126,182,201,.2));overflow:hidden;margin:22px 0}
+.ntv-content .ops-cover-progress span{display:block;background:var(--accent,#41c6e9);height:100%;border-radius:inherit}
+.ntv-supplement{margin-top:clamp(18px,2vw,30px)}
+.ntv-status{margin-top:24px;color:var(--muted,#a8c0d2);font-size:clamp(13px,1vw,17px)}
+@media(max-width:640px){.ops-tv-cover{grid-template-columns:1fr}.ntv-actions{width:100%}.ntv-top{align-items:start}}
+@media(prefers-reduced-motion:reduce){#ntv-stage *{animation:none!important;transition:none!important}}
+
+/* v21: standalone TV typography and layout are independent of dashboard CSS */
+#ntv-stage{font-family:inherit!important;box-sizing:border-box!important;padding:clamp(20px,2.5vw,42px)!important}
+#ntv-stage *{box-sizing:border-box}
+#ntv-stage .ntv-top{position:relative;display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin:0 0 22px!important;padding:0 0 18px!important}
+#ntv-stage .ntv-titleblock{flex:1;min-width:0}
+#ntv-stage .ntv-brand{font-size:clamp(11px,.85vw,15px)!important;line-height:1.4!important}
+#ntv-stage h1.ntv-heading{font-size:clamp(24px,2.8vw,48px)!important;line-height:1.15!important;margin:6px 0 4px!important;letter-spacing:-.02em!important;max-width:none!important;word-break:normal!important}
+#ntv-stage .ntv-event{font-size:clamp(13px,1.15vw,18px)!important;margin:0!important}
+#ntv-stage .ntv-actions{margin-left:auto;align-items:center}
+#ntv-stage .ntv-content{margin:0!important;max-width:none!important}
+#ntv-stage .ntv-content>.ops-panel,#ntv-stage .ntv-content>.ntv-match-shell{background:var(--surface,#141c29);border:1px solid var(--border,#2b3e50);border-radius:18px;padding:clamp(18px,2vw,36px)!important;min-height:0!important}
+#ntv-stage .ntv-content h2{font-size:clamp(19px,1.7vw,28px)!important;line-height:1.2!important;margin:0 0 12px!important}
+#ntv-stage .ntv-content .ops-big{font-size:clamp(28px,3.5vw,58px)!important;line-height:1.14!important;margin:12px 0!important}
+#ntv-stage .ntv-content .ops-metric b{font-size:clamp(26px,3.6vw,56px)!important;line-height:1.12!important}
+#ntv-stage .ntv-content .ops-metric{min-height:120px!important}
+#ntv-stage .ntv-match-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
+#ntv-stage .ntv-alliance{border:1px solid var(--border,#2b3e50);border-radius:16px;overflow:hidden;min-width:0}
+#ntv-stage .ntv-alliance-head{padding:13px 18px;font-size:clamp(17px,1.5vw,25px);font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+#ntv-stage .ntv-red .ntv-alliance-head{background:#872e37;color:white}
+#ntv-stage .ntv-blue .ntv-alliance-head{background:#214b9e;color:white}
+#ntv-stage .ntv-robots{display:grid;gap:0;padding:5px 18px}
+#ntv-stage .ntv-robot{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px 12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--border,#2b3e50)}
+#ntv-stage .ntv-robot:last-child{border:0}
+#ntv-stage .ntv-station{font-size:clamp(15px,1.25vw,20px);font-weight:850;opacity:.8}
+#ntv-stage .ntv-team{font-size:clamp(25px,2.2vw,38px);font-weight:850;line-height:1.15}
+#ntv-stage .ntv-scout{grid-column:2;font-size:clamp(13px,1.05vw,17px);opacity:.88}
+#ntv-stage .ntv-tag{font-size:.82em;font-weight:750;border-radius:20px;padding:3px 9px;border:1px solid var(--border,#2b3e50);white-space:nowrap}
+#ntv-stage .ntv-online{color:#64dab1}
+#ntv-stage .ntv-idle{color:var(--muted,#9ba9b8)}
+#ntv-stage .ntv-overviewline{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+#ntv-stage .ntv-match-name{font-size:clamp(32px,3.5vw,60px);font-weight:850;line-height:1.12}
+#ntv-stage .ntv-feed{padding-top:14px;color:var(--muted,#9ba9b8);font-size:clamp(13px,1vw,17px)}
+#ntv-stage .ntv-status{font-size:clamp(12px,1vw,16px)!important}
+@media(max-width:760px){#ntv-stage .ntv-match-grid{grid-template-columns:1fr}#ntv-stage .ntv-actions{margin-left:0}#ntv-stage h1.ntv-heading{font-size:clamp(23px,6vw,36px)!important}}
+#ntv-stage .ntv-top{position:sticky!important;top:0!important;z-index:10;background:var(--background,var(--bg,#071321));padding:12px 0 18px!important}
+#ntv-stage .ntv-actions{z-index:11}
+#ntv-stage .ntv-actions .btn{font-size:clamp(12px,1vw,16px)!important}
+
+/* Dedicated readiness metrics. Cards work in both regular dashboard and TV mode. */
+.ops-readiness-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.ops-readiness-stat{border:1px solid var(--border,#2c4158);border-radius:14px;background:var(--surface,#122235);padding:14px;min-width:0}
+.ops-readiness-stat b{display:block;font-size:clamp(22px,2.2vw,38px);line-height:1.15;overflow-wrap:anywhere}
+.ops-readiness-stat span{display:block;color:var(--muted,#9eb1c3);font-size:13px;margin-top:6px}
+.ops-readiness-visuals{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr);gap:16px;align-items:stretch;margin:20px 0}
+.ops-readiness-chart{border:1px solid var(--border,#2c4158);border-radius:16px;padding:16px;background:var(--surface,#122235);min-width:0}
+.ops-readiness-donut{--pct:0;--ring:#41bedd;position:relative;margin:14px auto;width:min(100%,180px);aspect-ratio:1;border-radius:50%;background:conic-gradient(var(--ring) calc(var(--pct)*1%),var(--border,#2b4259) 0);display:grid;place-items:center}
+.ops-readiness-donut:before{content:'';position:absolute;inset:18%;border-radius:50%;background:var(--surface,#122235)}
+.ops-readiness-donut strong{position:relative;font-size:clamp(22px,2.3vw,38px);z-index:1}
+.ops-readiness-chart h3{font-size:clamp(15px,1.25vw,21px)!important;margin:0 0 6px!important;line-height:1.25}
+.ops-readiness-chart p{font-size:14px!important;margin:8px 0 0!important;color:var(--muted,#9eb1c3)}
+.ops-readiness-bars{display:grid;gap:14px;margin-top:16px}
+.ops-readiness-bar-label{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin-bottom:6px}
+.ops-readiness-track{height:11px;border-radius:20px;overflow:hidden;background:var(--border,#304155)}
+.ops-readiness-track span{display:block;height:100%;background:var(--accent,#3db8dc);border-radius:inherit}
+.ops-readiness-score{display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ops-readiness-score b{font-size:clamp(21px,2vw,32px)}
+.ops-readiness-explain{font-size:12px;color:var(--muted,#9eb1c3);margin:6px 0 12px}
+#ntv-stage .ops-readiness-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+#ntv-stage .ops-readiness-stat b{font-size:clamp(26px,3vw,48px)}
+#ntv-stage .ops-readiness-donut{width:min(100%,230px)}
+@media(max-width:950px){.ops-readiness-visuals{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-readiness-visuals .ops-readiness-chart:last-child{grid-column:1/-1}.ops-readiness-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}#ntv-stage .ops-readiness-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.ops-readiness-visuals{grid-template-columns:minmax(0,1fr)}.ops-readiness-visuals .ops-readiness-chart:last-child{grid-column:auto}}
+</style>
+
+<section aria-label="Live event metrics">
+ <div class="ops-tv-heading"><div class="ops-section-head"><h2>Event overview</h2><span class="muted"><?=e($opsEvent['name'])?></span></div><a class="btn secondary ops-tv-btn" href="?tv=overview" data-tv="overview" aria-label="Open Event Overview TV mode"><i class="fa-solid fa-tv" aria-hidden="true"></i> TV Mode</a></div>
+ <div class="ops-metrics">
+  <article class="card ops-metric"><span class="ops-metric-label">Teams</span><b><?=$opsTeams?></b><span class="muted">On event roster</span></article>
+  <article class="card ops-metric"><span class="ops-metric-label">Matches</span><b><?=$opsMatches?></b><span class="muted"><?=$opsMatchesComplete?> finished</span></article>
+  <article class="card ops-metric"><span class="ops-metric-label">Pit scouting</span><b><?=$opsPit?> / <?=$opsTeams?></b><span class="muted"><?=$opsPitPct?>% coverage</span><div class="ops-progress"><span style="width:<?=$opsPitPct?>%"></span></div></article>
+  <article class="card ops-metric"><span class="ops-metric-label">Tag reports</span><b><?=$opsTagReports?></b><span class="muted">Saved for this event</span></article>
+  <article class="card ops-metric"><span class="ops-metric-label">My assignments</span><b><?=$opsOpenAssignments?></b><span class="muted">Awaiting completion</span></article>
+ </div>
+ </section>
+ <section class="card ops-panel" id="opsCoverage" aria-label="Scouting coverage">
+  <div class="ops-tv-heading"><div class="ops-section-head"><h2><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Scouting coverage</h2><span class="muted">Pit report coverage for event roster</span></div><a class="btn secondary ops-tv-btn" href="?tv=coverage" data-tv="coverage"><i class="fa-solid fa-tv" aria-hidden="true"></i> TV Mode</a></div>
+  <div class="ops-tv-cover">
+   <article class="card ops-metric"><span class="ops-metric-label">Pit complete</span><b><?=number_format($opsPit)?> / <?=number_format($opsTeams)?></b><span class="muted"><?=$opsPitPct?>% of roster</span></article>
+   <article class="card ops-metric"><span class="ops-metric-label">Still need pit reports</span><b><?=number_format(max(0,$opsTeams-$opsPit))?></b><span class="muted">Teams remaining</span></article>
+   <article class="card ops-metric"><span class="ops-metric-label">Tag scouting reports</span><b><?=number_format($opsTagReports)?></b><span class="muted">Saved for this event</span></article>
+  </div>
+  <div class="ops-cover-progress ops-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?=$opsPitPct?>" aria-label="Pit scouting coverage"><span style="width:<?=$opsPitPct?>%"></span></div>
+  <p class="muted ops-tv-cover-note">Pit scouting is measured against the event roster. Tag reports are shown separately; their total is not a robot coverage percentage.</p>
+ </section>
+ <div class="ops-grid">
+ <section class="card ops-panel" aria-labelledby="opsAssignmentTitle">
+  <div class="ops-section-head"><h2 id="opsAssignmentTitle"><i class="fa-solid fa-list-check" aria-hidden="true"></i> My next assignment</h2><a class="btn secondary" href="<?=e(base_url('dashboard/index.php'))?>?view=account#account-assignments">View all</a></div>
+  <?php if($opsAssignment):?>
+   <div class="ops-task">
+    <span class="muted"><?=e(ucfirst((string)$opsAssignment['kind']))?> scouting · <?=e(ucfirst((string)$opsAssignment['status']))?></span>
+    <div class="ops-big"><?php if($opsAssignment['kind']==='match'):?><?=e(strtoupper((string)($opsAssignment['comp_level']??'QM')))?> <?=e((string)($opsAssignment['match_number']??'?'))?> · <?=e((string)($opsAssignment['alliance']??'Station'))?> <?=e((string)($opsAssignment['station']??'?'))?><?php else:?>Robot #<?=e((string)($opsAssignment['frc_team_number']??'—'))?><?php endif;?></div>
+    <span class="muted">This assignment remains active until Neptune records its completion.</span>
+   </div>
+   <div class="ops-links"><a class="btn" href="<?=e(base_url('scouting.php'))?>">Open Scouting</a></div>
+  <?php else:?>
+   <p class="ops-empty">No active assignments for your account. New work will appear here when an administrator assigns it.</p>
+  <?php endif;?>
+ </section>
+ <section class="card ops-panel" aria-labelledby="opsMatchTitle">
+  <div class="ops-tv-heading"><div class="ops-section-head"><h2 id="opsMatchTitle"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Match operations</h2></div><a class="btn secondary ops-tv-btn" href="?tv=matches" data-tv="matches" aria-label="Open Match Operations TV mode"><i class="fa-solid fa-tv" aria-hidden="true"></i> TV Mode</a></div>
+  <?php if($opsMatch):?>
+   <div class="ops-big"><?=e(neptune_match_label($opsMatch))?></div>
+   <div class="ops-detail"><span class="pill"><?=e(strtoupper((string)$opsMatch['state']))?></span></div>
+   <p class="muted">Next active or scheduled match in this event.</p>
+  <?php elseif($opsMatches===0):?>
+   <p class="ops-empty">No match schedule has been loaded yet. Pit and pre-scouting can begin now.</p>
+  <?php else:?>
+   <p class="ops-empty">No upcoming matches remain in the current schedule.</p>
+  <?php endif;?>
+  <?php if($opsCanManage):?><div class="ops-links"><a class="btn secondary" href="<?=e(base_url('admin/index.php'))?>">Event operations</a></div><?php endif;?>
+ </section>
+</div>
+<div class="ops-grid">
+ <section class="card ops-panel" aria-labelledby="opsRecentTitle">
+  <div class="ops-section-head"><h2 id="opsRecentTitle"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Recent Tag Scouting</h2><span class="muted ops-help"><?=$opsCanSeeOrgActivity?'Event-wide':'Your reports'?></span></div>
+  <?php if($opsRecentTags):?>
+    <div class="ops-events">
+      <?php foreach($opsRecentTags as $row):?>
+      <div class="ops-event-row"><div><strong>Robot #<?=e((string)$row['frc_team_number'])?></strong><div class="muted">Tag report · <?=e((string)$row['alliance'])?> <?=e((string)$row['station'])?></div></div><time class="muted ops-local-time" datetime="<?=e(gmdate('c',(int)$row['saved_epoch']))?>">—</time></div>
+      <?php endforeach;?>
+    </div>
+  <?php else:?>
+    <p class="ops-empty">No Tag Scouting reports have been saved for this view yet.</p>
+  <?php endif;?>
+ </section>
+ <section class="card ops-panel" aria-labelledby="opsReadyTitle" id="opsReadiness">
+  <div class="ops-tv-heading"><div class="ops-section-head"><h2 id="opsReadyTitle"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> Event readiness</h2><span class="muted">Current event · <?=e((string)$opsEvent['name'])?></span></div><a class="btn secondary ops-tv-btn" href="?tv=readiness" data-tv="readiness" aria-label="Open Event Readiness TV mode"><i class="fa-solid fa-tv" aria-hidden="true"></i> TV Mode</a></div>
+  <div class="ops-readiness-score"><span class="pill">Readiness indicator</span><b><?=$opsReadinessScore?>%</b></div>
+  <p class="ops-readiness-explain">Equal-weight indicator: team roster loaded (25%), match schedule loaded (25%), pit scouting coverage (25%), pre-scouting coverage (25%). This is not a prediction of event performance or scout availability.</p>
+  <div class="ops-readiness-metrics">
+    <div class="ops-readiness-stat"><b><?=number_format($opsTeams)?></b><span>Teams on roster</span></div>
+    <div class="ops-readiness-stat"><b><?=number_format($opsMatches)?></b><span>Matches loaded</span></div>
+    <div class="ops-readiness-stat"><b><?=number_format($opsPit)?> / <?=number_format($opsTeams)?></b><span>Pit scouting complete</span></div>
+    <div class="ops-readiness-stat"><b><?=number_format($opsPre)?> / <?=number_format($opsTeams)?></b><span>Pre-scout complete</span></div>
+  </div>
+  <div class="ops-readiness-visuals">
+    <div class="ops-readiness-chart"><h3>Pit scouting</h3><div class="ops-readiness-donut" style="--pct:<?=$opsPitPct?>;--ring:#40bede" role="img" aria-label="<?=$opsPitPct?> percent of event roster has completed pit scouting"><strong><?=$opsPitPct?>%</strong></div><p><?=number_format(max(0,$opsTeams-$opsPit))?> teams remaining</p></div>
+    <div class="ops-readiness-chart"><h3>Pre-scouting</h3><div class="ops-readiness-donut" style="--pct:<?=$opsPrePct?>;--ring:#77cda9" role="img" aria-label="<?=$opsPrePct?> percent of event roster has completed pre-scouting"><strong><?=$opsPrePct?>%</strong></div><p><?=number_format(max(0,$opsTeams-$opsPre))?> teams remaining</p></div>
+    <div class="ops-readiness-chart"><h3>Readiness breakdown</h3><div class="ops-readiness-bars">
+      <?php foreach([['Team roster',$opsTeams>0?100:0],['Match schedule',$opsMatches>0?100:0],['Pit scouting',$opsPitPct],['Pre-scouting',$opsPrePct]] as [$label,$percent]):?>
+      <div><div class="ops-readiness-bar-label"><span><?=e($label)?></span><strong><?=$percent?>%</strong></div><div class="ops-readiness-track" role="progressbar" aria-label="<?=e($label)?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?=$percent?>"><span style="width:<?=$percent?>%"></span></div></div>
+      <?php endforeach;?>
+    </div></div>
+  </div>
+  <?php if($opsTeams===0):?><div class="ops-attention"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Event team roster is empty.</div><?php endif;?>
+  <?php if($opsMatches===0):?><div class="ops-attention"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Match schedule has not been imported.</div><?php endif;?>
+  <?php if($opsTeams>0&&$opsPit<$opsTeams):?><div class="ops-attention"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> <?=$opsTeams-$opsPit?> teams still need completed pit scouting.</div><?php endif;?>
+  <?php if($opsTeams>0&&$opsPre<$opsTeams):?><div class="ops-attention"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> <?=$opsTeams-$opsPre?> teams still need completed pre-scouting.</div><?php endif;?>
+  <?php if($opsTeams>0&&$opsMatches>0&&$opsPit>=$opsTeams&&$opsPre>=$opsTeams):?><div class="ops-attention"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> All tracked readiness categories are complete.</div><?php endif;?>
+  <div class="ops-links"><a class="btn secondary" href="<?=e(base_url('prescout/index.php'))?>">Pre-scout</a><a class="btn secondary" href="<?=e(base_url('pit/index.php'))?>">Pit Scouting</a><?php if($opsCanManage):?><a class="btn secondary" href="<?=e(base_url('admin/index.php'))?>">Manage Event</a><?php endif;?></div>
+ </section>
+</div>
+<?php else:?>
+<section class="card ops-panel"><h2>Ready when your event is</h2><p class="muted">Once your organization activates an event, live matches, scouting coverage, assignments, and saved reports will appear here automatically.</p><div class="ops-links"><?php if($opsCanManage):?><a class="btn" href="<?=e(base_url('admin/index.php'))?>">Set up an event</a><?php endif;?><a class="btn secondary" href="<?=e(base_url('help/index.php'))?>">Help &amp; Training</a></div></section>
+<?php endif;?>
+</div>
+<?php if($opsEvent && $opsMatch):?>
+<template id="ntv-match-template">
+<div class="ntv-match-shell">
+ <div class="ntv-overviewline"><span class="ntv-match-name"><?=e(neptune_match_label($opsMatch))?></span><span class="pill"><?=e(strtoupper((string)$opsMatch['state']))?></span><span class="muted">Field <?=e((string)($opsMatch['field_id']??'—'))?></span></div>
+ <div class="ntv-match-grid">
+ <?php foreach(['Red','Blue'] as $alliance):?>
+ <div class="ntv-alliance <?=strtolower($alliance)==='red'?'ntv-red':'ntv-blue'?>"><div class="ntv-alliance-head"><?=e($alliance)?> Alliance</div><div class="ntv-robots">
+ <?php for($station=1;$station<=3;$station++):
+  $teamRow=null;foreach($opsMatchTeams as $tm){if(strcasecmp((string)$tm['alliance'],$alliance)===0&&(int)$tm['station']===$station){$teamRow=$tm;break;}}
+  $assignment=null;foreach($opsMatchAssignments as $a){if(strcasecmp((string)$a['alliance'],$alliance)===0&&(int)$a['station']===$station){$assignment=$a;break;}}
+  $recentUser=false;$recentScout=false;
+  if($assignment){$userSeen=!empty($assignment['last_seen_at'])?strtotime((string)$assignment['last_seen_at'].' UTC'):false;$scoutSeen=!empty($assignment['scout_seen'])?strtotime((string)$assignment['scout_seen'].' UTC'):false;$recentUser=$userSeen!==false&&$userSeen>time()-150;$recentScout=$scoutSeen!==false&&$scoutSeen>time()-120;}
+ ?>
+ <div class="ntv-robot"><div class="ntv-station"><?=e(substr($alliance,0,1))?><?=$station?></div><div class="ntv-team">#<?=e((string)($teamRow['frc_team_number']??$assignment['frc_team_number']??'—'))?></div><div class="ntv-scout"><?php if($assignment):?><?=e((string)($assignment['display_name']?:'Scout #'.$assignment['assignee_user_id']))?> · <span class="ntv-tag"><?=e(ucfirst((string)$assignment['status']))?></span> · <span class="<?=($recentUser||$recentScout)?'ntv-online':'ntv-idle'?>"><?= $recentScout?'Scouting now':($recentUser?'Online':'No recent check-in') ?></span><?php else:?>Unassigned<?php endif;?></div></div>
+ <?php endfor; ?></div></div><?php endforeach; ?>
+ </div><div class="ntv-feed">Presence is based on recent authenticated check-ins (150 seconds) or match-scanning heartbeat (120 seconds), when available. Last login alone is not a connection signal.</div>
+</div>
+</template>
+<?php endif;?>
+<div id="ntv-stage" role="region" aria-label="Neptune Pit TV" aria-live="off">
+ <div class="ntv-top"><div class="ntv-titleblock"><div class="ntv-brand">NEPTUNE · PIT COMMAND CENTER</div><h1 id="ntv-title" class="ntv-heading">Live operations</h1><div class="ntv-event"><?=e((string)($opsEvent['name']??'No active event'))?></div></div>
+ <div class="ntv-actions"><button type="button" class="btn secondary" id="ntv-fullscreen"><i class="fa-solid fa-expand"></i> Fullscreen</button><button type="button" class="btn secondary" id="ntv-refresh"><i class="fa-solid fa-rotate"></i> Refresh data</button><button type="button" class="btn secondary" id="ntv-new-window"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open new window</button><a class="btn" href="<?=e(base_url('dashboard/index.php'))?>" id="ntv-close"><i class="fa-solid fa-arrow-left"></i> Dashboard</a></div></div>
+ <div class="ntv-content" id="ntv-content"></div><div class="ntv-status">Data updates without reloading the page · Read-only · Sign-in required</div>
+</div>
+<script>
+(function(){document.querySelectorAll('.ops-local-time').forEach(function(el){var d=new Date(el.getAttribute('datetime'));if(!isNaN(d.getTime()))el.textContent=d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});});})();
+</script>
+
+<script src="<?=e(base_url('assets/js/neptune-realtime-v2.js'))?>"></script>
+<script id="neptune-pit-tv-controller">
+(function(){
+ const valid={overview:{title:'Event overview',selector:'section[aria-label="Live event metrics"]'},matches:{title:'Match operations',selector:'section[aria-labelledby="opsMatchTitle"]'},coverage:{title:'Scouting coverage',selector:'#opsCoverage'},readiness:{title:'Event readiness',selector:'#opsReadiness'}};
+ const section=new URLSearchParams(location.search).get('tv');
+ if(!Object.prototype.hasOwnProperty.call(valid,section))return;
+ const stage=document.getElementById('ntv-stage'),target=document.getElementById('ntv-content');
+ if(!stage||!target)return;
+ // Move the fullscreen TV layer outside all dashboard stacking contexts.
+ // The dashboard's positioned container previously trapped it beneath the global site header.
+ document.body.appendChild(stage);
+ const close=document.getElementById('ntv-close');
+ document.getElementById('ntv-title').textContent=valid[section].title;
+ const status=stage.querySelector('.ntv-status');
+ let transportLabel='Checking connection',lastMarkup='',inFlight=false,queued=false,lastFetchAt=0,refreshTimer=null,backoffUntil=0;
+ function renderFrom(root){
+   const fragment=document.createDocumentFragment();
+   if(section==='matches'){
+     const template=root.querySelector('#ntv-match-template');
+     if(template)fragment.appendChild(template.content.cloneNode(true));
+   }else{
+     const source=root.querySelector(valid[section].selector);
+     if(source){const copy=source.cloneNode(true);copy.querySelectorAll('[data-tv],.ops-tv-btn,.ops-links').forEach(n=>n.remove());fragment.appendChild(copy);}
+   }
+   if(!fragment.childNodes.length){const message=document.createElement('div');message.className='card ops-panel';message.textContent='No current event data. Select an active event in Neptune.';fragment.appendChild(message);}
+   const temp=document.createElement('div');temp.appendChild(fragment);
+   const html=temp.innerHTML;
+   if(html!==lastMarkup){target.replaceChildren(...Array.from(temp.childNodes));lastMarkup=html;}
+ }
+ function setStatus(note){if(status)status.textContent=transportLabel+' · '+(note||'Updates every 30s, without page reload')+' · Read-only';}
+ renderFrom(document);
+ document.body.classList.add('ntv-open');
+ document.getElementById('ntv-fullscreen').addEventListener('click',function(){if(document.fullscreenElement){document.exitFullscreen?.();}else{stage.requestFullscreen?.().catch(()=>setStatus('Fullscreen unavailable; view remains open'));}});
+ document.getElementById('ntv-new-window').addEventListener('click',function(){
+   const newTab=window.open(location.href,'_blank');
+   if(newTab)newTab.opener=null;else setStatus('Popup blocked: allow popups or copy this page URL into a new tab');
+ });
+ function leave(){if(document.fullscreenElement){document.exitFullscreen?.().finally(()=>{location.assign(close.href);});}else location.assign(close.href);}
+ close.addEventListener('click',function(e){e.preventDefault();leave();});
+ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!document.fullscreenElement){e.preventDefault();leave();}});
+ async function update(force=false){
+   if(document.hidden&&!force)return;
+   if(inFlight){queued=true;return;}
+   const now=Date.now();
+   if(!force && (now-lastFetchAt<10000 || now<backoffUntil))return;
+   inFlight=true;lastFetchAt=now;
+   try{
+     const response=await fetch(location.href,{credentials:'same-origin',cache:'no-store',headers:{'Accept':'text/html','X-Neptune-TV-Refresh':'1'}});
+     if(!response.ok)throw Error('HTTP '+response.status);
+     if(response.redirected&&!response.url.includes('/dashboard/'))throw Error('Session expired or redirected');
+     const html=await response.text();
+     const doc=new DOMParser().parseFromString(html,'text/html');
+     if(!doc.querySelector('#ntv-stage'))throw Error('TV content unavailable; check session');
+     renderFrom(doc);backoffUntil=0;setStatus('Updated '+new Date().toLocaleTimeString());
+   }catch(error){backoffUntil=Date.now()+30000;setStatus('Update failed ('+error.message+'); retrying');}
+   finally{inFlight=false;if(queued){queued=false;if(Date.now()-lastFetchAt>=10000)update();}}
+ }
+ document.getElementById('ntv-refresh').addEventListener('click',()=>update(true));
+ refreshTimer=setInterval(()=>update(),30000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)update(true);});
+ if(window.NeptuneRealtime&&typeof window.NeptuneRealtime.create==='function'){
+   window.NeptuneRealtime.create({authUrl:<?=json_encode(base_url('api/realtime-token.php'),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,url:'/rr-realtime',onStatus:function(state){transportLabel=(state==='socket'?'WebSocket connected':'Polling fallback');setStatus();},onTraffic:function(payload){if(!payload||payload.type==='ping'||payload.type==='pong')return;update();}});
+ }else{transportLabel='Polling fallback';setStatus();}
 })();
 </script>
 <?php include dirname(__DIR__).'/partials_footer.php';

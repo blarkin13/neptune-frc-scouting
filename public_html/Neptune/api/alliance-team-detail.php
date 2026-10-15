@@ -173,12 +173,22 @@ foreach($ss->fetchAll() as $row){
 // Share-based points can fill match history when no traditional action was recorded.
 // The match's official alliance score and human observers are verified by the shared helper.
 $tagScoreMap=neptune_scoring_tag_match_points($pdo,$org,$eventId);
+$tagActivityMap=neptune_tag_activity_matches($pdo,$org,$eventId)[$team]??[];
 $qualificationTrend=[];
 foreach($matches as &$matchRow){
     $key=(int)$matchRow['id'].':'.(int)($matchRow['run_number']??0);
     $matchRow['scouted']=isset($scoutedRuns[$key]) || (int)$matchRow['actions']>0;
+    $evidence=$tagActivityMap[(int)$matchRow['id']]??null;
+    $matchRow['tag_activity_signals']=(int)($evidence['activity_signal_count']??0);
+    $matchRow['tag_observers']=(int)($evidence['observers']??0);
+    $matchRow['tag_defense_status']=(string)($evidence['defense_status']??'unknown');
+    $matchRow['tag_labels']=((int)$matchRow['actions']===0)?($evidence['tags']??[]):[];
     $tagEstimate=$tagScoreMap[$team][(int)$matchRow['id']]??null;
     $matchRow['tag_estimated']=(int)$matchRow['scoring_events']===0 && $tagEstimate!==null;
+    $matchRow['tag_points']=$matchRow['tag_estimated']?(float)$tagEstimate['points']:null;
+    $matchRow['tag_share_pct']=$matchRow['tag_estimated']?($tagEstimate['contribution_pct']??null):null;
+    $matchRow['tag_confidence_pct']=$matchRow['tag_estimated']?($tagEstimate['confidence_pct']??null):null;
+    $matchRow['tag_score_origin']=$matchRow['tag_estimated']?($tagEstimate['alliance_score_source']??''):null;
     if((string)$matchRow['comp_level']!=='qm' || (!$matchRow['scouted'] && !$matchRow['tag_estimated'])) continue;
     $qualificationTrend[]=[
         'match_id'=>(int)$matchRow['id'],
@@ -659,6 +669,13 @@ json_response([
         'ppm'=>!empty($stats['has_scoring_data'])?round((float)$stats['ppm'],1):null,
         'success_rate'=>(($stats['successes']??0)+($stats['failures']??0))>0?round((float)$stats['success_rate'],1):null,
         'defense_per_match'=>!empty($stats['scouted_matches'])?round((float)$stats['defense_per_match'],2):null,
+        'defense_display_source'=>(string)($stats['defense_display_source']??'none'),
+        'tag_defense_matches'=>(int)($stats['tag_defense_matches']??0),
+        'tag_defense_known_matches'=>(int)($stats['tag_defense_known_matches']??0),
+        'tag_defense_mixed_matches'=>(int)($stats['tag_defense_mixed_matches']??0),
+        'tag_activity_signals'=>(int)($stats['tag_activity_signals']??0),
+        'tag_observation_matches'=>(int)($stats['tag_observation_matches']??0),
+        'activity_display_source'=>(string)($stats['activity_display_source']??'none'),
         'cycle_time'=>isset($stats['cycle_time'])&&$stats['cycle_time']!==null?round((float)$stats['cycle_time'],1):null,
         'actions'=>(int)($stats['actions']??0),
         'successes'=>(int)($stats['successes']??0),

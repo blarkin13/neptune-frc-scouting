@@ -20,7 +20,19 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     verify_csrf();
     $action=(string)($_POST['action']??'');
 
-    if($portableLocal && in_array($action,['sync_to_cloud','download_from_cloud','sync_both'],true)){
+    if($portableLocal && $action==='resolve_match_tag'){
+        try {
+            require_once dirname(__DIR__,3).'/neptune_secure/portable-match-tag-resolver.php';
+            $out=npp_resolve_match_tag_conflict($pdo,$config,(int)$u['id'],
+                (int)($_POST['event_id']??0),(int)($_POST['match_id']??0),
+                (int)($_POST['scout_id']??0),(int)($_POST['team']??0),
+                (string)($_POST['choice']??''));
+            $which=$out['choice']==='keep_aws'?'AWS':'Portable';
+            $flash=['type'=>'good','message'=>'Resolved this Match Tag conflict: kept '.$which.'. The choice was audited. Run Download AWS Scouting to verify agreement.'];
+        }catch(Throwable $e){
+            $flash=['type'=>'bad','message'=>'Conflict resolution did not complete. Neither version should be assumed resolved.','detail'=>$e->getMessage()];
+        }
+    }elseif($portableLocal && in_array($action,['sync_to_cloud','download_from_cloud','sync_both'],true)){
         // Release the browser session lock while lengthy manual uploads run.
         // Presence and connection-status polling can continue independently.
         if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
@@ -381,13 +393,80 @@ Contains your organization's account password hashes and scouting data. Google-l
 })();
 </script>
 <?php if($syncSummary):?>
-<div class="npd-card" style="margin-top:14px">
-  <strong><?=!empty($syncSummary['database_incomplete'])
-      ? 'Database sync incomplete — review required'
-      : (!empty($syncSummary['media_incomplete']) ? 'Database synchronized — media needs attention' : 'Sync completed')?></strong>
+<?php $matchConflicts=(array)($syncSummary['download']['match_tag_reconciliation']['conflict_samples']??[]); ?>
+<?php $conflictCount=max((int)($syncSummary['download']['conflicts']??0),(int)($syncSummary['download']['match_tag_reconciliation']['conflicts']??0),count($matchConflicts)); ?>
+<div class="npd-card" id="neptune-sync-report" style="margin-top:14px" role="status" aria-live="polite">
+  <h2 style="margin:0 0 12px"<?= $conflictCount>0 ? ' role="alert"' : '' ?>><?= $conflictCount>0
+      ? 'Sync needs attention — '.e((string)$conflictCount).' unresolved conflict'.($conflictCount===1?'':'s')
+      : (!empty($syncSummary['database_incomplete']) ? 'Database sync incomplete — review required'
+      : (!empty($syncSummary['media_incomplete']) ? 'Database synchronized — media needs attention' : 'Sync completed')) ?></h2>
+  <?php if($conflictCount>0): ?>
+  <p><strong>Action required:</strong> The versions disagree. Open the conflict review dialog before considering the sync complete. Neither version is selected automatically.</p>
+  <?php endif; ?>
+<?php if($matchConflicts): ?>
+<style>
+#neptune-conflict-modal{box-sizing:border-box;width:min(92vw,650px);max-height:min(80vh,720px);overflow:auto;margin:auto;padding:24px;border:1px solid #64748b;border-radius:16px;background:#101d2e;color:#f1f5f9;box-shadow:0 20px 75px #000b}
+#neptune-conflict-modal::backdrop{background:rgba(0,0,0,.78)}
+#neptune-conflict-modal .npd-card{background:#15263c}
+#neptune-conflict-modal .npd-actions{display:flex;flex-wrap:wrap;gap:12px}
+#neptune-conflict-modal button{cursor:pointer}
+#neptune-conflict-modal [hidden]{display:none!important}
+#neptune-conflict-modal .npd-card{padding:18px;margin:0!important}
+#neptune-conflict-modal .npd-card p{margin:10px 0 16px}
+#neptune-conflict-modal .npd-actions button{font-size:0.95rem;padding:10px 14px}
+#neptune-conflict-close{flex:0 0 auto;white-space:nowrap}
+#neptune-resolution-confirm{background:transparent!important;border:0!important;padding:0!important}
+#neptune-resolution-confirm .npd-actions{margin-top:24px}
+.neptune-conflict-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.neptune-conflict-modal-header h2{margin:0 0 12px}
+#neptune-conflict-close{font-size:1rem;padding:8px 14px}
+</style>
+<button type="button" id="neptune-conflict-open" onclick="document.getElementById('neptune-conflict-modal').showModal()">Review <?=e((string)$conflictCount)?> unresolved conflict<?= $conflictCount===1?'':'s' ?></button>
+<dialog id="neptune-conflict-modal" aria-labelledby="neptune-conflict-title">
+<div class="neptune-conflict-modal-header">
+<h2 id="neptune-conflict-title">Resolve Match Tag Scouting conflicts</h2>
+<button type="button" id="neptune-conflict-close" onclick="document.getElementById('neptune-conflict-modal').close()" aria-label="Close conflict dialog">Close ×</button>
+</div>
+<p id="neptune-conflict-intro">Choose which copy to retain for each conflicting record. The other copy is preserved in an audit snapshot.</p>
+<div id="neptune-resolution-choices">
+<?php foreach($matchConflicts as $conflict): ?>
+<?php $eid=(int)($conflict['event_id']??0);$mid=(int)($conflict['match_id']??0);$uid=(int)($conflict['scout_id']??0);$team=(int)($conflict['team']??0); ?>
+<?php if($eid>0 && $mid>0 && $uid>0 && $team>0 && (string)($conflict['reason']??'')!=='missing_local'): ?>
+<div class="npd-card" style="margin:12px 0">
+<strong>Event <?=e((string)$eid)?> · <?=e((string)($conflict['match_level']??''))?> <?=e((string)($conflict['match_number']??''))?> · Team <?=e((string)$team)?> · Scout <?=e((string)$uid)?></strong>
+<p>Reason: <?=e((string)($conflict['reason']??'different_versions'))?>. Choose only after reviewing each server's scouting screen.</p>
+<div class="npd-actions">
+<?php foreach(['keep_aws'=>'Keep AWS — copy to Portable','keep_portable'=>'Keep Portable — copy to AWS'] as $choice=>$label): ?>
+<form method="post" class="neptune-resolution-form">
+<input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
+<input type="hidden" name="action" value="resolve_match_tag">
+<input type="hidden" name="event_id" value="<?=e((string)$eid)?>">
+<input type="hidden" name="match_id" value="<?=e((string)$mid)?>">
+<input type="hidden" name="scout_id" value="<?=e((string)$uid)?>">
+<input type="hidden" name="team" value="<?=e((string)$team)?>">
+<input type="hidden" name="choice" value="<?=e($choice)?>">
+<button type="button" class="neptune-resolution-choose" data-decision-label="<?=e($label)?>"><?=e($label)?></button>
+</form>
+<?php endforeach; ?>
+</div></div>
+<?php endif; ?>
+<?php endforeach; ?>
+</div>
+<div id="neptune-resolution-confirm" hidden aria-live="polite">
+  <h3 style="margin-top:0">Confirm your choice</h3>
+  <p id="neptune-resolution-description"></p>
+  <p>Only this record will change. The previous values will be saved in the audit history.</p>
+  <div class="npd-actions">
+    <button type="button" id="neptune-resolution-cancel">Back</button>
+    <button type="button" id="neptune-resolution-apply">Confirm and apply</button>
+  </div>
+</div>
+</dialog>
+<?php endif; ?>
+
   <?php $totals=$syncSummary['totals']??[]; ?>
   <?php if(isset($syncSummary['download'])):?><p><strong>AWS → Portable:</strong> <?=e(number_format((int)$syncSummary['download']['inserted']))?> new records imported · <?=e(number_format((int)($syncSummary['download']['updated']??0)))?> existing tag observations updated · <?=e(number_format((int)$syncSummary['download']['existing']))?> previously present · <?=e((string)$syncSummary['download']['pages'])?> cloud import pages.</p>
-<?php if((int)($syncSummary['download']['conflicts']??0)>0):?><p><strong>Attention:</strong> <?=e((string)$syncSummary['download']['conflicts'])?> existing observations have competing cloud/local changes and were preserved. Review the conflict samples in the report.</p><?php endif;?><?php endif;?>
+<?php endif;?>
   <?php if(isset($syncSummary['events_synced'])):?><p>Events: <?=e((string)($syncSummary['events_synced']??0))?> ·
      Rows sent: <?=e(number_format((int)($totals['rows_sent']??0)))?> ·
      Unchanged rows: <?=e(number_format((int)($totals['rows_unchanged']??0)))?> ·
@@ -422,5 +501,59 @@ Contains your organization's account password hashes and scouting data. Google-l
 </article>
 </div>
 <?php endif;?>
+<?php if($syncSummary && $matchConflicts): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modal = document.getElementById('neptune-conflict-modal');
+  if (!modal) return;
+  var confirmation = document.getElementById('neptune-resolution-confirm');
+  var description = document.getElementById('neptune-resolution-description');
+  var confirmButton = document.getElementById('neptune-resolution-apply');
+  var cancelButton = document.getElementById('neptune-resolution-cancel');
+  var pendingForm = null;
+  var submitting = false;
+  var choicePane = document.getElementById('neptune-resolution-choices');
+  var intro = document.getElementById('neptune-conflict-intro');
+  var title = document.getElementById('neptune-conflict-title');
+  modal.querySelectorAll('.neptune-resolution-choose').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var form = button.closest('form');
+      if (!form || submitting) return;
+      var matchCard = form.closest('.npd-card');
+      var matchName = matchCard ? matchCard.querySelector('strong') : null;
+      pendingForm = form;
+      description.textContent = (button.dataset.decisionLabel || button.textContent.trim()) + ' for ' + (matchName ? matchName.textContent.trim() : 'this record') + '?';
+      choicePane.hidden = true;
+      intro.hidden = true;
+      confirmation.hidden = false;
+      title.textContent = 'Confirm resolution';
+      modal.scrollTop = 0;
+      confirmButton.focus({preventScroll:true});
+    });
+  });
+  cancelButton.addEventListener('click', function () {
+    confirmation.hidden = true;
+    choicePane.hidden = false;
+    intro.hidden = false;
+    title.textContent = 'Resolve Match Tag Scouting conflicts';
+    pendingForm = null;
+  });
+  confirmButton.addEventListener('click', function () {
+    if (!pendingForm || submitting) return;
+    submitting = true;
+    confirmButton.disabled = true;
+    pendingForm.submit();
+  });
+  modal.addEventListener('close', function () {
+    confirmation.hidden = true;
+    choicePane.hidden = false;
+    intro.hidden = false;
+    title.textContent = 'Resolve Match Tag Scouting conflicts';
+    pendingForm = null;
+  });
+  if (typeof modal.showModal === 'function' && !modal.open) modal.showModal();
+});
+</script>
+<?php endif; ?>
 </section>
 <?php include dirname(__DIR__).'/partials_footer.php'; ?>

@@ -364,11 +364,11 @@ window.NeptuneAssignmentNotificationsConfig={
  userId:<?=(int)$u['id']?>
 };
 </script>
-<link rel="stylesheet" href="<?=e(base_url('assets/css/neptune-assignment-notifications.css'))?>?v=1">
-<script defer src="<?=e(base_url('assets/js/neptune-assignment-notifications.js'))?>?v=1"></script>
+<link rel="stylesheet" href="<?=e(base_url('assets/css/neptune-assignment-notifications.css'))?>?v=4">
+<script defer src="<?=e(base_url('assets/js/neptune-assignment-notifications.js'))?>?v=4"></script>
 <?php endif; ?>
 <?php if(!empty($u) && !($isPublicHome??false)): ?>
 <script>if(window.NeptuneAssignmentNotificationsConfig){window.NeptuneAssignmentNotificationsConfig.pushEndpoint=<?=json_encode(base_url('api/assignment-push.php'))?>;window.NeptuneAssignmentNotificationsConfig.pushBase=<?=json_encode(base_url(''))?>;}</script>
-<script defer src="<?=e(base_url('assets/js/neptune-assignment-push.js'))?>?v=1"></script>
+<script defer src="<?=e(base_url('assets/js/neptune-assignment-push.js'))?>?v=4"></script>
 <?php endif; ?>
 </body></html>

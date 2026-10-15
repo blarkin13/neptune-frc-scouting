@@ -134,6 +134,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if(!$savedRow)throw new RuntimeException('Could not reload the saved Tag observation.');
             tag_unified_sync_match_observation($pdo,$savedRow,$selectedTags,$tagWeights);
             $pdo->commit();
+            require_once dirname(__DIR__).'/_assignment_auto_complete.php';
+            nac_try_finish($pdo,$org,'match',$eventId,$matchId,$userId);
         }catch(Throwable $saveError){
             if($pdo->inTransaction())$pdo->rollBack();
             throw $saveError;
@@ -576,6 +578,9 @@ body.impact-modal-open{overflow:hidden!important}
 .manual-score-dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:20px;width:min(94vw,480px);max-height:calc(100dvh - 32px);overflow:auto;padding:22px;box-shadow:0 30px 100px var(--shadow);box-sizing:border-box}
 .manual-score-dialog::backdrop{background:var(--overlay-strong)}
 .manual-score-dialog h3{margin:4px 0 10px;font-size:1.55rem}
+.manual-score-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
+.manual-score-close{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border-radius:12px;background:var(--panel2,var(--panel));color:var(--text);border:1px solid var(--line);cursor:pointer}
+.manual-score-close:hover,.manual-score-close:focus-visible{border-color:var(--accent);color:var(--accent)}
 .manual-score-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:17px 0}
 .manual-score-fields label{font-size:.83rem;font-weight:900;display:grid;gap:8px}
 .manual-score-fields input{width:100%;box-sizing:border-box;min-height:54px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:1.25rem;font-weight:950;background:var(--panel2,var(--panel));color:var(--text)}
@@ -1125,8 +1130,7 @@ body.impact-modal-open{overflow:hidden!important}
     </dialog>
     <dialog class="manual-score-dialog" id="manualScoresDialog" aria-labelledby="manualScoresTitle">
       <form id="manualScoresForm" autocomplete="off">
-        <div class="impact-kicker">MANUAL FINAL RESULT · <?=e($match ? impact_match_label($match) : 'MATCH')?></div>
-        <h3 id="manualScoresTitle">Alliance final scores</h3>
+        <div class="manual-score-head"><div><div class="impact-kicker">MANUAL FINAL RESULT · <?=e($match ? impact_match_label($match) : 'MATCH')?></div><h3 id="manualScoresTitle">Alliance final scores</h3></div><button type="button" class="manual-score-close" id="manualScoresClose" aria-label="Close alliance scores" title="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
         <div class="manual-score-caption">Manual scores are shared with every scout in your organization. You can enter or correct them even when an official result has already arrived; official scores always take precedence in analytics.</div>
         <div class="manual-official-box" role="group" aria-label="Current official match scores">
           <div class="manual-official-header"><strong>Official match result</strong><span class="manual-official-source" id="manualOfficialSource">Checking…</span></div>
@@ -2621,6 +2625,13 @@ body.impact-modal-open{overflow:hidden!important}
   }
   scoreOpen?.addEventListener('click',openManualScores);
   document.getElementById('manualScoresCancel')?.addEventListener('click',()=>scoreDialog.close());
+  document.getElementById('manualScoresClose')?.addEventListener('click',()=>scoreDialog.close());
+  // Close only on clicks originating outside the dialog content, not score inputs.
+  scoreDialog?.addEventListener('click',event=>{
+    if(!scoreDialog.open)return;
+    const rect=scoreDialog.getBoundingClientRect();
+    if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)scoreDialog.close();
+  });
   scoreForm?.addEventListener('submit',saveManualScores);
   scoreOverwrite?.addEventListener('click',async()=>{
     if(!scoreConflictServer)return;
@@ -2674,4 +2685,15 @@ body.impact-modal-open{overflow:hidden!important}
 })();
 </script>
 <?php endif;?>
+<?php if((int)($_GET['qa_run']??0)>0): ?>
+<script>
+window.NeptuneQaTracker={
+ runId:<?=(int)$_GET['qa_run']?>,
+ csrf:<?=json_encode(csrf_token(),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ url:<?=json_encode(base_url('api/qa-nav.php'),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ kind:'tag-match',matchId:(int)$matchId,robot:(int)$selectedTeam
+};
+</script>
+<script defer src="<?=e(base_url('assets/js/neptune-qa-tracker.js'))?>?v=1"></script>
+<?php endif; ?>
 <?php include dirname(__DIR__) . '/partials_footer.php'; ?>

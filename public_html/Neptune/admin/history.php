@@ -3,6 +3,8 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__).'/_event_selection.php';
 $u=require_role(['owner','admin']);
 $org=(int)$u['organization_id'];$msg='';$error='';
+if(($_SERVER['REQUEST_METHOD']??'GET')==='GET'){header('Location: '.base_url('admin/events.php?event_view=archived'),true,302);exit;}
+
 if($_SERVER['REQUEST_METHOD']==='POST'){
     verify_csrf();
     try{
@@ -10,6 +12,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         $s=$pdo->prepare('UPDATE games SET is_archived=? WHERE id=? AND organization_id=?');$s->execute([$archive,$gameId,$org]);
         if(!$s->rowCount())throw new RuntimeException('Game not found or no change was required.');
         $msg=$archive?'Game archived. It will stay out of normal game selectors.':'Game restored to normal game selectors.';
+        header('Location: '.base_url('admin/events.php#settings'),true,303);exit;
     }catch(Throwable $e){$error=$e->getMessage();}
 }
 $s=$pdo->prepare("SELECT g.id,g.name,g.season_year,g.is_archived,g.updated_at,
