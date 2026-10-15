@@ -3031,6 +3031,33 @@ neptune_secure/config.php</span>
                     </div>
                 </details>
 
+
+                <details class="nlp-reveal">
+                    <summary>What is the recommended event scouting workflow?</summary>
+                    <div class="nlp-detail-body">
+                        Configure the season game, create an event, import teams, pre-scout and pit-scout robots,
+                        load the official match schedule, run live scouting, and review robot intelligence in Analytics.
+                        These steps are also covered in the built-in Help &amp; Training pages after sign-in.
+                    </div>
+                </details>
+
+                <details class="nlp-reveal">
+                    <summary>What do I need for a self-hosted installation?</summary>
+                    <div class="nlp-detail-body">
+                        A server with PHP 8+, MySQL/MariaDB, and HTTPS. Keep the public Neptune application
+                        under the web root and configuration/API credentials in the separate private
+                        <code>neptune_secure</code> directory. Follow the supplied schema and registration instructions.
+                        A portable local server is another option for offline events.
+                    </div>
+                </details>
+
+                <details class="nlp-reveal">
+                    <summary>What happens if a scouting match is restarted?</summary>
+                    <div class="nlp-detail-body">
+                        Authorized match operators can use the re-scout / ready-again workflow so a fresh scouting
+                        run supersedes the previous run. Check match and report status before relying on analytics.
+                    </div>
+                </details>
             </div>
         </div>
     </section>

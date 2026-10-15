@@ -1145,11 +1145,11 @@ include dirname(__DIR__).'/partials_header.php';
           <div class="robot-lookup-event">
             <div class="toolbar" style="justify-content:space-between;margin-bottom:8px">
               <div><b><?=e($summary['season_year'].' · '.$summary['game_name'])?></b><div class="muted"><?=e($summary['event_name'])?></div></div>
-              <span class="pill"><?=e($summary['match_count'])?> <?=!empty($summary['tag_estimated_matches'])?'scored, tagged':'scouted'?> matches<?php if(!empty($summary['tag_estimated_matches'])&&is_numeric($summary['tag_confidence_pct']??null)):?> · <?=number_format((float)$summary['tag_confidence_pct'],0)?>% evidence confidence<?php endif;?></span>
+              <span class="pill"><?=e($summary['match_count'])?> scored matches<?php if(!empty($summary['tag_estimated_matches'])):?> · <?=e($summary['tag_estimated_matches'])?> Tag-estimated<?php endif;?><?php if(!empty($summary['tag_estimated_matches'])&&is_numeric($summary['tag_confidence_pct']??null)):?> · <?=number_format((float)$summary['tag_confidence_pct'],0)?>% evidence confidence<?php endif;?></span>
             </div>
             <div class="robot-lookup-kpis">
-              <div class="robot-lookup-kpi"><b><?=rl_num($summary['total_points'],1)?></b><span class="muted"><?=!empty($summary['tag_estimated_matches'])?'Tag-estimated points':'Scout points'?></span></div>
-              <div class="robot-lookup-kpi"><b><?=rl_num($ppm,1)?></b><span class="muted"><?=!empty($summary['tag_estimated_matches'])?'Est. points / match':'Points / match'?></span></div>
+              <div class="robot-lookup-kpi"><b><?=rl_num($summary['total_points'],1)?></b><span class="muted"><?=!empty($summary['tag_estimated_matches'])?'Points incl. Tag estimates':'Scout points'?></span></div>
+              <div class="robot-lookup-kpi"><b><?=rl_num($ppm,1)?></b><span class="muted"><?=!empty($summary['tag_estimated_matches'])?'Points / scored match (incl. Tag)':'Points / match'?></span></div>
               <div class="robot-lookup-kpi"><b><?=rl_pct((int)$summary['success_count'],$decisions)?></b><span class="muted">Action success</span></div>
               <div class="robot-lookup-kpi"><b><?=e($summary['action_count'])?></b><span class="muted">Recorded actions</span></div>
             </div>

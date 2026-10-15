@@ -182,6 +182,12 @@ foreach($stats as $team=>$base){
         'neptune_epa'=>($points||$publicEpa!==null)?$blend['augur_epa']:null,
         'defense_per_match'=>$obs?array_sum(array_column($obs,'defense'))/count($obs):null,
         'defense_actions'=>array_sum(array_column($obs,'defense')),
+        'traditional_actions'=>(int)($base['actions']??0),
+        'tag_activity_signals'=>(int)($base['tag_activity_signals']??0),
+        'tag_defense_matches'=>(int)($base['tag_defense_matches']??0),
+        'tag_defense_known_matches'=>(int)($base['tag_defense_known_matches']??0),
+        'activity_source'=>(string)($base['activity_display_source']??'none'),
+        'defense_source'=>(string)($base['defense_display_source']??'none'),
         'public_depa'=>$d['public_depa']??$d['macro_depa']??null,
         'defense_depa'=>$d['defense_depa']??$d['scouted_depa']??null,
         'neptune_depa'=>$d['neptune_depa']??null,
@@ -276,7 +282,7 @@ include dirname(__DIR__).'/partials_header.php';
           <tr>
             <th colspan="3" class="rst-group">Robot</th>
             <th colspan="11" class="rst-group">Offense</th>
-            <th colspan="7" class="rst-group">Defense</th>
+            <th colspan="7" class="rst-group">Defense &amp; Activity</th>
             <th rowspan="2">Details</th>
           </tr>
           <tr>
@@ -294,8 +300,8 @@ include dirname(__DIR__).'/partials_header.php';
             <th class="rst-sort">Cycle <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">Public EPA <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">Nep. EPA <i class="fa-solid fa-sort"></i></th>
-            <th class="rst-sort">Defense/Match <i class="fa-solid fa-sort"></i></th>
-            <th class="rst-sort">Defense Actions <i class="fa-solid fa-sort"></i></th>
+            <th class="rst-sort" title="Traditional: successful defensive actions per scouted match. Tag fallback: defensive matches / matches with defense evidence.">Defense/Match <i class="fa-solid fa-sort"></i></th>
+            <th class="rst-sort" title="Traditional: counted actions. Tag fallback: distinct activity signals (not individual robot actions).">Activity <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">D-EPA <i class="fa-solid fa-sort"></i></th>
                         <th class="rst-sort">Nep. D-EPA <i class="fa-solid fa-sort"></i></th>
             <th class="rst-sort">Verified <i class="fa-solid fa-sort"></i></th>
@@ -320,8 +326,20 @@ include dirname(__DIR__).'/partials_header.php';
             <td data-value="<?=rst_value_attr($r['cycle_time'])?>"><?=$r['cycle_time']!==null?rst_num($r['cycle_time'],1).'s':'—'?></td>
             <td data-value="<?=rst_value_attr($r['public_epa'])?>"><?=rst_num($r['public_epa'],1)?></td>
             <td class="rst-good" data-value="<?=rst_value_attr($r['neptune_epa'])?>"><?=rst_num($r['neptune_epa'],1)?></td>
-            <td data-value="<?=rst_value_attr($r['defense_per_match'])?>"><?=rst_num($r['defense_per_match'],1)?></td>
-            <td data-value="<?=$r['defense_actions']?>"><?=$r['defense_actions']?></td>
+            <?php if($r['defense_source']==='traditional'):?>
+            <td data-value="<?=rst_value_attr($r['defense_per_match'])?>" title="Successful traditional defensive actions per scouted match"><?=rst_num($r['defense_per_match'],1)?></td>
+            <?php elseif($r['defense_source']==='tag'):?>
+            <td data-value="<?=$r['tag_defense_known_matches']?$r['tag_defense_matches']/$r['tag_defense_known_matches']:-1?>" title="Tag-observed defensive participation, not successful action counts"><?=e($r['tag_defense_matches'].' / '.$r['tag_defense_known_matches'])?> · Tag</td>
+            <?php else:?>
+            <td data-value="" title="No defense evidence">—</td>
+            <?php endif;?>
+            <?php if($r['activity_source']==='traditional'):?>
+            <td data-value="<?=$r['traditional_actions']?>" title="Recorded traditional actions"><?=e($r['traditional_actions'])?></td>
+            <?php elseif($r['activity_source']==='tag'):?>
+            <td data-value="<?=$r['tag_activity_signals']?>" title="Distinct Tag activity signals, not robot action counts"><?=e($r['tag_activity_signals'])?> · Tag</td>
+            <?php else:?>
+            <td data-value="" title="No action or activity evidence">—</td>
+            <?php endif;?>
             <td data-value="<?=rst_value_attr($r['public_depa'])?>"><?=rst_signed($r['public_depa'],1)?></td>
             <td class="rst-good" data-value="<?=rst_value_attr($r['neptune_depa'])?>"><?=rst_signed($r['neptune_depa'],1)?></td>
             <td data-value="<?=$r['verified']?>">

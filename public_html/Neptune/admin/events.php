@@ -23,7 +23,16 @@ $allowed=['planned','pit_open','schedule_ready','running','complete'];
 if($_SERVER['REQUEST_METHOD']==='POST'){
  verify_csrf();$op=(string)($_POST['op']??'');
  try{
-  if($op==='create'){
+  if($op==='game_archive' || $op==='game_restore'){
+   if(!$canConfig)throw new RuntimeException('Owner/Admin required to archive or restore game configurations.');
+   $gameId=(int)($_POST['game_id']??0);
+   if($gameId<1)throw new RuntimeException('Select a valid game.');
+   $archive=$op==='game_archive'?1:0;
+   $st=$pdo->prepare('UPDATE games SET is_archived=? WHERE id=? AND organization_id=? AND is_archived<>?');
+   $st->execute([$archive,$gameId,$org,$archive]);
+   if(!$st->rowCount())throw new RuntimeException('Game not found, already in that state, or not owned by your organization.');
+   $msg=$archive?'Game archived; existing events and scouting data are preserved.':'Game restored to normal game selectors.';
+  }elseif($op==='create'){
    $game=(int)($_POST['game_id']??0);$name=trim((string)($_POST['name']??''));if($name===''||$game<1)throw new RuntimeException('Event name and game are required.');
    $accessible=array_map('intval',array_column(eo_games($pdo,$org),'id'));if(!in_array($game,$accessible,true))throw new RuntimeException('Game is not available.');
    $revision=eo_revision($pdo,$game);if(!$revision)throw new RuntimeException('Game needs a published revision.');
@@ -70,13 +79,29 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   }
  }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();$error=$e->getMessage();}
 }
+$gameHistory=[];
+if($canConfig){
+ $historyQuery=$pdo->prepare('SELECT g.id,g.name,g.season_year,g.is_archived,COUNT(DISTINCT ev.id) AS event_count,MAX(COALESCE(ev.end_date,ev.start_date)) AS latest_event_date,SUM(CASE WHEN ev.is_current=1 THEN 1 ELSE 0 END) AS current_events FROM games g LEFT JOIN events ev ON ev.game_id=g.id AND ev.organization_id=g.organization_id WHERE g.organization_id=? GROUP BY g.id,g.name,g.season_year,g.is_archived ORDER BY g.season_year DESC,g.name');
+ $historyQuery->execute([$org]);
+ $gameHistory=$historyQuery->fetchAll(PDO::FETCH_ASSOC);
+}
 $games=eo_games($pdo,$org);
 $q=$pdo->prepare("SELECT e.*,g.name game_name,g.season_year,gr.revision_number revision_number,
+ DATE_ADD(COALESCE(e.end_date,e.start_date,DATE(e.created_at)), INTERVAL 18 MONTH) selector_cutoff,
  (SELECT COUNT(*) FROM event_teams et WHERE et.event_id=e.id) team_count,
  (SELECT COUNT(*) FROM matches m WHERE m.event_id=e.id AND m.organization_id=e.organization_id) match_count,
  (SELECT COUNT(*) FROM pit_scouting p WHERE p.event_id=e.id AND p.organization_id=e.organization_id AND p.status='complete') pit_count
  FROM events e JOIN games g ON g.id=e.game_id LEFT JOIN game_revisions gr ON gr.id=e.game_revision_id WHERE e.organization_id=? ORDER BY e.is_current DESC,e.start_date DESC,e.id DESC");$q->execute([$org]);$events=$q->fetchAll(PDO::FETCH_ASSOC);
-if(!$selectedId&&$events){foreach($events as $ev){if((int)$ev['active']===1){$selectedId=(int)$ev['id'];break;}}if(!$selectedId)$selectedId=(int)$events[0]['id'];}$selected=eo_event($pdo,$org,$selectedId);
+$activeEvents=array_values(array_filter($events,static fn($e)=>(int)$e['active']===1));
+$archivedEvents=array_values(array_filter($events,static fn($e)=>(int)$e['active']===0));
+$requestedEventView=(string)($_GET['event_view']??'');
+if(!$selectedId&&$events){
+ if($requestedEventView==='archived' && $archivedEvents)$selectedId=(int)$archivedEvents[0]['id'];
+ elseif($activeEvents)$selectedId=(int)$activeEvents[0]['id'];
+ else $selectedId=(int)$events[0]['id'];
+}
+$selected=eo_event($pdo,$org,$selectedId);
+$sidebarView=in_array($requestedEventView,['active','archived'],true)?$requestedEventView:(!empty($selected)&&!(int)$selected['active']?'archived':'active');
 $eoLiveReady=false;$eoLiveState=[];$eoLiveByEvent=[];$eoLiveInterval=2;
 try{
  $eoLiveReady=(bool)$pdo->query("SHOW TABLES LIKE 'neptune_event_live_state'")->fetchColumn();
@@ -137,7 +162,7 @@ if ($canConfig && $selected && (string)($_GET['refresh_diag']??'')==='1') {
 include dirname(__DIR__).'/partials_header.php';
 ?>
 <style>
-/* Event Operations v48 — scoped responsive workspace */
+/* Event Operations v11 sidebar refinement — scoped responsive workspace */
 .eo-workspace{--eo-blue:#54baff;--eo-surface:var(--panel2,var(--panel));--eo-line:var(--line);--eo-quiet:var(--muted);min-width:0}
 .eo-workspace *{box-sizing:border-box}
 .eo-workspace .eo-muted{color:var(--eo-quiet);font-size:.87rem;line-height:1.45}
@@ -274,6 +299,27 @@ include dirname(__DIR__).'/partials_header.php';
 .eo-diagnostic li[data-state="ok"] .eo-diagnostic-state{color:#8df1ae;border-color:#47b87b66}
 .eo-diagnostic li[data-state="error"] .eo-diagnostic-state{color:#ffa2a2;border-color:#ff6b6b77}
 .eo-diagnostic li[data-state="warning"] .eo-diagnostic-state{color:#e6ca79;border-color:#be943755}
+
+/* v11: archived events live beside active events in YOUR ORGANIZATION > Events. */
+.eo-event-list-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border:1px solid var(--eo-line);border-radius:11px;background:var(--eo-surface)}
+.eo-event-list-tab{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;padding:9px 6px!important;border:1px solid transparent!important;border-radius:8px!important;background:transparent!important;color:var(--eo-quiet)!important;box-shadow:none!important;font-weight:800!important;font-size:.79rem!important;cursor:pointer;white-space:nowrap;margin:0!important}
+.eo-event-list-tab:hover{color:var(--text)!important}
+.eo-event-list-tab[aria-selected=true]{color:var(--text)!important;background:var(--panel)!important;border-color:var(--eo-blue)!important;box-shadow:inset 0 0 0 1px #54baff22!important}
+.eo-event-list-tab:focus-visible{outline:2px solid var(--eo-blue)!important;outline-offset:2px}
+.eo-tab-counter{font-weight:800;font-size:.7rem;line-height:1;border-radius:7px;border:1px solid var(--eo-line);padding:4px 6px;min-width:22px;text-align:center}
+.eo-event-list-pane[hidden]{display:none!important}
+.eo-sidebar-body .eo-list{padding:2px 1px}
+.eo-events-empty{color:var(--eo-quiet);text-align:center;border:1px dashed var(--eo-line);border-radius:11px;padding:18px 11px;margin:6px 0;font-size:.83rem}
+.eo-events-empty i{display:block;font-size:1.2rem;margin-bottom:7px;color:var(--eo-blue)}
+.eo-game-settings{margin-top:22px;border:1px solid var(--eo-line);border-radius:12px;padding:14px;background:var(--eo-surface)}
+.eo-game-settings>summary{cursor:pointer;font-weight:800;font-size:.86rem}
+.eo-game-settings .table-wrap{margin-top:12px}
+.eo-event .eo-selector-cutoff{font-size:.67rem;opacity:.88;white-space:normal;line-height:1.35}
+.eo-event .eo-selector-cutoff i{margin-right:4px}
+.eo-event-archive-control{margin-top:12px;padding-top:12px;border-top:1px solid var(--eo-line)}
+.eo-event-archive-control form{flex:0 0 auto}
+.eo-event-archive-control button{white-space:nowrap}
+@media(max-width:550px){.eo-event-archive-control{flex-wrap:wrap}.eo-event-archive-control form{width:100%}}
 </style>
 <div class="eo-workspace">
 <header class="eo-page-head module-page-header neptune-page-hero" aria-label="Event Operations">
@@ -291,14 +337,28 @@ include dirname(__DIR__).'/partials_header.php';
 <?php if($msg):?><div class="notice good"><?=eo_h($msg)?></div><?php endif;?><?php if($error):?><div class="notice bad"><?=eo_h($error)?></div><?php endif;?>
 <div class="eo-grid">
 <aside class="card eo-card eo-sidebar" aria-label="Organization events">
- <div class="eo-sidebar-head"><div><div class="eo-page-eyebrow">YOUR ORGANIZATION</div><h2>Events</h2></div><span class="eo-sidebar-count" title="Active events"><?=count(array_filter($events,static fn($e)=>(int)$e['active']===1))?></span></div>
+ <div class="eo-sidebar-head"><div><div class="eo-page-eyebrow">YOUR ORGANIZATION</div><h2>Events</h2></div><span class="eo-sidebar-count" title="All events in your organization"><?=count($events)?></span></div>
  <label class="eo-search" for="eoEventSearch"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="eoEventSearch" type="search" placeholder="Find an event" autocomplete="off" aria-label="Filter events by name"></label>
- <div class="eo-sidebar-body"><div class="eo-list-heading"><span>Active events</span><strong><?=count(array_filter($events,static fn($e)=>(int)$e['active']===1))?></strong></div>
- <div class="eo-list" id="eoActiveEvents">
- <?php foreach($events as $ev):if(!(int)$ev['active'])continue;?><a class="eo-event <?= (int)$ev['id']===$selectedId?'selected':'' ?>" href="?event_id=<?=(int)$ev['id']?>" data-eo-event-name="<?=eo_h(strtolower((string)$ev['name'].' '.(string)$ev['game_name']))?>" title="<?=eo_h($ev['name'])?>" <?=(int)$ev['id']===$selectedId?'aria-current="page"':''?>><b class="eo-event-name"><?=eo_h($ev['name'])?></b><div class="eo-event-badges"><?php if((int)$ev['is_current']):?><span class="eo-status eo-current"><i class="fa-solid fa-star" aria-hidden="true"></i> Default</span><?php endif;?><span class="eo-status <?=eo_stage_class((string)$ev['event_status'])?>"><?=eo_h(eo_stage_label((string)$ev['event_status']))?></span><?php if($eoLiveReady):$liveOn=!empty($eoLiveByEvent[(int)$ev['id']]['enabled']);?><span class="eo-status <?=$liveOn?'eo-live-on':'eo-live-off'?>" data-eo-live-badge="<?=(int)$ev['id']?>" title="<?=$liveOn?'Automatic refresh enabled. Check Live Sync for last success.':'Automatic refresh disabled.'?>"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i> <span><?=$liveOn?'Live ON':'Live OFF'?></span></span><?php endif;?></div><span class="eo-event-meta"><?=eo_h($ev['season_year'].' '.$ev['game_name'])?></span><span class="eo-event-meta" style="margin-top:1px"><?=(int)$ev['team_count']?> robots · <?=(int)$ev['match_count']?> matches</span></a><?php endforeach;?>
+ <div class="eo-event-list-tabs" role="tablist" aria-label="Organization event lists">
+  <button type="button" id="eoEventListTabActive" class="eo-event-list-tab" role="tab" data-eo-event-list-tab="active" aria-selected="<?=$sidebarView==='active'?'true':'false'?>" aria-controls="eoEventListActive"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Active <span class="eo-tab-counter"><?=count($activeEvents)?></span></button>
+  <button type="button" id="eoEventListTabArchived" class="eo-event-list-tab" role="tab" data-eo-event-list-tab="archived" aria-selected="<?=$sidebarView==='archived'?'true':'false'?>" aria-controls="eoEventListArchived"><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Archived <span class="eo-tab-counter"><?=count($archivedEvents)?></span></button>
  </div>
- <?php if(!array_filter($events,static fn($e)=>(int)$e['active']===1)):?><p class="eo-muted">No active events.</p><?php endif;?><p class="eo-empty-search" id="eoNoEvents">No events match your search.</p>
- <?php $archivedEvents=array_values(array_filter($events,static fn($e)=>(int)$e['active']===0));if($archivedEvents):?><details class="eo-archived-wrap" id="eoArchivedEvents" <?=!empty($selected)&&!(int)$selected['active']?'open':''?>><summary>Archived events (<?=count($archivedEvents)?>)</summary><div class="eo-list"><?php foreach($archivedEvents as $ev):?><a class="eo-event eo-event-archived <?= (int)$ev['id']===$selectedId?'selected':'' ?>" href="?event_id=<?=(int)$ev['id']?>" data-eo-event-name="<?=eo_h(strtolower((string)$ev['name'].' '.(string)$ev['game_name']))?>" title="<?=eo_h($ev['name'])?>"><b class="eo-event-name"><?=eo_h($ev['name'])?></b><div class="eo-event-badges"><span class="eo-status eo-stage-archived">Archived</span><span class="eo-status <?=eo_stage_class((string)$ev['event_status'])?>"><?=eo_h(eo_stage_label((string)$ev['event_status']))?></span></div><span class="eo-event-meta"><?=eo_h($ev['season_year'].' '.$ev['game_name'])?></span><span class="eo-event-meta" style="margin-top:1px"><?=(int)$ev['team_count']?> robots · <?=(int)$ev['match_count']?> matches</span></a><?php endforeach;?></div></details><?php endif;?></div>
+ <div class="eo-sidebar-body">
+  <section class="eo-event-list-pane" id="eoEventListActive" role="tabpanel" aria-labelledby="eoEventListTabActive" data-eo-event-list-pane="active" <?=$sidebarView!=='active'?'hidden':''?>>
+   <div class="eo-list" id="eoActiveEvents">
+   <?php foreach($events as $ev):if(!(int)$ev['active'])continue;?><a class="eo-event <?= (int)$ev['id']===$selectedId?'selected':'' ?>" href="?event_id=<?=(int)$ev['id']?>&amp;event_view=active" data-eo-event-name="<?=eo_h(strtolower((string)$ev['name'].' '.(string)$ev['game_name']))?>" title="<?=eo_h($ev['name'])?>" <?=(int)$ev['id']===$selectedId?'aria-current="page"':''?>><b class="eo-event-name"><?=eo_h($ev['name'])?></b><div class="eo-event-badges"><?php if((int)$ev['is_current']):?><span class="eo-status eo-current"><i class="fa-solid fa-star" aria-hidden="true"></i> Default</span><?php endif;?><span class="eo-status <?=eo_stage_class((string)$ev['event_status'])?>"><?=eo_h(eo_stage_label((string)$ev['event_status']))?></span><?php if($eoLiveReady):$liveOn=!empty($eoLiveByEvent[(int)$ev['id']]['enabled']);?><span class="eo-status <?=$liveOn?'eo-live-on':'eo-live-off'?>" data-eo-live-badge="<?=(int)$ev['id']?>" title="<?=$liveOn?'Automatic refresh enabled. Check Live Sync for last success.':'Automatic refresh disabled.'?>"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i> <span><?=$liveOn?'Live ON':'Live OFF'?></span></span><?php endif;?></div><span class="eo-event-meta"><?=eo_h($ev['season_year'].' '.$ev['game_name'])?></span><span class="eo-event-meta" style="margin-top:1px"><?=(int)$ev['team_count']?> robots · <?=(int)$ev['match_count']?> matches</span><?php if((int)$ev['active']===1):?><span class="eo-event-meta eo-selector-cutoff" title="This is the 18-month routine selector cutoff, not an automatic archive date."><i class="fa-regular fa-clock" aria-hidden="true"></i> <?=(int)$ev['is_current']===1?'Default event · stays in selectors':'Selector cutoff · '.eo_h($ev['selector_cutoff']??'Date unknown')?> </span><?php endif;?></a><?php endforeach;?>
+   </div>
+   <?php if(!$activeEvents):?><div class="eo-events-empty"><i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i>No active events.</div><?php endif;?>
+   <p class="eo-empty-search" data-eo-search-empty hidden>No active events match your search.</p>
+  </section>
+  <section class="eo-event-list-pane" id="eoEventListArchived" role="tabpanel" aria-labelledby="eoEventListTabArchived" data-eo-event-list-pane="archived" <?=$sidebarView!=='archived'?'hidden':''?>>
+   <div class="eo-list" id="eoArchivedEvents">
+   <?php foreach($archivedEvents as $ev):?><a class="eo-event eo-event-archived <?= (int)$ev['id']===$selectedId?'selected':'' ?>" href="?event_id=<?=(int)$ev['id']?>&amp;event_view=archived" data-eo-event-name="<?=eo_h(strtolower((string)$ev['name'].' '.(string)$ev['game_name']))?>" title="<?=eo_h($ev['name'])?>"><b class="eo-event-name"><?=eo_h($ev['name'])?></b><div class="eo-event-badges"><span class="eo-status eo-stage-archived">Archived</span><span class="eo-status <?=eo_stage_class((string)$ev['event_status'])?>"><?=eo_h(eo_stage_label((string)$ev['event_status']))?></span></div><span class="eo-event-meta"><?=eo_h($ev['season_year'].' '.$ev['game_name'])?></span><span class="eo-event-meta" style="margin-top:1px"><?=(int)$ev['team_count']?> robots · <?=(int)$ev['match_count']?> matches</span></a><?php endforeach;?>
+   </div>
+   <?php if(!$archivedEvents):?><div class="eo-events-empty"><i class="fa-solid fa-box-open" aria-hidden="true"></i>No archived events yet.</div><?php endif;?>
+   <p class="eo-empty-search" data-eo-search-empty hidden>No archived events match your search.</p>
+  </section>
+ </div>
  <details class="eo-add" id="eoCreateEvent"><summary>Create new event</summary><form method="post" class="eo-form" style="margin-top:12px"><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="op" value="create"><label>Name <input name="name" required></label><label>Game <select name="game_id" required><?php foreach($games as $g):?><option value="<?=(int)$g['id']?>"><?=eo_h($g['season_year'].' '.$g['name'])?></option><?php endforeach;?></select></label><label>Start <input type="date" name="start_date"></label><label>End <input type="date" name="end_date"></label><label>TBA event key (optional) <input name="tba_event_key"></label><label>Event code (optional) <input name="event_code"></label><button type="submit">Create event</button></form></details>
 </aside>
 <article class="card eo-card eo-detail">
@@ -325,6 +385,17 @@ include dirname(__DIR__).'/partials_header.php';
    <p class="eo-muted">Update this event's stage without affecting other competitions.</p>
    <form method="post" class="eo-stage-form"><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="status"><div class="eo-form-field"><label for="eoEventStage">Competition stage</label><select name="status" id="eoEventStage" <?=!(int)$selected['active']?'disabled':''?>><?php foreach(['planned'=>'Planned','pit_open'=>'Pit Scouting Open','schedule_ready'=>'Schedule Ready','running'=>'Matches Running','complete'=>'Complete'] as $k=>$v):?><option value="<?=$k?>" <?=$selected['event_status']===$k?'selected':''?>><?=$v?></option><?php endforeach;?></select></div><button type="submit" <?=!(int)$selected['active']?'disabled':''?>>Save stage</button></form>
    <div class="eo-inline-setting"><div><h4><i class="fa-solid fa-star" aria-hidden="true"></i> Default event</h4><p>Used when older screens open without an event selected.</p></div><?php if((int)$selected['is_current']):?><span class="eo-status eo-current"><i class="fa-solid fa-check" aria-hidden="true"></i> Current default</span><?php elseif((int)$selected['active']):?><form method="post"><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="current"><button type="submit" class="secondary">Make default</button></form><?php else:?><span class="eo-muted">Archived</span><?php endif;?></div>
+   <?php if($canConfig):?>
+   <div class="eo-inline-setting eo-event-archive-control">
+     <div><h4><i class="fa-solid fa-box-archive" aria-hidden="true"></i> <?=!(int)$selected['active']?'Restore archived event':'Archive event now'?></h4>
+       <p><?=!(int)$selected['active']?'Restore this event to Active; its data was never deleted.':((int)$selected['is_current']?'Select another default event first.':'Immediately remove this event from Active; matches and scouting records remain intact.')?></p></div>
+     <?php if((int)$selected['is_current']):?><span class="pill">Default event</span>
+     <?php else:?><form method="post" <?=((int)$selected['active']===1)?'data-confirm="Archive this event now? Scouting data will be preserved." data-confirm-title="Archive event"':''?>>
+       <input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="<?=(int)$selected['active']?'archive':'unarchive'?>">
+       <button type="submit" class="secondary"><i class="fa-solid <?=(int)$selected['active']?'fa-box-archive':'fa-box-open'?>"></i> <?=(int)$selected['active']?'Archive now':'Restore event'?></button>
+     </form><?php endif;?>
+   </div>
+   <?php endif;?>
   </section>
   <section class="eo-panel">
    <div class="eo-panel-head"><i class="fa-solid fa-list-check" aria-hidden="true"></i><h3>Event readiness</h3></div>
@@ -388,11 +459,65 @@ include dirname(__DIR__).'/partials_header.php';
  <?php endif;?>
  <div class="eo-row"><a class="btn secondary" href="tba-sync.php"><i class="fa-solid fa-cloud-arrow-down"></i> TBA Sync</a><a class="btn secondary" href="first-sync.php?event_id=<?=$selectedId?>"><i class="fa-solid fa-calendar"></i> FIRST Events</a></div>
 </section>
-<section class="eo-pane" data-eo-pane="settings" id="eo-pane-settings" role="tabpanel" aria-labelledby="eo-tab-settings"><h3>Event details</h3><?php if(!$canConfig):?><p class="eo-muted">Owner/Admin required to edit details.</p><?php else:?><form method="post" class="eo-form"><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="details"><label>Event name <input name="name" value="<?=eo_h($selected['name'])?>" required></label><label>Start date <input type="date" name="start_date" value="<?=eo_h($selected['start_date'])?>"></label><label>End date <input type="date" name="end_date" value="<?=eo_h($selected['end_date'])?>"></label><button>Save details</button></form><?php endif;?><?php if($canConfig):?><h3>Game revision</h3><form method="post" class="eo-row" data-confirm="Update the event game revision? Existing records stay attached to this event."><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="update_revision"><select name="revision_id" aria-label="Published game revision"><?php foreach($revisionOptions as $r):?><option value="<?=(int)$r['id']?>" <?=(int)$selected['game_revision_id']===(int)$r['id']?'selected':''?>>Revision <?=(int)$r['revision_number']?></option><?php endforeach;?></select><button class="secondary">Update revision</button></form><?php endif;?><?php if($canConfig):?><div class="eo-archive-panel"><h3><?=!(int)$selected['active']?'Restore event':'Archive event'?></h3><p class="eo-muted"><?=!(int)$selected['active']?'Restore this event to the active event list. Existing observations, matches and roster remain intact.':'Hide this event from the active event list without deleting any observations, matches, rosters, or event settings.'?></p><?php if((int)$selected['is_current']):?><p class="eo-muted">Select another Default Current Event before archiving this one.</p><?php else:?><form method="post" <?=((int)$selected['active']===1)?'data-confirm="Archive this event? No scouting history will be deleted." data-confirm-title="Archive event"':''?>><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="<?=(int)$selected['active']?'archive':'unarchive'?>"><button class="secondary" type="submit"><i class="fa-solid <?=(int)$selected['active']?'fa-box-archive':'fa-box-open'?>"></i> <?=(int)$selected['active']?'Archive Event':'Unarchive Event'?></button></form><?php endif;?></div><?php endif;?><p class="eo-muted">Game revision <?=eo_h($selected['revision_number']??'unknown')?> · Event ID <?=$selectedId?>. TBA link changes and revision migrations remain in their existing specialized tools.</p></section>
+<section class="eo-pane" data-eo-pane="settings" id="eo-pane-settings" role="tabpanel" aria-labelledby="eo-tab-settings"><h3>Event details</h3><?php if(!$canConfig):?><p class="eo-muted">Owner/Admin required to edit details.</p><?php else:?><form method="post" class="eo-form"><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="details"><label>Event name <input name="name" value="<?=eo_h($selected['name'])?>" required></label><label>Start date <input type="date" name="start_date" value="<?=eo_h($selected['start_date'])?>"></label><label>End date <input type="date" name="end_date" value="<?=eo_h($selected['end_date'])?>"></label><button>Save details</button></form><?php endif;?><?php if($canConfig):?><h3>Game revision</h3><form method="post" class="eo-row" data-confirm="Update the event game revision? Existing records stay attached to this event."><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="op" value="update_revision"><select name="revision_id" aria-label="Published game revision"><?php foreach($revisionOptions as $r):?><option value="<?=(int)$r['id']?>" <?=(int)$selected['game_revision_id']===(int)$r['id']?'selected':''?>>Revision <?=(int)$r['revision_number']?></option><?php endforeach;?></select><button class="secondary">Update revision</button></form><?php endif;?><p class="eo-muted">Game revision <?=eo_h($selected['revision_number']??'unknown')?> · Event ID <?=$selectedId?>. TBA link changes and revision migrations remain in their existing specialized tools.</p><?php if($canConfig):?>
+<details class="eo-game-settings"><summary><i class="fa-solid fa-box-archive" aria-hidden="true"></i> Game configuration archives</summary>
+ <p class="eo-muted">Manage archived game configurations separately from archived events. Archiving a game does not delete its events, matches, or scouting records.</p>
+  <div class="eo-history-scroll table-wrap" style="margin-top:14px">
+    <table class="table" aria-label="Organization game archive history">
+      <thead><tr><th>Season</th><th>Game</th><th>Events</th><th>Latest event</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody>
+      <?php foreach($gameHistory as $hist):?>
+      <tr>
+        <td><b><?=eo_h($hist['season_year'])?></b></td>
+        <td><?=eo_h($hist['name'])?></td>
+        <td><?= (int)$hist['event_count'] ?><?= (int)$hist['current_events']>0?' · current':'' ?></td>
+        <td><?=eo_h($hist['latest_event_date']?:'—')?></td>
+        <td><span class="pill"><?= !empty($hist['is_archived'])?'Archived':'Active' ?></span></td>
+        <td><form method="post" action="<?=eo_h(base_url('admin/events.php?event_id='.$selectedId.'#settings'))?>" <?=empty($hist['is_archived'])?'data-confirm="Archive this game configuration? Existing events and scouting data will remain."':''?>><input type="hidden" name="csrf" value="<?=eo_h(csrf_token())?>"><input type="hidden" name="event_id" value="<?=$selectedId?>"><input type="hidden" name="game_id" value="<?=(int)$hist['id']?>"><input type="hidden" name="op" value="<?=!empty($hist['is_archived'])?'game_restore':'game_archive'?>"><button type="submit" class="secondary"><i class="fa-solid <?=!empty($hist['is_archived'])?'fa-box-open':'fa-box-archive'?>" aria-hidden="true"></i> <?=!empty($hist['is_archived'])?'Restore':'Archive'?></button></form></td>
+      </tr>
+      <?php endforeach;?>
+      <?php if(!$gameHistory):?><tr><td colspan="6">No games found for your organization.</td></tr><?php endif;?>
+      </tbody>
+    </table>
+  </div>
+</details>
+<?php endif;?></section>
 <?php endif;?></article></div>
 <script>(function(){let tabs=document.querySelectorAll('[data-eo-tab]');let panels=document.querySelectorAll('[data-eo-pane]');function show(name){tabs.forEach(b=>{let on=b.dataset.eoTab===name;b.setAttribute('aria-selected',on?'true':'false');b.tabIndex=on?0:-1});panels.forEach(p=>p.classList.toggle('active',p.dataset.eoPane===name));if(history.replaceState)history.replaceState(null,'','#'+name)}tabs.forEach(b=>b.addEventListener('click',()=>show(b.dataset.eoTab)));let hash=location.hash.substring(1);if(['overview','teams','schedule','sync','settings'].includes(hash))show(hash);
 document.querySelectorAll('[data-eo-switch]').forEach(el=>el.addEventListener('click',()=>show(el.dataset.eoSwitch)));
-let search=document.getElementById('eoEventSearch');if(search)search.addEventListener('input',()=>{let q=search.value.toLocaleLowerCase().trim(),visible=0;document.querySelectorAll('[data-eo-event-name]').forEach(e=>{let ok=e.dataset.eoEventName.includes(q);e.hidden=!ok;if(ok)visible++});let empty=document.getElementById('eoNoEvents');if(empty)empty.style.display=q&&visible===0?'block':'none';let archive=document.getElementById('eoArchivedEvents');if(archive&&q)archive.open=true;});
+// Organization event list tabs. Keep this state independent of the selected event detail tabs.
+let eventListTabs=Array.from(document.querySelectorAll('[data-eo-event-list-tab]'));
+let eventListPanes=Array.from(document.querySelectorAll('[data-eo-event-list-pane]'));
+let search=document.getElementById('eoEventSearch');
+function eoFilterEvents(){
+ const q=(search?.value||'').toLocaleLowerCase().trim();
+ for(const pane of eventListPanes){
+  const isActive=!pane.hidden;let shown=0,total=0;
+  pane.querySelectorAll('[data-eo-event-name]').forEach(event=>{
+   const match=event.dataset.eoEventName.includes(q);
+   event.hidden=!match;if(match)shown++;total++;
+  });
+  const empty=pane.querySelector('[data-eo-search-empty]');
+  if(empty){empty.hidden=!isActive||!q||shown!==0||total===0;empty.style.display=empty.hidden?'none':'block';}
+ }
+}
+function eoShowEventList(view,updateUrl=true){
+ if(view!=='archived')view='active';
+ eventListTabs.forEach(tab=>{const selected=tab.dataset.eoEventListTab===view;tab.setAttribute('aria-selected',selected?'true':'false');tab.tabIndex=selected?0:-1;});
+ eventListPanes.forEach(pane=>{pane.hidden=pane.dataset.eoEventListPane!==view;});
+ if(updateUrl){const url=new URL(window.location.href);url.searchParams.set('event_view',view);window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);}
+ eoFilterEvents();
+}
+for(const tab of eventListTabs){
+ tab.addEventListener('click',()=>eoShowEventList(tab.dataset.eoEventListTab));
+ tab.addEventListener('keydown',e=>{
+  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+  e.preventDefault();const next=e.key==='ArrowRight'?'archived':'active';eoShowEventList(next);eventListTabs.find(el=>el.dataset.eoEventListTab===next)?.focus();
+ });
+}
+if(search)search.addEventListener('input',eoFilterEvents);
+eoFilterEvents();
+
 let live=document.getElementById('eoTbaLiveToggle');if(live)live.addEventListener('click',async()=>{if(live.disabled)return;let next=live.dataset.enabled!=='1';live.disabled=true;try{let body=new URLSearchParams({csrf:live.dataset.csrf||'',enabled:next?'1':'0',event_id:live.dataset.event||''});let res=await fetch(live.dataset.endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','Accept':'application/json'},body});let data=await res.json().catch(()=>({}));if(!res.ok||!data.ok)throw new Error(data.message||'Unable to change At Event Live.');live.dataset.enabled=data.enabled?'1':'0';live.classList.toggle('is-on',!!data.enabled);live.setAttribute('aria-pressed',data.enabled?'true':'false');live.querySelector('strong').textContent=data.enabled?'ON':'OFF';document.querySelectorAll('[data-eo-live-badge]').forEach(badge=>{if(badge.dataset.eoLiveBadge!==live.dataset.event)return;badge.classList.toggle('eo-live-on',!!data.enabled);badge.classList.toggle('eo-live-off',!data.enabled);badge.title=data.enabled?'Automatic refresh enabled. Check Live Sync for last success.':'Automatic refresh disabled.';let label=badge.querySelector('span');if(label)label.textContent=data.enabled?'Live ON':'Live OFF';});let overview=document.getElementById('eoOverviewLiveStatus');if(overview){overview.textContent=data.enabled?'Enabled':'Disabled';overview.classList.toggle('eo-check-ok',!!data.enabled);overview.classList.toggle('eo-check-warn',!data.enabled);}window.NeptuneUI?.toast('At Event Live '+(data.enabled?'enabled':'disabled')+(data.event?.name?' for '+data.event.name:''),'good');}catch(e){window.NeptuneUI?.toast(e.message||'At Event Live update failed.','bad');}finally{live.disabled=false;}});
 
 let refresh=document.getElementById('eoRefreshNow');

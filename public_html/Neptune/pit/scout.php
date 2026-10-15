@@ -97,6 +97,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     break;
                 }
             }
+            if($status==='complete') { require_once dirname(__DIR__).'/_assignment_auto_complete.php'; nac_try_finish($pdo,$org,'pit',$eventId,$team,(int)$u['id']); }
             $msg=$status==='complete'?'Pit scouting marked complete.':'Draft saved.';
             if($savedPhotos){
                 $formats=array_values(array_unique(array_map(fn($x)=>(string)($x['format']??'image'),$savedPhotos)));

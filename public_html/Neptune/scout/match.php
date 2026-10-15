@@ -577,4 +577,15 @@ setInterval(()=>{if(realtime?.isOpen?.()&&document.visibilityState==='visible')s
 setInterval(tickLocalClock,150);
 window.addEventListener('beforeunload',()=>realtime?.close?.());
 </script>
+<?php if((int)($_GET['qa_run']??0)>0): ?>
+<script>
+window.NeptuneQaTracker={
+ runId:<?=(int)$_GET['qa_run']?>,
+ csrf:<?=json_encode(csrf_token(),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ url:<?=json_encode(base_url('api/qa-nav.php'),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
+ kind:'traditional',matchId:(int)$mid,robot:(int)$robot
+};
+</script>
+<script defer src="<?=e(base_url('assets/js/neptune-qa-tracker.js'))?>?v=1"></script>
+<?php endif; ?>
 <?php include dirname(__DIR__).'/partials_footer.php';

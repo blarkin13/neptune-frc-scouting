@@ -31,6 +31,7 @@ if($pit){$s=$pdo->prepare('SELECT category,file_path,caption,created_at FROM pit
 
 $s=$pdo->prepare("SELECT m.id,m.tba_match_key,m.comp_level,m.set_number,m.match_number,m.state,m.run_number,m.red_score,m.blue_score,m.winning_alliance,m.scheduled_time,mt.alliance,mt.station,
  COALESCE(SUM(CASE WHEN sa.match_run_number=m.run_number THEN sa.points ELSE 0 END),0) AS scout_points,
+ SUM(CASE WHEN sa.match_run_number=m.run_number AND ((sa.action_type='offense' AND sa.result IN ('Success','Failure')) OR sa.points<>0) THEN 1 ELSE 0 END) AS scoring_events,
  COUNT(CASE WHEN sa.match_run_number=m.run_number THEN sa.id END) AS action_count,
  SUM(CASE WHEN sa.match_run_number=m.run_number AND sa.action_type='offense' AND sa.result='Success' THEN 1 ELSE 0 END) AS offense_success,
  SUM(CASE WHEN sa.match_run_number=m.run_number AND sa.action_type='offense' AND sa.result IN ('Success','Failure') THEN 1 ELSE 0 END) AS offense_attempts,
@@ -44,6 +45,21 @@ $s=$pdo->prepare("SELECT m.id,m.tba_match_key,m.comp_level,m.set_number,m.match_
  GROUP BY m.id,m.tba_match_key,m.comp_level,m.set_number,m.match_number,m.state,m.run_number,m.red_score,m.blue_score,m.winning_alliance,m.scheduled_time,mt.alliance,mt.station
  ORDER BY FIELD(m.comp_level,'qm','ef','qf','sf','f','legacy'),m.set_number,m.match_number");
 $s->execute([$team,$org,$eventId,$team,$team,$org,$eventId]);$matches=$s->fetchAll();
+// Human Tag Scouting scoring shares supply an estimated robot value only when
+// this match has no recorded traditional scoring. Never change Scout Pts.
+$tagScoreMap=neptune_scoring_tag_match_points($pdo,$org,$eventId,array_column($matches,'id'))[$team]??[];
+$tagActivity=neptune_tag_activity_matches($pdo,$org,$eventId,array_column($matches,'id'))[$team]??[];
+foreach($matches as &$matchRow){
+    $tag=$tagScoreMap[(int)$matchRow['id']]??null;
+    $evidence=$tagActivity[(int)$matchRow['id']]??null;
+    $matchRow['tag_activity']=$evidence;
+    $matchRow['tag_defense_status']=$evidence['defense_status']??'unknown';
+    $matchRow['tag_points']=((int)$matchRow['scoring_events']===0 && $tag!==null)?(float)$tag['points']:null;
+    $matchRow['tag_share_pct']=$matchRow['tag_points']!==null?($tag['contribution_pct']??null):null;
+    $matchRow['tag_confidence_pct']=$matchRow['tag_points']!==null?($tag['confidence_pct']??null):null;
+    $matchRow['tag_score_origin']=$matchRow['tag_points']!==null?($tag['alliance_score_source']??''):'';
+}
+unset($matchRow);
 
 // The public AUGUR match archive is TBA-keyed. FIRST-only qualification
 // matches have no TBA key, so show their separate event-local provisional
@@ -187,7 +203,15 @@ $logo=!empty($logoInfo['exists'])?(string)$logoInfo['path']:'';
   </div>
   <div class="robot-modal-hero-stats">
     <div><span>Matches</span><b><?=e($r['matches'])?></b></div>
-    <div><span>Scout actions</span><b><?=e($r['actions'])?></b></div>
+    <?php if((int)$r['actions']>0):?>
+    <div><span>Recorded actions</span><b><?=e($r['actions'])?></b></div>
+    <?php elseif((int)($r['tag_activity_signals']??0)>0):?>
+    <div title="Distinct observed activity tags, not individually counted actions"><span>Tag activity signals</span><b><?=e($r['tag_activity_signals'])?></b></div>
+    <?php elseif((int)($r['tag_observation_matches']??0)>0):?>
+    <div><span>Tag-observed matches</span><b><?=e($r['tag_observation_matches'])?></b></div>
+    <?php else:?>
+    <div><span>Activity data</span><b>—</b></div>
+    <?php endif;?>
   </div>
 </div>
 
@@ -206,10 +230,16 @@ $logo=!empty($logoInfo['exists'])?(string)$logoInfo['path']:'';
       <div class="robot-detail-metrics robot-observed-grid">
         <div><span>Points / match</span><b><?=number_format((float)$r['ppm'],1)?></b></div>
         <div><span>Cycle time</span><b><?=$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'?></b></div>
-        <div><span>Offense success</span><b><?=number_format((float)$r['success_rate'],0)?>%</b></div>
-        <div><span>Defense / match</span><b><?=number_format((float)$r['defense_per_match'],1)?></b></div>
-        <div><span>Total scout points</span><b><?=number_format((float)$r['points'],0)?></b></div>
-        <div><span>Successful offense</span><b><?=e($r['successes'])?></b></div>
+        <div><span>Offense success</span><b><?=((int)$r['successes']+(int)$r['failures'])>0?number_format((float)$r['success_rate'],0).'%':'—'?></b></div>
+        <?php if(($r['defense_display_source']??'none')==='traditional'):?>
+        <div><span>Successful defense actions / scouted match</span><b><?=number_format((float)$r['defense_per_match'],1)?></b></div>
+        <?php elseif(($r['defense_display_source']??'none')==='tag'):?>
+        <div title="Tag-observed defensive participation, not a count of successful defensive actions"><span>Defensive matches (Tag)</span><b><?=e($r['tag_defense_matches'])?> / <?=e($r['tag_defense_known_matches'])?></b></div>
+        <?php else:?>
+        <div><span>Defense evidence</span><b>—</b></div>
+        <?php endif;?>
+        <div><span><?=!empty($r['tag_estimated_matches'])?'Observed + estimated points':'Total scout points'?></span><b><?=number_format((float)$r['points'],1)?></b></div>
+        <div><span>Successful offense</span><b><?=((int)$r['successes']+(int)$r['failures'])>0?e($r['successes']):'—'?></b></div>
       </div>
     </section>
   </div>
@@ -227,17 +257,38 @@ $logo=!empty($logoInfo['exists'])?(string)$logoInfo['path']:'';
           <details class="robot-match-card <?=e($m['state'])?>">
             <summary>
               <div class="robot-match-name"><span class="robot-result-badge <?=e($resultClass)?>"><?=e($result)?></span><div><b><?=e(neptune_match_label($m))?></b><small><?=e($m['alliance'].' '.$m['station'])?><?=($m['run_number']??1)>1?' · Run '.e($m['run_number']):''?></small></div></div>
-              <div><span>Scout pts</span><b><?=number_format((float)$m['scout_points'],0)?></b></div>
+              <div><span><?=($m['tag_points']!==null)?'Tag-est. pts':'Scout pts'?></span><b><?=number_format((float)($m['tag_points']??$m['scout_points']),1)?></b></div>
               <div><span>Offense</span><b><?=$rate!==null?number_format($rate,0).'%':'—'?></b></div>
-              <div><span>Defense</span><b><?=e((int)$m['defense_actions'])?></b></div>
+              <div><span><?=((int)$m['action_count']>0)?'Successful defense':'Defense · Tag'?></span><b><?php
+                if((int)$m['action_count']>0)echo e((int)$m['defense_actions']);
+                else echo match((string)$m['tag_defense_status']){
+                    'attempted'=>'Attempted','observed'=>'Observed','none'=>'None observed','mixed'=>'Mixed reports',default=>'—'
+                };
+              ?></b></div>
               <div><span title="EPA rating change after this match<?=($m['epa_source']??'')==='FIRST provisional'?' (event-local provisional, not official season EPA)':''?>">EPA Δ<?=($m['epa_source']??'')==='FIRST provisional'?' · FIRST':''?></span><b class="<?=is_numeric($m['epa_delta'])&&((float)$m['epa_delta'])>0?'positive':(is_numeric($m['epa_delta'])&&((float)$m['epa_delta'])<0?'negative':'')?>"><?=is_numeric($m['epa_delta'])?(((float)$m['epa_delta']>0?'+':'').number_format((float)$m['epa_delta'],1)):'—'?></b></div>
               <i class="fa-solid fa-chevron-down robot-match-chevron"></i>
             </summary>
             <div class="robot-match-detail-grid">
               <div><span>State</span><b><?=e(ucfirst($m['state']))?></b></div>
-              <div><span>Actions</span><b><?=e($m['action_count'])?></b></div>
+              <?php if((int)$m['action_count']>0):?>
+              <div><span>Recorded actions</span><b><?=e($m['action_count'])?></b></div>
+              <?php elseif(!empty($m['tag_activity'])):?>
+              <div><span>Tag activity signals</span><b><?=e($m['tag_activity']['activity_signal_count'])?></b></div>
+              <div><span>Tag observers</span><b><?=e($m['tag_activity']['observers'])?></b></div>
+              <?php else:?>
+              <div><span>Activity</span><b>—</b></div>
+              <?php endif;?>
+              <?php if((int)$m['action_count']===0 && !empty($m['tag_activity']['tags'])):?>
+              <div><span>Observed tags</span><b><?=e(implode(', ',array_map(static fn($tag)=>ucwords(str_replace('_',' ',$tag)),$m['tag_activity']['tags'])))?></b></div>
+              <?php endif;?>
               <div><span>Offense attempts</span><b><?=e($attempts)?></b></div>
               <div><span>Successful offense</span><b><?=e((int)$m['offense_success'])?></b></div>
+              <?php if($m['tag_points']!==null):?>
+              <div><span>Tag-estimated points</span><b><?=number_format((float)$m['tag_points'],1)?></b></div>
+              <div><span>Contribution share</span><b><?=number_format((float)$m['tag_share_pct'],1)?>%</b></div>
+              <div><span>Score source</span><b><?=e(ucfirst((string)$m['tag_score_origin']))?> alliance score</b></div>
+              <?php if($m['tag_confidence_pct']!==null):?><div><span>Evidence confidence</span><b><?=number_format((float)$m['tag_confidence_pct'],0)?>%</b></div><?php endif;?>
+              <?php endif;?>
               <?php if($m['red_score']!==null):?><div><span>Official score</span><b><?=e($m['red_score'])?>–<?=e($m['blue_score'])?></b></div><?php endif;?>
               <?php if(($m['epa_source']??'')==='FIRST provisional'&&is_array($m['first_epa_snapshot'])):$ep=$m['first_epa_snapshot']; ?>
                 <div><span>EPA source</span><b>FIRST · Provisional</b></div>

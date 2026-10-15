@@ -2358,7 +2358,7 @@
     const s = d?.event_stats || {};
     const matches = Math.max(0, Number(s.matches || 0));
     const actions = Array.isArray(d?.actions) ? d.actions : [];
-    const scoutedMatches = (d?.matches || []).filter(row => row?.scouted === true || Number(row?.actions || 0) > 0);
+    const scoutedMatches = (d?.matches || []).filter(row => row?.scouted === true || row?.tag_estimated === true || Number(row?.actions || 0) > 0 || Number(row?.tag_observers || 0) > 0);
     const byAction = new Map();
     const phaseOrder = ['auton', 'teleop', 'endgame', 'post_match', 'unknown'];
 
@@ -2426,32 +2426,32 @@
     const matchTable = scoutedMatches.length ? `<section class="alliance-detail-section alliance-scouting-stat-section">
       <h3>Scouted Match Breakdown</h3>
       <div class="table-wrap"><table class="alliance-scouting-stats-table">
-        <thead><tr><th>Match</th><th>Alliance</th><th>Scout Pts</th><th>Actions</th><th>Offense Success</th><th>Defense</th><th>Final Score</th></tr></thead>
+        <thead><tr><th>Match</th><th>Alliance</th><th>Points</th><th>Activity</th><th>Offense Success</th><th>Defense</th><th>Final Score</th></tr></thead>
         <tbody>${scoutedMatches.map(m => `<tr>
           <td><b>${esc(m.label)}</b></td>
           <td>${esc(m.alliance || '—')} ${Number(m.station || 0) || ''}</td>
-          <td>${num(m.scout_points, 1)}</td>
-          <td>${Number(m.actions || 0)}</td>
+          <td title="${esc(m.tag_estimated ? `Estimated: human share ${num(m.tag_share_pct, 1)}% · ${m.tag_score_origin || 'manual'} alliance score` : 'Traditional recorded scoring')}">${m.tag_estimated && m.tag_points != null ? esc(num(m.tag_points, 1)) + ' · Tag est.' : num(m.scout_points, 1)}</td>
+          <td title="${Number(m.actions || 0)>0?'Recorded traditional actions':'Qualitative Tag observations, not individual actions'}">${Number(m.actions || 0)>0 ? Number(m.actions) : (Number(m.tag_observers || 0)>0 ? `${Number(m.tag_activity_signals || 0)} tags` : '—')}</td>
           <td>${m.offense_rate == null ? '—' : `${num(m.offense_rate, 0)}%`}</td>
-          <td>${Number(m.defense || 0)}</td>
+          <td>${Number(m.actions || 0)>0 ? Number(m.defense || 0) : ({attempted:'Attempted · Tag',observed:'Observed · Tag',none:'No defense · Tag',mixed:'Mixed · Tag'})[m.tag_defense_status] || '—'}</td>
           <td>${m.red_score == null || m.blue_score == null ? '—' : `${Number(m.red_score)}–${Number(m.blue_score)}`}</td>
         </tr>`).join('')}</tbody>
       </table></div>
     </section>` : '';
 
-    return `<div class="alliance-detail-source">Source: Neptune scouting${Number(s.tag_estimated_matches || 0)>0?' + Tag Scouting estimates':''} · current event</div>
+    return `<div class="alliance-detail-source">Source: Neptune scouting${Number(s.tag_observation_matches || 0)>0?' + human Tag observations':''} · current event</div>
       <div class="alliance-kpis alliance-scouting-summary-kpis">
         ${kpi(matches, 'Matches with scoring data')}
         ${kpi(num(s.points, 1), Number(s.tag_estimated_matches || 0)>0?'Observed + estimated points':'Total scout points')}
         ${kpi(s.ppm == null ? '—' : num(s.ppm, 1), Number(s.tag_estimated_matches || 0)>0?'Scouted / est. PPM':'Points / match')}
-        ${kpi(Number(s.actions || 0), 'Recorded actions')}
-        ${kpi(Number(s.successes || 0), 'Successful actions')}
-        ${kpi(Number(s.failures || 0), 'Failed actions')}
+        ${Number(s.actions || 0)>0 ? kpi(Number(s.actions), 'Recorded actions') : (Number(s.tag_observation_matches || 0)>0 ? kpi(Number(s.tag_activity_signals || 0), 'Tag activity signals') : kpi('—', 'Activity evidence'))}
+        ${kpi(Number(s.actions || 0)>0?Number(s.successes || 0):'—', 'Successful actions')}
+        ${kpi(Number(s.actions || 0)>0?Number(s.failures || 0):'—', 'Failed actions')}
         ${kpi(s.success_rate == null ? '—' : `${num(s.success_rate, 0)}%`, 'Offense success')}
         ${kpi(s.cycle_time == null ? '—' : `${num(s.cycle_time, 1)}s`, 'Cycle time')}
-        ${kpi(num(s.defense_per_match, 1), 'Defense / match')}
+        ${s.defense_display_source === 'tag' ? kpi(`${Number(s.tag_defense_matches || 0)} / ${Number(s.tag_defense_known_matches || 0)}`, 'Defensive matches · Tag') : kpi(s.defense_per_match == null ? '—' : num(s.defense_per_match, 1), s.defense_display_source === 'traditional' ? 'Successful defense actions / match' : 'Defense evidence')}
       </div>
-      ${sections || '<div class="alliance-empty-small">No scouting actions have been recorded for this team at this event.</div>'}
+      ${sections || (Number(s.tag_observation_matches || 0)>0 ? '<div class="alliance-empty-small">No traditional actions recorded. Qualitative Tag Scouting evidence appears in the match breakdown.</div>' : '<div class="alliance-empty-small">No scouting actions or Tag observations have been recorded for this team at this event.</div>')}
       ${matchTable}`;
   }
 
@@ -2509,7 +2509,7 @@
     if (tab === 'game') {
       const matches = d.matches || [];
       const actions = d.actions || [];
-      const table = matches.length ? `<div class="table-wrap"><table class="alliance-match-table"><thead><tr><th>Match</th><th>Alliance</th><th>Scout pts</th><th>Actions</th><th>Offense</th><th>Defense</th><th>Score</th></tr></thead><tbody>${matches.map(m => `<tr><td>${esc(m.label)}</td><td>${esc(m.alliance)} ${m.station}</td><td>${esc(num(m.scout_points, 0))}</td><td>${m.actions}</td><td>${m.offense_rate == null ? '—' : `${num(m.offense_rate, 0)}%`}</td><td>${m.defense}</td><td>${m.red_score == null ? '—' : `${m.red_score}–${m.blue_score}`}</td></tr>`).join('')}</tbody></table></div>` : '<div class="alliance-empty-small">No matches are loaded for this team at this event.</div>';
+      const table = matches.length ? `<div class="table-wrap"><table class="alliance-match-table"><thead><tr><th>Match</th><th>Alliance</th><th>Points</th><th>Activity</th><th>Offense</th><th>Defense</th><th>Score</th></tr></thead><tbody>${matches.map(m => `<tr><td>${esc(m.label)}</td><td>${esc(m.alliance)} ${m.station}</td><td title="${esc(m.tag_estimated ? `Estimated: human share ${num(m.tag_share_pct, 1)}% · ${m.tag_score_origin || 'manual'} alliance score` : 'Traditional recorded scoring')}">${m.tag_estimated && m.tag_points != null ? esc(num(m.tag_points, 1)) + ' · Tag est.' : esc(num(m.scout_points, 0))}</td><td title="${Number(m.actions || 0)>0?'Recorded actions':'Tag activity signals, not a count of individual robot actions'}">${Number(m.actions || 0)>0 ? Number(m.actions) : (Number(m.tag_observers || 0)>0 ? `${Number(m.tag_activity_signals || 0)} tags` : '—')}</td><td>${m.offense_rate == null ? '—' : `${num(m.offense_rate, 0)}%`}</td><td>${Number(m.actions || 0)>0 ? Number(m.defense) : ({attempted:'Attempted · Tag',observed:'Observed · Tag',none:'No defense · Tag',mixed:'Mixed · Tag'})[m.tag_defense_status] || '—'}</td><td>${m.red_score == null ? '—' : `${m.red_score}–${m.blue_score}`}</td></tr>`).join('')}</tbody></table></div>` : '<div class="alliance-empty-small">No matches are loaded for this team at this event.</div>';
       const actionHtml = actions.length ? `<section class="alliance-detail-section"><h3>Scouting action breakdown</h3><div class="alliance-detail-grid">${actions.slice(0, 30).map(a => `<div class="alliance-detail-field"><span>${esc(a.phase)} · ${esc(a.result)}</span><b>${esc(a.label)} · ${a.attempts} · ${num(a.points, 0)} pts</b></div>`).join('')}</div></section>` : '';
       return table + actionHtml;
     }
