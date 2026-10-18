@@ -97,7 +97,7 @@ function alliance_prepare_state(PDO $pdo,int $org,int $eventId,bool $canEdit=fal
             $prediction=augur_prediction_run(
                 $pdo,$org,$event,$poolA,$poolB,$modelSettings,
                 [
-                    // Neptune EPA itself does not depend on qualification record;
+                    // SA-EPA itself does not depend on qualification record;
                     // rankings are already loaded above for the Team Pool UI.
                     'use_tba_rankings'=>false,
                     'use_epa'=>true,
@@ -112,11 +112,11 @@ function alliance_prepare_state(PDO $pdo,int $org,int $eventId,bool $canEdit=fal
                 }
             }
         }
-    }catch(Throwable $e){error_log('Alliance Selection AUGUR pool: '.$e->getMessage());$augurError='Neptune EPA is temporarily unavailable for the Team Pool.';$augurMetrics=[];}
+    }catch(Throwable $e){error_log('Alliance Selection AUGUR pool: '.$e->getMessage());$augurError='SA-EPA is temporarily unavailable for the Team Pool.';$augurMetrics=[];}
 
     // Keep Public EPA available even if the shared prediction model could not
     // be calculated, so the detailed EPA views still have their independent
-    // public baseline. Never label this fallback as Neptune EPA.
+    // public baseline. Never label this fallback as SA-EPA.
     if(!$augurMetrics){
         try{
             if(function_exists('augur_epa_tables_ready')&&augur_epa_tables_ready($pdo)){

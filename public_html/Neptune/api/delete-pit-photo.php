@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_json_request_guard.php';neptune_require_request_header();
 require_once dirname(__DIR__,3).'/neptune_secure/image.php';
 
 $u=require_login();

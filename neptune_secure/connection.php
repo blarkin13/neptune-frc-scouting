@@ -26,3 +26,8 @@ if ($sslCa !== '') {
 }
 
 $pdo = new PDO($dsn, $db['user'], $db['pass'], $options);
+
+// Time standard: the database stores UTC. Every Neptune connection runs in UTC so DEFAULT/ON UPDATE
+// CURRENT_TIMESTAMP, NOW() and TIMESTAMP columns all agree with UTC_TIMESTAMP() and gmdate().
+$pdo->exec("SET time_zone = '+00:00'");
+require_once __DIR__ . '/time-standard.php';

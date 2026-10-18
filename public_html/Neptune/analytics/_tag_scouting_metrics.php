@@ -597,42 +597,6 @@ function tag_scouting_analytics_rebuild_event(PDO $pdo,int $org,int $eventId): a
     ];
 }
 
-function tag_scouting_analytics_ensure_event(PDO $pdo,int $org,int $eventId): array {
-    tag_scouting_analytics_install($pdo);
-
-    $latestSource=0;
-    if(tag_scouting_analytics_table_exists($pdo,'tag_scouting_match_data')){
-        $s=$pdo->prepare("SELECT UNIX_TIMESTAMP(MAX(updated_at))
-            FROM tag_scouting_match_data WHERE organization_id=? AND event_id=?");
-        $s->execute([$org,$eventId]);$latestSource=max($latestSource,(int)$s->fetchColumn());
-    }
-    if(tag_scouting_analytics_table_exists($pdo,'tag_manual_alliance_scores')){
-        $s=$pdo->prepare('SELECT UNIX_TIMESTAMP(MAX(updated_at)) FROM tag_manual_alliance_scores WHERE organization_id=? AND event_id=?');
-        $s->execute([$org,$eventId]);$latestSource=max($latestSource,(int)$s->fetchColumn());
-    }
-    $s=$pdo->prepare("SELECT UNIX_TIMESTAMP(last_tba_sync_at) FROM events
-        WHERE id=? AND organization_id=? LIMIT 1");
-    $s->execute([$eventId,$org]);$latestSource=max($latestSource,(int)$s->fetchColumn());
-
-    if(tag_scouting_analytics_table_exists($pdo,'augur_epa_alliance_samples')){
-        $ev=tag_scouting_analytics_event($pdo,$org,$eventId);
-        $key=trim((string)($ev['tba_event_key']??''));
-        if($key!==''){
-            $s=$pdo->prepare("SELECT UNIX_TIMESTAMP(MAX(updated_at))
-                FROM augur_epa_alliance_samples WHERE tba_event_key=?");
-            $s->execute([$key]);$latestSource=max($latestSource,(int)$s->fetchColumn());
-        }
-    }
-
-    $s=$pdo->prepare("SELECT UNIX_TIMESTAMP(MAX(calculated_at)) AS last_calc,
-            MAX(model_version) AS model_version
-        FROM augur_tag_event_ratings WHERE organization_id=? AND event_id=?");
-    $s->execute([$org,$eventId]);$calc=$s->fetch()?:[];
-    $latestCalc=(int)($calc['last_calc']??0);
-    $modelVersion=(string)($calc['model_version']??'');
-
-    if($latestCalc===0 || $latestSource>$latestCalc || $modelVersion!==TAG_SCOUTING_ANALYTICS_MODEL_VERSION){
-        return tag_scouting_analytics_rebuild_event($pdo,$org,$eventId)+['rebuilt'=>true];
-    }
-    return ['event_id'=>$eventId,'rebuilt'=>false,'model_version'=>TAG_SCOUTING_ANALYTICS_MODEL_VERSION];
-}
+// tag_scouting_analytics_ensure_event() was removed: it had no callers and compared
+// TIMESTAMP and UTC DATETIME columns through UNIX_TIMESTAMP(), which is only correct
+// when the session time zone is UTC. Call tag_scouting_analytics_rebuild_event() directly.

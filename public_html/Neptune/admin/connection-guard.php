@@ -150,7 +150,7 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
     }
 
     let badgeHideTimer = null;
-    function showBadge(text, persistent = false) {
+    function showBadge(text, persistent = false, ms = 1800) {
         ensureBadge();
         if (!badge) return;
         badge.textContent = text;
@@ -159,28 +159,134 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
         if (!persistent) {
             badgeHideTimer = setTimeout(() => {
                 if (badge) badge.style.opacity = '0';
-            }, 1800);
+            }, ms);
         }
     }
 
+    let holdBadgeUntil = 0;
     async function updateBadge() {
         try {
-            const count = await pendingCount();
-            if (count > 0) {
-                showBadge(`CONNECTION LOST · ${count} ACTION${count === 1 ? '' : 'S'} SAVED`, true);
+            if (Date.now() < holdBadgeUntil) return;
+            // Items the server refused are not "waiting"; only genuinely unsynced actions count.
+            const items = (await getPending()).filter(i => !i.blocked);
+            const waiting = items.length;
+            const plural = n => `${n} ACTION${n === 1 ? '' : 'S'}`;
+            if (waiting > 0 && items.some(i => i.needsAuth)) {
+                showBadge(`SIGN IN AGAIN · ${plural(waiting)} WAITING TO SYNC`, true);
+            } else if (waiting > 0) {
+                showBadge(`CONNECTION LOST · ${plural(waiting)} SAVED`, true);
             } else if (badge && badge.style.opacity === '1') {
                 showBadge('SYNCED', false);
             }
         } catch (_) {}
     }
 
-    function responseLooksSuccessful(response, parsed) {
-        if (!response.ok) return false;
-        if (parsed && typeof parsed === 'object') {
-            if (parsed.ok === false || parsed.success === false) return false;
-            if (parsed.error && parsed.ok !== true && parsed.success !== true) return false;
+    function announce(text, ms) {
+        holdBadgeUntil = Date.now() + ms;
+        showBadge(text, false, ms);
+        setTimeout(updateBadge, ms + 100);
+    }
+
+    async function waitingCount() {
+        return (await getPending()).filter(i => !i.blocked).length;
+    }
+
+    // Rehearsal ledger (off by default). Turn on per device with ?guard_ledger=1 or
+    // NeptuneConnectionGuard.ledgerOn(); it records every action's request UUID here so
+    // admin/connection-guard-rehearsal-cli.php can compare actions sent with rows stored.
+    const LEDGER_KEY = 'neptune-guard-ledger-v1';
+    const LEDGER_ON = 'neptune-guard-ledger-on';
+    function ledgerEnabled() {
+        try {
+            if (/[?&]guard_ledger=1(?:&|$)/.test(location.search)) localStorage.setItem(LEDGER_ON, '1');
+            return localStorage.getItem(LEDGER_ON) === '1';
+        } catch (_) { return false; }
+    }
+    function ledgerRead() {
+        try { return JSON.parse(localStorage.getItem(LEDGER_KEY) || '[]'); } catch (_) { return []; }
+    }
+    function ledgerAdd(item) {
+        if (!ledgerEnabled()) return;
+        try {
+            let sessionId = null;
+            try { sessionId = Number(JSON.parse(new TextDecoder().decode(item.body)).session_id) || null; } catch (_) {}
+            const rows = ledgerRead();
+            rows.push({ request_uuid: item.requestUuid, session_id: sessionId, created_at: new Date(item.createdAt).toISOString(), label: item.label });
+            localStorage.setItem(LEDGER_KEY, JSON.stringify(rows.slice(-5000)));
+        } catch (_) {}
+    }
+    async function ledgerExport() {
+        const pending = (await getPending()).map(i => ({ request_uuid: i.requestUuid, blocked: !!i.blocked, needs_auth: !!i.needsAuth, last_error: i.lastError || null }));
+        const data = { device: navigator.userAgent, exported_at: new Date().toISOString(), sent: ledgerRead(), still_on_device: pending };
+        const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `neptune-guard-ledger-${Date.now()}.json`;
+        document.body.appendChild(a); a.click(); a.remove();
+        return data;
+    }
+
+    // Decide what a server answer means for a stored action.
+    //   ok       - the server recorded it (or already had it); safe to delete locally
+    //   rejected - the server understood and refused it; keep it, flag it, never auto-retry
+    //   auth     - login expired / a login page came back; keep it and retry after sign-in
+    //   retry    - temporary server trouble; keep it and retry automatically
+    function classifyResponse(response, parsed) {
+        const hasJson = !!parsed && typeof parsed === 'object';
+        if (hasJson && parsed.code === 'receipt_other_session') return 'ok';
+        if (response.ok) {
+            // A 200 that is not JSON is almost always a login/redirect page, not a saved action.
+            if (!hasJson) return 'auth';
+            if (parsed.ok === false || parsed.success === false || parsed.status === 'error') return 'rejected';
+            if (parsed.error && parsed.ok !== true && parsed.success !== true) return 'rejected';
+            return 'ok';
         }
-        return true;
+        if (response.status === 401) return 'auth';
+        if (response.status === 403) return hasJson ? 'rejected' : 'auth';
+        if (response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500) return 'retry';
+        return 'rejected';
+    }
+
+    function recordOutcome(item, kind, response, parsed) {
+        const msg = (parsed && typeof parsed === 'object' && (parsed.message || parsed.error))
+            ? String(parsed.message || parsed.error) : '';
+        item.lastError = msg ? `${msg} (HTTP ${response.status})` : `HTTP ${response.status}`;
+        item.blocked = kind === 'rejected';
+        item.needsAuth = kind === 'auth';
+        item.lastAttemptAt = Date.now();
+    }
+
+    function queuedResponse(requestUuid, reason) {
+        const messages = {
+            auth: 'Action saved on this device. Sign in again and it will sync automatically.',
+            retry: 'Action saved on this device and will retry automatically.',
+            offline: 'Action saved locally and will sync automatically.',
+            ok: 'Action was already recorded.'
+        };
+        return new Response(JSON.stringify({
+            ok: true,
+            success: true,
+            status: 'success',
+            queued: reason !== 'ok',
+            offline: reason === 'offline',
+            queued_reason: reason,
+            request_uuid: requestUuid,
+            message: messages[reason] || messages.offline
+        }), {
+            status: 202,
+            headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Neptune-Queued': '1' }
+        });
+    }
+
+    function describeBody(body) {
+        try {
+            const j = JSON.parse(new TextDecoder().decode(body));
+            const name = j && j.action && (j.action.name || j.action.code) ? String(j.action.name || j.action.code) : 'Action';
+            const sec = Number.isFinite(Number(j && j.match_time_sec)) ? ` at ${Number(j.match_time_sec)}s` : '';
+            return `${name} · ${j && j.result ? j.result : ''}${sec}`.trim();
+        } catch (_) {
+            return 'Scouting action';
+        }
     }
 
     async function makeStoredRequest(input, init) {
@@ -233,6 +339,7 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
             body: stored.body,
             credentials: stored.credentials,
             redirect: stored.redirect,
+            label: describeBody(stored.body),
             createdAt: Date.now(),
             attempts: 0,
             lastAttemptAt: null,
@@ -245,6 +352,7 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
             console.error('Neptune could not protect action in IndexedDB:', e);
             return nativeFetch(input, init);
         }
+        ledgerAdd(item);
 
         try {
             item.attempts++;
@@ -253,37 +361,25 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
             let parsed = null;
             try { parsed = await response.clone().json(); } catch (_) {}
 
-            if (responseLooksSuccessful(response, parsed)) {
+            const kind = classifyResponse(response, parsed);
+            if (kind === 'ok') {
                 await deletePending(requestUuid);
-                return response;
+                return response.ok ? response : queuedResponse(requestUuid, 'ok');
             }
 
-            // Client/auth/validation failures should remain visible to the existing
-            // scouting UI, but should not hammer the server every few seconds.
-            if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 425 && response.status !== 429) {
-                item.blocked = true;
-                item.lastError = `HTTP ${response.status}`;
-                await putPending(item);
-            }
-            return response;
+            // Anything that is not a confirmed save stays on the device. Nothing is
+            // deleted unless the server confirms it recorded the action.
+            recordOutcome(item, kind, response, parsed);
+            await putPending(item);
+            updateBadge();
+            if (kind === 'rejected') return response; // let the scouting page show the server's reason
+            return queuedResponse(requestUuid, kind);
         } catch (e) {
             item.lastError = String(e && e.message ? e.message : e);
             item.lastAttemptAt = Date.now();
             try { await putPending(item); } catch (_) {}
-            showBadge('CONNECTION LOST · ACTION SAVED', true);
-
-            return new Response(JSON.stringify({
-                ok: true,
-                success: true,
-                status: 'success',
-                queued: true,
-                offline: true,
-                request_uuid: requestUuid,
-                message: 'Action saved locally and will sync automatically.'
-            }), {
-                status: 202,
-                headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-Neptune-Queued': '1' }
-            });
+            updateBadge();
+            return queuedResponse(requestUuid, 'offline');
         }
     }
 
@@ -292,6 +388,7 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
         flushing = true;
         try {
             const items = await getPending();
+            let refusedNow = 0, refusedWhy = '';
             for (const item of items) {
                 if (item.blocked) continue;
                 try {
@@ -300,23 +397,23 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
                     const response = await sendStored(item);
                     let parsed = null;
                     try { parsed = await response.clone().json(); } catch (_) {}
-                    if (responseLooksSuccessful(response, parsed)) {
+                    const kind = classifyResponse(response, parsed);
+                    if (kind === 'ok') {
                         await deletePending(item.requestUuid);
                         continue;
                     }
-                    if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 425 && response.status !== 429) {
-                        item.blocked = true;
-                        item.lastError = `HTTP ${response.status}`;
-                        await putPending(item);
-                    } else {
-                        item.lastError = `HTTP ${response.status}`;
-                        await putPending(item);
-                    }
+                    recordOutcome(item, kind, response, parsed);
+                    await putPending(item);
+                    if (kind === 'rejected') { refusedNow++; refusedWhy = item.lastError || ''; }
+                    if (kind === 'auth') break; // signed out: no point sending the rest yet
                 } catch (e) {
                     item.lastError = String(e && e.message ? e.message : e);
                     try { await putPending(item); } catch (_) {}
                     break;
                 }
+            }
+            if (refusedNow > 0) {
+                announce(`${refusedNow} ACTION${refusedNow === 1 ? '' : 'S'} COULD NOT BE SAVED${refusedWhy ? ' · ' + refusedWhy.replace(/ \(HTTP \d+\)$/, '').toUpperCase() : ''}`, 9000);
             }
         } finally {
             flushing = false;
@@ -438,7 +535,13 @@ if (isset($_GET['asset']) && $_GET['asset'] === 'js') {
     window.NeptuneConnectionGuard = {
         flush: flushQueue,
         pending: getPending,
-        count: pendingCount
+        count: pendingCount,
+        waiting: waitingCount,
+        notice: text => announce(String(text), 5000),
+        ledgerOn: () => { try { localStorage.setItem(LEDGER_ON, '1'); } catch (_) {} return ledgerEnabled(); },
+        ledgerOff: () => { try { localStorage.removeItem(LEDGER_ON); } catch (_) {} },
+        ledgerClear: () => { try { localStorage.removeItem(LEDGER_KEY); } catch (_) {} },
+        ledgerExport
     };
 
     function start() {
@@ -531,9 +634,16 @@ try {
     $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($existing) {
+        // A lead may have imported this action by QR/file hand-off; that receipt belongs to
+        // the scout's account rather than a browser session. Treat it as delivered.
+        $handoffOwner = false;
         if (!hash_equals((string)$existing['session_hash'], $sessionHash)) {
+            $guardUser = require_login();
+            $handoffOwner = hash_equals((string)$existing['session_hash'], hash('sha256', 'handoff-user:' . (int)($guardUser['id'] ?? 0)));
+        }
+        if (!$handoffOwner && !hash_equals((string)$existing['session_hash'], $sessionHash)) {
             http_response_code(409);
-            echo json_encode(['ok' => false, 'error' => 'Request UUID belongs to another session.']);
+            echo json_encode(['ok' => false, 'code' => 'receipt_other_session', 'error' => 'Request UUID belongs to another session.']);
             exit;
         }
         http_response_code((int)$existing['response_code']);
@@ -577,5 +687,9 @@ register_shutdown_function(static function () use ($pdo, $requestUuid, $sessionH
         error_log('Neptune Connection Guard receipt save failed: ' . $e->getMessage());
     }
 });
+
+// Mark this request as coming through the idempotent, UUID-tagged guard so the
+// endpoint can accept actions captured during a match that has since paused/ended.
+$GLOBALS['neptune_guarded_request'] = true;
 
 require dirname(__DIR__) . '/api/record-action.php';

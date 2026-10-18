@@ -40,7 +40,7 @@ if($eventId){
     try{$tagMatchMap=mb_tag_match_cards($pdo,$org,$eventId);}catch(Throwable $ignored){$tagMatchMap=[];}
 
 
-    // Use the same private Neptune EPA model as Robot Intelligence so the
+    // Use the same private SA-EPA model as Robot Intelligence so the
     // schedule cards and detail modal tell the same story.
     if($event&&count($teamNumbers)>=2){
         try{
@@ -251,8 +251,8 @@ include dirname(__DIR__).'/partials_header.php';
     <div class="mb-key" aria-label="Robot card metrics">
       <span><i class="fa-solid fa-chart-simple"></i> Scouted points or Tag-estimated points</span>
       <span><i class="fa-solid fa-tags"></i> #tags (when Tag Scouting)</span>
-      <span><i class="fa-solid fa-wave-square"></i> Neptune EPA</span>
-      <span><i class="fa-solid fa-shield-halved"></i> Neptune D-EPA</span>
+      <span><i class="fa-solid fa-wave-square"></i> SA-EPA</span>
+      <span><i class="fa-solid fa-shield-halved"></i> SV-Points Denied</span>
       <span><i class="fa-solid fa-tags"></i> Scout tags</span>
     </div>
   </div>
@@ -369,8 +369,8 @@ include dirname(__DIR__).'/partials_header.php';
           <span class="mb-metric"><span>Points / match</span><b><?=!empty($stats['has_scoring_data'])?mb_fmt_metric($stats['ppm']??null,1):'—'?></b></span>
           <span class="mb-metric"><span>Cycle time</span><b><?=mb_fmt_metric($stats['cycle_time']??null,1,'s')?></b></span>
         <?php endif;?>
-        <span class="mb-metric epa"><span>Nep. EPA</span><b><?=mb_fmt_metric($nepEpa,1)?></b></span>
-        <span class="mb-metric epa"><span>Nep. D-EPA</span><b><?=mb_fmt_metric($nepDepa,1)?></b></span>
+        <span class="mb-metric epa"><span>SA-EPA</span><b><?=mb_fmt_metric($nepEpa,1)?></b></span>
+        <span class="mb-metric epa"><span>SV-Points Denied</span><b><?=mb_fmt_metric($nepDepa,1)?></b></span>
       </span>
 
       <span class="mb-defense-line" title="Event defensive scouting activity"><i class="fa-solid fa-shield-halved"></i> DEF <?=e($defActions)?> action<?=$defActions===1?'':'s'?> · <?=number_format($defPerMatch,1)?>/match</span>

@@ -1877,9 +1877,9 @@ html[data-theme="light"] .nlp-hero,html[data-theme="light"] .nlp-final,html[data
                             Set Up Your Team
                         </a>
 
-                        <a class="nlp-btn nlp-btn--secondary" href="<?= e(base_url('help/ntx-start.php')) ?>">
+                        <a class="nlp-btn nlp-btn--secondary" href="<?= e(base_url('event/')) ?>">
                             <i class="fa-solid fa-qrcode"></i>
-                            NTX Quick Start
+                            Event Hub
                         </a>
 
                         <button class="nlp-btn nlp-btn--secondary" type="button" data-nlp-login>
@@ -3037,7 +3037,7 @@ neptune_secure/config.php</span>
                     <div class="nlp-detail-body">
                         Configure the season game, create an event, import teams, pre-scout and pit-scout robots,
                         load the official match schedule, run live scouting, and review robot intelligence in Analytics.
-                        These steps are also covered in the built-in Help &amp; Training pages after sign-in.
+                        Open the Event Hub to connect your team and get started at any event.
                     </div>
                 </details>
 

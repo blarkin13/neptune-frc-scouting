@@ -76,6 +76,11 @@ function neptune_tba_weekday_name(int $day): string {
  * Apache commonly runs with systemd PrivateTmp, which means a cron process and
  * the web process can see different /tmp namespaces. Reusing one database row
  * keeps the heartbeat visible to both without creating one audit row per minute.
+ *
+ * audit_log.created_at is a TIMESTAMP defaulting to CURRENT_TIMESTAMP, so it is
+ * never written here: writing UTC_TIMESTAMP() into it is only correct when the
+ * session time zone is UTC. The freshness signal is metadata_json.written_at
+ * (always UTC ISO-8601); created_at keeps the row's first-insert time.
  */
 function neptune_tba_scheduler_write_heartbeat(PDO $pdo,array $state): void {
     $payload=array_merge([
@@ -89,10 +94,10 @@ function neptune_tba_scheduler_write_heartbeat(PDO $pdo,array $state): void {
         $q=$pdo->query("SELECT id FROM audit_log WHERE action='cron_heartbeat' AND entity_type='scheduled_job' AND entity_id='tba-scheduler' ORDER BY id DESC LIMIT 1");
         $id=(int)($q->fetchColumn()?:0);
         if($id>0){
-            $u=$pdo->prepare("UPDATE audit_log SET organization_id=NULL,user_id=NULL,metadata_json=?,ip_address=NULL,created_at=UTC_TIMESTAMP() WHERE id=?");
+            $u=$pdo->prepare("UPDATE audit_log SET organization_id=NULL,user_id=NULL,metadata_json=?,ip_address=NULL WHERE id=?");
             $u->execute([$json,$id]);
         }else{
-            $i=$pdo->prepare("INSERT INTO audit_log (organization_id,user_id,action,entity_type,entity_id,metadata_json,ip_address,created_at) VALUES(NULL,NULL,'cron_heartbeat','scheduled_job','tba-scheduler',?,NULL,UTC_TIMESTAMP())");
+            $i=$pdo->prepare("INSERT INTO audit_log (organization_id,user_id,action,entity_type,entity_id,metadata_json,ip_address) VALUES(NULL,NULL,'cron_heartbeat','scheduled_job','tba-scheduler',?,NULL)");
             $i->execute([$json]);
         }
     }catch(Throwable $e){
@@ -102,13 +107,13 @@ function neptune_tba_scheduler_write_heartbeat(PDO $pdo,array $state): void {
 
 function neptune_tba_scheduler_read_heartbeat(PDO $pdo): array {
     try{
-        $q=$pdo->query("SELECT metadata_json,created_at FROM audit_log WHERE action='cron_heartbeat' AND entity_type='scheduled_job' AND entity_id='tba-scheduler' ORDER BY id DESC LIMIT 1");
+        $q=$pdo->query("SELECT metadata_json,UNIX_TIMESTAMP(created_at) created_epoch FROM audit_log WHERE action='cron_heartbeat' AND entity_type='scheduled_job' AND entity_id='tba-scheduler' ORDER BY id DESC LIMIT 1");
         $row=$q->fetch();
         if(!$row)return [];
         $decoded=json_decode((string)($row['metadata_json']??''),true);
         if(!is_array($decoded))return [];
-        if(empty($decoded['written_at'])&&!empty($row['created_at'])){
-            $decoded['written_at']=(string)$row['created_at'].' UTC';
+        if(empty($decoded['written_at'])&&!empty($row['created_epoch'])){
+            $decoded['written_at']=gmdate(DATE_ATOM,(int)$row['created_epoch']);
         }
         return $decoded;
     }catch(Throwable $e){

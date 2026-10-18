@@ -1,4 +1,6 @@
 <?php
+// Robots: one page, two views. ?view=table renders the sortable stats table.
+if(($_GET['view']??'')==='table'){require __DIR__.'/_robot_stats_table_view.php';return;}
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once __DIR__.'/_helpers.php';
 require_once __DIR__.'/_depa_metrics.php';
@@ -197,6 +199,7 @@ include dirname(__DIR__).'/partials_header.php';
     <div class="muted">Fast event-level robot intelligence. Click anywhere on a robot card to open the full Robot Intelligence details view.</div>
   </div>
   <div class="toolbar" style="margin:0">
+    <nav class="robot-view-tabs" aria-label="Robot views"><a class="btn" aria-current="page" href="?<?=e(http_build_query(['event_id'=>$eventId]))?>"><i class="fa-solid fa-id-card"></i> Cards</a><a class="btn secondary" href="?<?=e(http_build_query(['event_id'=>$eventId,'view'=>'table']))?>"><i class="fa-solid fa-table"></i> Table</a></nav>
     <?php if(in_array((string)$u['role'],['owner','admin','strategy'],true)):?><a class="btn secondary" href="<?=e(base_url('analytics/team-logos.php').'?'.http_build_query(['event_id'=>$eventId]))?>"><i class="fa-solid fa-images"></i> Team Logos</a><?php endif;?>
     <a class="btn secondary" href="?<?=e(http_build_query(['event_id'=>$eventId,'tv'=>1]))?>" target="_blank"><i class="fa-solid fa-expand"></i> TV Mode</a>
   </div>
@@ -207,9 +210,9 @@ include dirname(__DIR__).'/partials_header.php';
     <div class="robot-history-toggle"><?=neptune_history_toggle_html(neptune_selector_show_history(),'events')?></div>
     <div><label for="robotSearch">Find robot</label><div class="robot-search-wrap"><i class="fa-solid fa-magnifying-glass"></i><input id="robotSearch" type="search" placeholder="Team or name" autocomplete="off"></div></div>
     <div><label for="robotFilter">Filter</label><select id="robotFilter"><option value="all">All robots</option><option value="pit">Pit complete</option><option value="trend">Trending up</option><option value="defense">Defense evidence</option><option value="tags">Has scout tags</option></select></div>
-    <div><label for="sortBy">Sort robots by</label><select id="sortBy"><option value="augur">Neptune EPA</option><option value="ppm">Scouted / tag-est. points per match</option><option value="recent">Recent average</option><option value="confidence">Model confidence</option><option value="epa">Public EPA</option><option value="auto">Auto EPA</option><option value="teleop">Teleop EPA</option><option value="endgame">Endgame EPA</option><option value="trend">Recent trend</option><option value="cycle">Cycle time (fastest)</option><option value="depa">D-EPA</option><option value="nepdepa">Nep. D-EPA</option><option value="defense">Defense / match</option><option value="success">Offense success %</option><option value="matches">Matches with scoring data</option><option value="team">Team number</option></select></div>
+    <div><label for="sortBy">Sort robots by</label><select id="sortBy"><option value="augur">SA-EPA</option><option value="ppm">Scouted / tag-est. points per match</option><option value="recent">Recent average</option><option value="confidence">Model confidence</option><option value="epa">Public EPA</option><option value="auto">Auto EPA</option><option value="teleop">Teleop EPA</option><option value="endgame">Endgame EPA</option><option value="trend">Recent trend</option><option value="cycle">Cycle time (fastest)</option><option value="depa">D-EPA</option><option value="nepdepa">SV-Points Denied</option><option value="defense">Defense / match</option><option value="success">Offense success %</option><option value="matches">Matches with scoring data</option><option value="team">Team number</option></select></div>
   </form>
-  <div class="robot-result-line"><span id="robotResultCount"><?=e($totalRobots)?> robots</span><span class="muted">Neptune EPA combines available public EPA, scouting, Tag-estimated scoring, and recent form when available.</span></div>
+  <div class="robot-result-line"><span id="robotResultCount"><?=e($totalRobots)?> robots</span><span class="muted">SA-EPA combines available public EPA, scouting, Tag-estimated scoring, and recent form when available.</span></div>
 </div>
 <?php endif;?>
 <style>
@@ -367,7 +370,7 @@ include dirname(__DIR__).'/partials_header.php';
 
       <div class="robot-primary">
         <div class="robot-primary-hero">
-          <div class="robot-primary-label"><span>Neptune EPA<?=($ratingDisplay['source']??'')==='FIRST provisional'?' · FIRST provisional':''?></span><?php if(is_numeric($confidence)):?><span><?=number_format((float)$confidence,0)?>% confidence</span><?php endif;?></div>
+          <div class="robot-primary-label"><span>SA-EPA<?=($ratingDisplay['source']??'')==='FIRST provisional'?' · FIRST provisional':''?></span><?php if(is_numeric($confidence)):?><span><?=number_format((float)$confidence,0)?>% confidence</span><?php endif;?></div>
           <div class="robot-primary-value">
             <b><?=$augur!==null?number_format((float)$augur,1):'—'?></b>
             <?php if($delta!==null):?><span class="robot-epa-delta <?=$deltaClass?>"><?=$delta>0?'+':''?><?=number_format($delta,1)?> vs <?=($ratingDisplay['source']??'')==='FIRST provisional'?'FIRST baseline':'public'?></span><?php endif;?>
@@ -428,7 +431,7 @@ include dirname(__DIR__).'/partials_header.php';
         <div class="robot-defense-stats">
           <div class="robot-defense-stat"><span>Defense / match</span><b><?=$hasScoutRuns?number_format((float)$r['defense_per_match'],1):'—'?></b></div>
           <div class="robot-defense-stat"><span>D-EPA</span><b><?=$depa!==null?number_format((float)$depa,1):'—'?></b></div>
-          <div class="robot-defense-stat"><span>Nep. D-EPA</span><b><?=$nepDepa!==null?number_format((float)$nepDepa,1):'—'?></b></div>
+          <div class="robot-defense-stat"><span>SV-Points Denied</span><b><?=$nepDepa!==null?number_format((float)$nepDepa,1):'—'?></b></div>
           <div class="robot-defense-stat"><span>Verified</span><b><?=e($verifiedDefense)?></b></div>
         </div>
       </div>

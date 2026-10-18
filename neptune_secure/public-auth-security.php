@@ -61,6 +61,15 @@ function neptune_public_rate_bucket(string $action,string $scope): string {
     return hash('sha256',$action.'|'.$scope);
 }
 
+/*
+ * Time handling: window_started_at and blocked_until are DATETIME columns that
+ * hold UTC wall-clock text written with gmdate(). They are read back as epoch
+ * seconds with TIMESTAMPDIFF() against 1970-01-01, which does not depend on the
+ * MySQL session time zone. (UNIX_TIMESTAMP(col) interprets the text in the
+ * session zone and read every value 5-6 hours in the future on this server.)
+ * A window start that lies in the future can only be left over from the old
+ * behaviour, so it is treated as an expired window.
+ */
 function neptune_public_rate_status(
     PDO $pdo,
     string $action,
@@ -72,8 +81,8 @@ function neptune_public_rate_status(
     $hash=neptune_public_rate_bucket($action,$scope);
     $s=$pdo->prepare(
         "SELECT attempts,
-                UNIX_TIMESTAMP(window_started_at) window_started,
-                UNIX_TIMESTAMP(blocked_until) blocked_until
+                TIMESTAMPDIFF(SECOND,'1970-01-01 00:00:00',window_started_at) window_started,
+                TIMESTAMPDIFF(SECOND,'1970-01-01 00:00:00',blocked_until) blocked_until
          FROM neptune_auth_rate_limits
          WHERE bucket_hash=? LIMIT 1"
     );
@@ -86,7 +95,7 @@ function neptune_public_rate_status(
     if($blocked>$now)return ['allowed'=>false,'retry_after'=>max(1,$blocked-$now)];
 
     $started=(int)($row['window_started']??0);
-    if($started<=0 || ($now-$started)>=$windowSeconds)return ['allowed'=>true,'retry_after'=>0];
+    if($started<=0 || $started>$now || ($now-$started)>=$windowSeconds)return ['allowed'=>true,'retry_after'=>0];
 
     // A row can reach the threshold just before blocked_until is written during
     // a competing request. Treat it as limited for the remainder of the window.
@@ -110,8 +119,8 @@ function neptune_public_rate_hit(
 
     $s=$pdo->prepare(
         "SELECT attempts,
-                UNIX_TIMESTAMP(window_started_at) window_started,
-                UNIX_TIMESTAMP(blocked_until) blocked_until
+                TIMESTAMPDIFF(SECOND,'1970-01-01 00:00:00',window_started_at) window_started,
+                TIMESTAMPDIFF(SECOND,'1970-01-01 00:00:00',blocked_until) blocked_until
          FROM neptune_auth_rate_limits
          WHERE bucket_hash=? LIMIT 1"
     );
@@ -124,7 +133,7 @@ function neptune_public_rate_hit(
     }else{
         $started=(int)($row['window_started']??0);
         $attempts=(int)($row['attempts']??0);
-        if($started<=0 || ($now-$started)>=$windowSeconds){
+        if($started<=0 || $started>$now || ($now-$started)>=$windowSeconds){
             $attempts=1;
             $started=$now;
         }else{

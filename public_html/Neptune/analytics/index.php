@@ -90,6 +90,28 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
     <?php endif;?>
 
     <?php if($canDatabaseLab):?>
+    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/prediction-track-record.php'))?>">
+      <div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-bullseye"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-chart-line"></i> Strategy+</span></div>
+      <span class="neptune-hub-card-kicker">How often AUGUR is right</span>
+      <h3>Prediction Track Record</h3>
+      <p>Backtest AUGUR's pre-match predictions against official results, compare with EPA alone, and check whether a "70% likely" call really wins 70% of the time.</p>
+      <div class="neptune-hub-meta"><span>Accuracy</span><span>Calibration</span><span>EPA baseline</span><span>Season</span></div>
+      <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
+    </a>
+    <?php endif;?>
+
+    <?php if($canDatabaseLab):?>
+    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/robot-rankings.php'))?>">
+      <div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-ranking-star"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-chart-line"></i> Strategy+</span></div>
+      <span class="neptune-hub-card-kicker">Who drives and defends best</span>
+      <h3>Robot Rankings</h3>
+      <p>Driving and Defense ratings built from scouts' after-match rankings of each alliance, with how much evidence is behind each team.</p>
+      <div class="neptune-hub-meta"><span>Driving</span><span>Defense</span><span>Head-to-head</span></div>
+      <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
+    </a>
+    <?php endif;?>
+
+    <?php if($canDatabaseLab):?>
     <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/data-quality.php'))?>">
       <div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-clipboard-check"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-chart-line"></i> Strategy+</span></div>
       <span class="neptune-hub-card-kicker">Review scouting reliability</span>
@@ -121,12 +143,12 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
       <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
     </a>
 
-    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/robot-stats-table.php'))?>">
+    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/robots.php').'?view=table')?>">
       <div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-table-list"></i></span><span class="neptune-hub-badge access-all"><i class="fa-solid fa-user-group"></i> All users</span></div>
       <span class="neptune-hub-card-kicker">Event-wide comparison table</span>
       <h3>Robot Stats Table</h3>
       <p>Compare every event robot's offense, defense, EPA and scouting coverage in one sortable table.</p>
-      <div class="neptune-hub-meta"><span>Offense</span><span>Defense</span><span>Nep. EPA</span><span>Nep. D-EPA</span></div>
+      <div class="neptune-hub-meta"><span>Offense</span><span>Defense</span><span>SA-EPA</span><span>SV-Points Denied</span></div>
       <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
     </a>
 
@@ -138,7 +160,7 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
       <div class="neptune-hub-meta"><span>Schedule</span><span>Alliance Compare</span><span>Robot Detail</span></div>
       <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
     </a>
-    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('analytics/stats/'))?>" style="border-color:color-mix(in srgb,var(--accent,#18b8ff) 55%,var(--border,#26344b));background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#18b8ff) 13%,var(--card,#152435)),var(--card,#152435));">
+    <a class="neptune-hub-card accent-augur" href="<?=e(base_url('epa/'))?>" style="border-color:color-mix(in srgb,var(--accent,#18b8ff) 55%,var(--border,#26344b));background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#18b8ff) 13%,var(--card,#152435)),var(--card,#152435));">
       <div class="neptune-hub-card-top">
         <span class="neptune-hub-icon"><i class="fa-solid fa-globe"></i></span>
         <span class="neptune-hub-badge access-all"><i class="fa-solid fa-arrow-up-right-from-square"></i> Public site</span>

@@ -322,6 +322,19 @@ try{
         }
     }
 
+    // Assignment auto-complete normally runs from save hooks; sweep every tick so
+    // rows that arrived by sync or a failed hook still close within a minute.
+    try{
+        require_once dirname(__DIR__).'/_assignment_auto_complete.php';
+        $sweep=nac_sweep_open($pdo);
+        if($sweep['completed']>0||$sweep['errors']>0){
+            echo '[assignments] '.$sweep['completed'].' auto-completed across '.$sweep['groups'].' group(s)'.($sweep['errors']?' · '.$sweep['errors'].' error(s)':'')."\n";
+            neptune_tba_scheduler_audit_job($pdo,null,'cron_assignment_sweep','assignment-sweep',$sweep);
+        }
+    }catch(Throwable $e){
+        fwrite(STDERR,'[assignments] sweep failed: '.$e->getMessage()."\n");
+    }
+
     if($runnerJobs>0){
         $runnerStatus=$runnerFailures>0?'warning':'healthy';
         $runnerMessage=$runnerJobs.' scheduled job'.($runnerJobs===1?'':'s').' ran'.($runnerFailures>0?' · '.$runnerFailures.' failed':' successfully').'.';

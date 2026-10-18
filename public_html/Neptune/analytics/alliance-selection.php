@@ -22,7 +22,7 @@ include dirname(__DIR__).'/partials_header.php';
     <div>
       <div class="module-eyebrow"><span>AUGUR</span><small>Strategy Workspace</small></div>
       <h1>Alliance Selection</h1>
-      <p>Use official TBA rankings when available, or provisional standings from recorded qualification results. Track selections and estimate alliance potential using Neptune EPA.</p>
+      <p>Use official TBA rankings when available, or provisional standings from recorded qualification results. Track selections and estimate alliance potential using SA-EPA.</p>
     </div>
     <div class="alliance-head-actions">
       <span class="alliance-online-pill" id="allianceOnlinePill"><i class="fa-solid fa-wifi"></i> Online</span>
@@ -149,7 +149,7 @@ include dirname(__DIR__).'/partials_header.php';
       <div class="alliance-pick-team-dialog-head">
         <div>
           <small id="alliancePickTeamDialogTier">Pick List</small>
-          <h2 id="alliancePickTeamDialogTitle">Choose a Team</h2><span class="alliance-pick-team-sort-note">Sorted by available qualification standings, then Neptune EPA</span>
+          <h2 id="alliancePickTeamDialogTitle">Choose a Team</h2><span class="alliance-pick-team-sort-note">Sorted by available qualification standings, then SA-EPA</span>
         </div>
         <button type="button" class="secondary compact" id="alliancePickTeamDialogClose" aria-label="Close team chooser"><i class="fa-solid fa-xmark"></i></button>
       </div>
@@ -232,7 +232,7 @@ include dirname(__DIR__).'/partials_header.php';
           <div><span>Alliance 1</span><h2>Offensive Potential</h2></div>
           <div class="toolbar" style="margin:0">
             <button type="button" class="secondary compact" data-potential-model-settings title="View or update the shared AUGUR model"><i class="fa-solid fa-sliders"></i> Model Settings</button>
-            <span class="pill" title="Neptune EPA"><i class="fa-solid fa-chart-line"></i> Nep. EPA</span>
+            <span class="pill" title="SA-EPA"><i class="fa-solid fa-chart-line"></i> SA-EPA</span>
             <button type="button" class="secondary compact alliance-potential-close" data-potential-close aria-label="Close offensive potential"><i class="fa-solid fa-xmark"></i></button>
           </div>
         </div>
@@ -269,7 +269,7 @@ include dirname(__DIR__).'/partials_header.php';
         <button type="button" class="secondary compact" id="matchupSettingsCloseBtn" aria-label="Close settings"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="alliance-matchup-settings-body">
-        <p class="muted">Weights are event-wide and shared across your organization. Offensive weights and trend recalculate the Neptune EPA shown in the Team Pool and Current Subtotal.</p>
+        <p class="muted">Weights are event-wide and shared across your organization. Offensive weights and trend recalculate the SA-EPA shown in the Team Pool and Current Subtotal.</p>
         <section class="matchup-settings-section">
           <h3>Offensive projection</h3>
           <div class="matchup-settings-grid">
@@ -290,7 +290,7 @@ include dirname(__DIR__).'/partials_header.php';
             <label><span>Maximum defense adjustment <b data-setting-output="max_defense_adjustment_pct"></b></span><input type="range" min="0" max="40" step="1" name="max_defense_adjustment_pct"></label>
           </div>
         </section>
-        <div class="matchup-settings-note"><i class="fa-solid fa-circle-info"></i><span><b>Subtotal vs. matchup:</b> Full-event offense, recent offense, high-end output, Public EPA baseline, and trend determine each robot's Neptune EPA. Defense and qualification-form settings are applied when AUGUR predicts one alliance against another; they do not change the offensive Current Subtotal.</span></div>
+        <div class="matchup-settings-note"><i class="fa-solid fa-circle-info"></i><span><b>Subtotal vs. matchup:</b> Full-event offense, recent offense, high-end output, Public EPA baseline, and trend determine each robot's SA-EPA. Defense and qualification-form settings are applied when AUGUR predicts one alliance against another; they do not change the offensive Current Subtotal.</span></div>
       </div>
       <div class="alliance-matchup-settings-actions">
         <button type="button" class="secondary" id="matchupSettingsResetBtn"><i class="fa-solid fa-arrow-rotate-left"></i> Defaults</button>
@@ -309,7 +309,7 @@ include dirname(__DIR__).'/partials_header.php';
         <button type="button" class="secondary compact" id="allianceOfflineCloseBtn" aria-label="Close offline download"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="alliance-offline-body">
-        <p>Download the current event roster, TBA team information, Public EPA, Neptune EPA, scouting intelligence, pit and pre-scouting data, Tag Scouting, alliance history, scenarios, and the Alliance Selection page shell to this device.</p>
+        <p>Download the current event roster, TBA team information, Public EPA, SA-EPA, scouting intelligence, pit and pre-scouting data, Tag Scouting, alliance history, scenarios, and the Alliance Selection page shell to this device.</p>
         <div class="alliance-offline-size-card">
           <div>
             <small>Estimated download</small>

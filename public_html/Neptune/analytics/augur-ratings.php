@@ -223,7 +223,7 @@ if($viewer){
 <meta name="description" content="<?=e($seoDescription)?>">
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
 <link rel="canonical" href="<?=e($canonical)?>">
-<link rel="alternate" type="application/json" title="Neptune EPA Ratings API" href="<?=e(ar_abs_url('api/augur-ratings.php?year='.rawurlencode((string)$year)))?>">
+<link rel="alternate" type="application/json" title="Neptune Public EPA Ratings API" href="<?=e(ar_abs_url('api/augur-ratings.php?year='.rawurlencode((string)$year)))?>">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Neptune">
@@ -361,7 +361,7 @@ th[data-sortable]:focus{outline:2px solid var(--accent);outline-offset:-2px}
     <p>Overall, autonomous, teleop, and endgame EPA calculated from public TBA match results and stored in Neptune's shared historical archive. Private scouting data is never exposed here.</p>
   </div>
   <div class="ar-actions">
-    <a class="btn secondary" href="<?=e(base_url('analytics/depa-beta.php?year='.$year.($eventKey!==''?'&event='.rawurlencode($eventKey):'')))?>"><i class="fa-solid fa-shield-halved"></i> Neptune D-EPA</a>
+    <a class="btn secondary" href="<?=e(base_url('analytics/depa-beta.php?year='.$year.($eventKey!==''?'&event='.rawurlencode($eventKey):'')))?>"><i class="fa-solid fa-shield-halved"></i> Defense Ratings</a>
     <a class="btn secondary" href="#developer-api"><i class="fa-solid fa-code"></i> Developer API</a>
     <?php if($canManage):?>
       <a class="btn secondary" href="<?=e(base_url('admin/augur-operations.php?tab=archive'))?>"><i class="fa-solid fa-screwdriver-wrench"></i> AUGUR Operations</a>
@@ -482,8 +482,8 @@ th[data-sortable]:focus{outline:2px solid var(--accent);outline-offset:-2px}
 </section>
 
 <p class="ar-note" style="margin-top:14px">
-  Model: <?=e(AUGUR_EPA_MODEL_VERSION)?>. EPA is public-data-only. Authenticated Neptune can blend this baseline with organization-scoped scouting to produce Neptune EPA, which AUGUR then uses in analytics and match predictions.
-  <?php if($lastUpdated!==''):?> Ratings updated <?=e($lastUpdated)?>.<?php endif;?>
+  Model: <?=e(AUGUR_EPA_MODEL_VERSION)?>. EPA is public-data-only. Authenticated Neptune can blend this baseline with organization-scoped scouting to produce SA-EPA (Scouting-Augmented EPA), which AUGUR then uses in analytics and match predictions.
+  <?php if($lastUpdated!==''):?> Ratings updated <?=e(neptune_time($lastUpdated))?>.<?php endif;?>
 </p>
 <?php endif;?>
 

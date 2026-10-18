@@ -104,7 +104,7 @@ include dirname(__DIR__).'/partials_header.php';
             <td><b><?=e($row['contact_name'])?></b><br><a href="mailto:<?=e($row['contact_email'])?>"><?=e($row['contact_email'])?></a><?php if($row['contact_phone']):?><br><a href="tel:<?=e(preg_replace('/[^0-9+]/','',$row['contact_phone']))?>"><?=e($row['contact_phone'])?></a><?php endif;?></td>
             <td><b><?=e($row['attendee_count'])?> people</b><br><span class="muted">Arrive <?=e($row['arrival_window'])?></span></td>
             <td><?=e(trim((string)$row['practice_focus']) !== '' ? $row['practice_focus'] : '—')?><?php if($row['notes']):?><br><small class="muted"><?=nl2br(e($row['notes']))?></small><?php endif;?></td>
-            <td><?=e($row['created_at'])?></td>
+            <td><?=e(neptune_time($row['created_at']))?></td>
             <td><span class="pill"><?=e(strtoupper($row['status']))?></span></td>
             <td>
               <form method="post" style="margin:0">

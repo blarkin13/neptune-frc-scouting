@@ -1086,7 +1086,7 @@ include dirname(__DIR__).'/partials_header.php';
           </div>
           <div class="robot-lookup-epa-defense-card">
             <b><?=rl_num($depaSeasonRating['neptune_depa']??null,1)?></b>
-            <span>Nep. D-EPA</span>
+            <span>SV-Points Denied</span>
             <small>Scouting-confirmed defense</small>
           </div>
         </div>
@@ -1114,7 +1114,7 @@ include dirname(__DIR__).'/partials_header.php';
           <?php endif;?>
         </div>
 
-        <div class="robot-lookup-tba-note">Source: AUGUR EPA ratings derived from public TBA match results. D-EPA is the all-match defensive suppression signal; Nep. D-EPA uses Neptune scouting-confirmed defense matches.</div>
+        <div class="robot-lookup-tba-note">Source: AUGUR EPA ratings derived from public TBA match results. D-EPA is the all-match defensive suppression signal; SV-Points Denied uses Neptune scouting-confirmed defense matches.</div>
       <?php else:?>
         <div class="notice" style="margin-top:12px">
           <i class="fa-solid fa-chart-line"></i>
@@ -1199,7 +1199,7 @@ include dirname(__DIR__).'/partials_header.php';
           $spotMatch=!empty($spot['match_id'])?neptune_match_label($spot):'';
         ?>
           <div class="robot-lookup-spot <?=($spot['status']??'open')==='resolved'?'resolved':''?>">
-            <div class="robot-lookup-spot-head"><div><b><?=e(($spot['context']??'team')==='match'?'Match':(($spot['context']??'team')==='pit'?'Pit':'Team'))?><?=!empty($spot['event_name'])?' · '.e($spot['event_name']):''?><?=($spotMatch!=='')?' · '.e($spotMatch):''?></b><div class="robot-lookup-spot-meta"><?=e($spot['scout_name']?:'Scout')?> · <?=e($spot['created_at'])?><?=!empty($spot['field_id'])&&$spot['field_id']>1?' · Field '.e($spot['field_id']):''?></div></div><span class="pill"><?=e($spot['status'])?></span></div>
+            <div class="robot-lookup-spot-head"><div><b><?=e(($spot['context']??'team')==='match'?'Match':(($spot['context']??'team')==='pit'?'Pit':'Team'))?><?=!empty($spot['event_name'])?' · '.e($spot['event_name']):''?><?=($spotMatch!=='')?' · '.e($spotMatch):''?></b><div class="robot-lookup-spot-meta"><?=e($spot['scout_name']?:'Scout')?> · <?=e(neptune_time($spot['created_at']))?><?=!empty($spot['field_id'])&&$spot['field_id']>1?' · Field '.e($spot['field_id']):''?></div></div><span class="pill"><?=e($spot['status'])?></span></div>
             <?php if($spotTags):?><div class="robot-lookup-spot-tags"><?php foreach($spotTags as $t):?><span class="pill"><i class="<?=e($t['icon'])?>"></i> <?=e($t['label'])?></span><?php endforeach;?></div><?php endif;?>
             <?php if(trim((string)($spot['note']??''))!==''):?><div class="robot-lookup-spot-note"><?=nl2br(e($spot['note']))?></div><?php endif;?>
             <?php if(!empty($spotMedia[(int)$spot['id']])):?><div class="robot-lookup-spot-media"><?php foreach($spotMedia[(int)$spot['id']] as $media):?><a href="<?=e(base_url('scout/tag-media.php?id='.(int)$media['id']))?>" target="_blank" rel="noopener"><i class="fa-solid <?=$media['media_type']==='video'?'fa-video':'fa-camera'?>"></i> <?=e($media['media_type']==='video'?'Video':'Photo')?></a><?php endforeach;?></div><?php endif;?>

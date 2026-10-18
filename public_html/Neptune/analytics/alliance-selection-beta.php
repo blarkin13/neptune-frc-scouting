@@ -91,7 +91,7 @@ include dirname(__DIR__).'/partials_header.php';
         <div class="asb-guide-legend">
           <span><b>Q Rank</b> official qualification position</span>
           <span><b id="asbRankingLegend">Rank Score</b> official qualification ranking score</span>
-          <span><b>Nep. EPA</b> Neptune's estimated offensive contribution</span>
+          <span><b>SA-EPA</b> Neptune's estimated offensive contribution</span>
         </div>
       </div>
       <div class="asb-recommendations" id="asbRecommendations"></div>
@@ -132,7 +132,7 @@ include dirname(__DIR__).'/partials_header.php';
         <div><h2>Available Robots</h2><p id="asbPoolSummary">Qualification data + Neptune scouting + strategy tags</p></div>
         <div class="asb-pool-tools">
           <label class="asb-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="asbSearch" placeholder="Search team…"></label>
-          <select id="asbPoolSort" aria-label="Sort team pool"><option value="best">Best Available</option><option value="rank">Qualification Rank</option><option value="epa">Neptune EPA</option><option value="team">Team Number</option></select>
+          <select id="asbPoolSort" aria-label="Sort team pool"><option value="best">Best Available</option><option value="rank">Qualification Rank</option><option value="epa">SA-EPA</option><option value="team">Team Number</option></select>
         </div>
       </div>
       <div class="asb-filter-tabs" id="asbFilterTabs"><button type="button" class="active" data-filter="available">Available</button><button type="button" data-filter="all">All</button><button type="button" data-filter="favorite"><i class="fa-regular fa-star"></i> Favorites</button></div>
@@ -148,7 +148,7 @@ include dirname(__DIR__).'/partials_header.php';
     <div class="asb-modal" id="asbChooser" hidden>
       <div class="asb-modal-backdrop" data-close-chooser></div>
       <section class="asb-modal-card" role="dialog" aria-modal="true">
-        <header><div><small id="asbChooserEyebrow">Choose robot</small><h2 id="asbChooserTitle">Choose a team</h2><p>Sorted by qualification score, then Neptune EPA.</p></div><button class="secondary compact" type="button" data-close-chooser><i class="fa-solid fa-xmark"></i></button></header>
+        <header><div><small id="asbChooserEyebrow">Choose robot</small><h2 id="asbChooserTitle">Choose a team</h2><p>Sorted by qualification score, then SA-EPA.</p></div><button class="secondary compact" type="button" data-close-chooser><i class="fa-solid fa-xmark"></i></button></header>
         <label class="asb-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="asbChooserSearch" placeholder="Search event roster…"></label>
         <div class="asb-chooser-list" id="asbChooserList"></div>
       </section>

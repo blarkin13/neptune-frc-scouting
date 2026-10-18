@@ -3,6 +3,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once __DIR__.'/_helpers.php';
 require_once __DIR__.'/_alliance_helpers.php';
 require_once __DIR__.'/_augur_prediction_model.php';
+require_once __DIR__.'/_augur_backtest.php';
 require_once __DIR__.'/_depa_metrics.php';
 
 $u=require_login();
@@ -468,6 +469,12 @@ $augurPrediction=null;
 $currentAugurPrediction=null;
 $augurPredictionError='';
 $currentAugurPredictionError='';
+// AUGUR's track record at this event (cached backtest; refreshes when matches, scouting or settings change).
+$augurTrackRecord=null;
+if($eventId>0){
+    try{$tr=augur_backtest_event($pdo,$org,$eventId);if(!empty($tr['available'])&&(int)$tr['decided']>=5)$augurTrackRecord=$tr;}
+    catch(Throwable $e){error_log('[AUGUR backtest] '.$e->getMessage());}
+}
 if($match&&$predictionEvent&&$matchTeams){
     $redPredictionTeams=[];$bluePredictionTeams=[];
     foreach($matchTeams as $t){
@@ -494,7 +501,7 @@ if($match&&$predictionEvent&&$matchTeams){
         }
 
         try{
-            // Current reference: same no-cutoff Neptune EPA used by Alliance
+            // Current reference: same no-cutoff SA-EPA used by Alliance
             // Selection today. This is display-only on historical matches; it is
             // never substituted into the pre-match prediction above.
             $currentAugurPrediction=augur_prediction_run(
@@ -523,7 +530,7 @@ if($projectionReady){
     }
 }
 // If the full matchup model is unavailable, Public EPA can still be shown from
-// the same pre-match archive snapshot. Neptune EPA stays blank rather than
+// the same pre-match archive snapshot. SA-EPA stays blank rather than
 // leaking a later/current estimate into a historical match.
 if($predictionEvent&&$teamNumbers){
     try{
@@ -559,6 +566,8 @@ include dirname(__DIR__).'/partials_header.php';
 .strategy-projection{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);min-width:0}.strategy-projection.insufficient{border-left:4px solid var(--warn)}
 .strategy-projection .vs{font-weight:900;font-size:1.15rem;margin:8px 0}.strategy-projection .proj-values{display:flex;gap:14px;align-items:center}.strategy-projection .proj-values b{font-size:1.4rem}.strategy-projection small{display:block;color:var(--muted);margin-top:8px;line-height:1.35}.strategy-projection-status{font-weight:900;font-size:1.05rem;line-height:1.25;margin-top:7px}.strategy-raw-projection{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);width:100%;font-size:.72rem;color:var(--muted)}
 .strategy-projection-head{width:100%;display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.strategy-projection-head>div{text-align:left}.strategy-projection-head>div>small{margin-top:2px}.strategy-projection-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}.strategy-projection-actions .compact{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center}.strategy-prediction-values{width:100%;justify-content:center;margin-top:8px}.strategy-prediction-side{min-width:0;display:grid;gap:2px}.strategy-prediction-side>span{font-size:.68rem;font-weight:900;text-transform:uppercase;letter-spacing:.06em}.strategy-prediction-side.red>span{color:#d97979}.strategy-prediction-side.blue>span{color:#75a7e8}.strategy-prediction-side small{margin:0;font-size:.64rem}.strategy-prediction-confidence{margin-top:10px;font-size:.72rem;font-weight:900;color:var(--text)}.strategy-prediction-details{display:grid;grid-template-columns:1fr;gap:3px;width:100%;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:.66rem;color:var(--muted);text-align:left}.strategy-actual-compare{display:flex;justify-content:space-between;gap:8px;width:100%;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:.7rem}.strategy-actual-compare span{color:var(--muted)}
+.strategy-prediction-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:10px}.strategy-prediction-chips span{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);font-size:.68rem;font-weight:800;color:var(--text)}.strategy-prediction-chips i{color:var(--muted)}.strategy-prediction-more{margin-top:10px;padding:5px 10px;border:0;background:none;color:var(--accent);font-size:.72rem;font-weight:800;cursor:pointer}.strategy-prediction-more i{font-size:.6rem;margin-left:3px}.strategy-prediction-more:hover{text-decoration:underline}
+.prediction-detail-table{width:100%;border-collapse:collapse;margin:0 0 14px;font-size:.8rem}.prediction-detail-table th,.prediction-detail-table td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}.prediction-detail-table th[scope=row]{text-align:left;font-weight:600;color:var(--muted)}.prediction-detail-table thead th{font-size:.66rem;text-transform:uppercase;letter-spacing:.06em}.prediction-detail-table thead th.red{color:#d97979}.prediction-detail-table thead th.blue{color:#75a7e8}.prediction-detail-actual th,.prediction-detail-actual td{font-weight:900;color:var(--text)!important;border-bottom:0}.prediction-tip{cursor:help;white-space:nowrap}.prediction-tip i{font-size:.62rem;opacity:.6;margin-left:2px}.prediction-detail-h{margin:4px 0 6px;font-size:.86rem}.prediction-detail-more{margin:0 0 10px;border:1px solid var(--line);border-radius:8px;padding:8px 11px;background:var(--panel2)}.prediction-detail-more summary{cursor:pointer;font-weight:800;font-size:.76rem}.prediction-detail-more[open] summary{margin-bottom:8px}.prediction-detail-more ul{margin:0;padding-left:18px}
 .prediction-info-dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);padding:0;width:min(520px,calc(100vw - 28px));max-height:min(82vh,720px);box-shadow:0 24px 70px rgba(0,0,0,.45)}.prediction-info-dialog::backdrop{background:rgba(0,0,0,.62)}.prediction-info-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:15px 17px;border-bottom:1px solid var(--line);background:var(--panel2)}.prediction-info-head h2{margin:0;font-size:1.05rem}.prediction-info-head p{margin:3px 0 0;color:var(--muted);font-size:.72rem}.prediction-info-body{padding:16px 18px;line-height:1.48;font-size:.8rem}.prediction-info-body p{margin:0 0 12px}.prediction-info-body ul{margin:8px 0 14px;padding-left:20px}.prediction-info-body li+li{margin-top:5px}.prediction-info-mode{display:flex;align-items:flex-start;gap:9px;padding:10px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted);font-size:.73rem}.prediction-info-mode i{color:var(--accent);margin-top:2px}.prediction-info-mode b{color:var(--text)}
 .prediction-settings-dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);padding:0;width:min(760px,calc(100vw - 28px));max-height:min(86vh,900px);box-shadow:0 24px 70px rgba(0,0,0,.45)}.prediction-settings-dialog::backdrop{background:rgba(0,0,0,.62)}.prediction-settings-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}.prediction-settings-head h2{margin:0;font-size:1.15rem}.prediction-settings-head p{margin:3px 0 0;color:var(--muted);font-size:.74rem}.prediction-settings-body{padding:16px 18px;overflow:auto;max-height:calc(86vh - 140px)}.prediction-settings-section+ .prediction-settings-section{margin-top:18px}.prediction-settings-section h3{margin:0 0 10px;font-size:.9rem}.prediction-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.prediction-setting{border:1px solid var(--line);border-radius:8px;background:var(--panel2);padding:10px}.prediction-setting label{display:flex;justify-content:space-between;gap:10px;margin:0 0 7px;font-size:.72rem;font-weight:800}.prediction-setting output{color:var(--accent)}.prediction-setting input[type=range]{width:100%;margin:0}.prediction-settings-note{display:flex;gap:9px;margin-top:14px;padding:10px;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:.7rem;line-height:1.4}.prediction-settings-actions{display:flex;justify-content:space-between;gap:10px;padding:14px 18px;border-top:1px solid var(--line);background:var(--panel2)}
 
@@ -620,26 +629,36 @@ include dirname(__DIR__).'/partials_header.php';
             <div class="strategy-projection-head">
               <div><span class="muted">AUGUR prediction</span><small>Shared matchup model</small></div>
               <div class="strategy-projection-actions">
-                <button type="button" class="secondary compact" id="predictionInfoBtn" title="How AUGUR is using data for this match" aria-label="How AUGUR is using data for this match"><i class="fa-solid fa-circle-info"></i></button>
+                <button type="button" class="secondary compact" id="predictionInfoBtn" title="Prediction details" aria-label="Prediction details"><i class="fa-solid fa-circle-info"></i></button>
                 <button type="button" class="secondary compact" id="predictionSettingsBtn" title="Prediction model settings" aria-label="Prediction model settings"><i class="fa-solid fa-sliders"></i></button>
               </div>
             </div>
             <?php if($projectionReady):$redPred=$augurPrediction['a'];$bluePred=$augurPrediction['b'];?>
               <div class="proj-values strategy-prediction-values">
-                <div class="strategy-prediction-side red"><span>Red</span><b><?=number_format((float)$redPred['predicted_score'],1)?></b><small><?=number_format((float)$redPred['win_probability'],0)?>% win · <?=number_format((float)$redPred['low'],0)?>–<?=number_format((float)$redPred['high'],0)?></small></div>
+                <div class="strategy-prediction-side red"><span>Red</span><b><?=number_format((float)$redPred['predicted_score'],1)?></b><small><?=number_format((float)$redPred['win_probability'],0)?>% win</small></div>
                 <span class="vs">vs</span>
-                <div class="strategy-prediction-side blue"><span>Blue</span><b><?=number_format((float)$bluePred['predicted_score'],1)?></b><small><?=number_format((float)$bluePred['win_probability'],0)?>% win · <?=number_format((float)$bluePred['low'],0)?>–<?=number_format((float)$bluePred['high'],0)?></small></div>
+                <div class="strategy-prediction-side blue"><span>Blue</span><b><?=number_format((float)$bluePred['predicted_score'],1)?></b><small><?=number_format((float)$bluePred['win_probability'],0)?>% win</small></div>
               </div>
-              <div class="strategy-prediction-confidence"><i class="fa-solid fa-brain"></i> <?=number_format((float)$augurPrediction['confidence'],0)?>% model confidence</div>
-              <div class="strategy-prediction-details">
-                <span>Pre-match EPA <?=number_format((float)$redPred['epa'],1)?> / <?=number_format((float)$bluePred['epa'],1)?></span>
-                <span>Pre-match Neptune EPA <?=number_format((float)($redPred['neptune_epa']??$redPred['augur_epa']),1)?> / <?=number_format((float)($bluePred['neptune_epa']??$bluePred['augur_epa']),1)?></span>
-                <?php if($currentProjectionReady):$currentRed=$currentAugurPrediction['a'];$currentBlue=$currentAugurPrediction['b'];?>
-                  <span>Current Neptune EPA <?=number_format((float)($currentRed['neptune_epa']??$currentRed['augur_epa']),1)?> / <?=number_format((float)($currentBlue['neptune_epa']??$currentBlue['augur_epa']),1)?> <small>· Alliance Selection</small></span>
-                <?php endif;?>
-                <span>Slope <?=number_format((float)$redPred['slope'],1)?> / <?=number_format((float)$bluePred['slope'],1)?></span>
-                <span>Defense impact <?=number_format((float)$redPred['defense_estimate'],1)?> / <?=number_format((float)$bluePred['defense_estimate'],1)?></span>
+              <?php
+                // Numbers for the Prediction details dialog; the card itself stays compact.
+                $epaShareOf=static function(array $side): ?float{
+                    $w=0.0;$t=0.0;
+                    foreach((array)($side['teams']??[]) as $row){$m=(array)($row['metrics']??[]);if(!isset($m['epa_share']))return null;
+                        $o=max(0.0,(float)($m['projected_offense']??0));$w+=(float)$m['epa_share']*$o;$t+=$o;}
+                    return $t>0?$w/$t*100.0:null;
+                };
+                $redEpaShare=$epaShareOf($redPred);$blueEpaShare=$epaShareOf($bluePred);
+                $trBucket=null;$trEpa=null;
+                if($augurTrackRecord){
+                    $trBucket=augur_backtest_bucket_for($augurTrackRecord,max((float)$redPred['win_probability'],(float)$bluePred['win_probability'])/100);
+                    $trEpa=$augurTrackRecord['epa_baseline']['accuracy']??null;
+                }
+              ?>
+              <div class="strategy-prediction-chips">
+                <span title="How much evidence AUGUR has for these six robots"><i class="fa-solid fa-brain"></i> <?=number_format((float)$augurPrediction['confidence'],0)?>% confidence</span>
+                <?php if($augurTrackRecord):?><span title="Share of this event's finished matches where AUGUR picked the winner"><i class="fa-solid fa-scale-balanced"></i> <?=number_format((float)$augurTrackRecord['accuracy'],0)?>% track record</span><?php endif;?>
               </div>
+              <button type="button" class="strategy-prediction-more" data-open-prediction-details>Prediction details <i class="fa-solid fa-chevron-right"></i></button>
               <?php if($actualResultAvailable):?><div class="strategy-actual-compare"><span>Actual final</span><b>Red <?=e((int)$match['red_score'])?> · Blue <?=e((int)$match['blue_score'])?></b></div><?php endif;?>
             <?php else:?>
               <div class="strategy-projection-status">Prediction unavailable</div>
@@ -728,7 +747,7 @@ include dirname(__DIR__).'/partials_header.php';
                   <div class="strategy-metric"><span>Cycle</span><b><?=$matchesSeen?(isset($r['cycle_time'])&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'):'No data'?></b></div>
                   <div class="strategy-metric"><span>Success</span><b><?=(($r['successes']??0)+($r['failures']??0)>0)?number_format((float)$r['success_rate'],0).'%':'—'?></b></div>
                   <div class="strategy-metric"><span>EPA</span><b><?=$publicEpa!==null?number_format($publicEpa,1):'—'?></b></div>
-                  <div class="strategy-metric"><span>Nep. EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
+                  <div class="strategy-metric"><span>SA-EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
                 </div>
               </div>
               <div class="strategy-metric-group">
@@ -736,7 +755,7 @@ include dirname(__DIR__).'/partials_header.php';
                 <div class="strategy-metric-row">
                   <div class="strategy-metric"><span>Defense / match</span><b><?=$matchesSeen?number_format((float)($r['defense_per_match']??0),1):'No data'?></b></div>
                   <div class="strategy-metric"><span>D-EPA</span><b><?=isset($depaMap[$n]['depa'])&&$depaMap[$n]['depa']!==null?number_format((float)$depaMap[$n]['depa'],1):'—'?></b></div>
-                  <div class="strategy-metric"><span>Nep. D-EPA</span><b><?=isset($depaMap[$n]['neptune_depa'])&&$depaMap[$n]['neptune_depa']!==null?number_format((float)$depaMap[$n]['neptune_depa'],1):'—'?></b></div>
+                  <div class="strategy-metric"><span>SV-Points Denied</span><b><?=isset($depaMap[$n]['neptune_depa'])&&$depaMap[$n]['neptune_depa']!==null?number_format((float)$depaMap[$n]['neptune_depa'],1):'—'?></b></div>
                 </div>
               </div>
             </div>
@@ -779,7 +798,7 @@ include dirname(__DIR__).'/partials_header.php';
                   <div class="strategy-metric"><span>Cycle</span><b><?=$oppMatches?(isset($r['cycle_time'])&&$r['cycle_time']!==null?number_format((float)$r['cycle_time'],1).'s':'—'):'No data'?></b></div>
                   <div class="strategy-metric"><span>Success</span><b><?=(($r['successes']??0)+($r['failures']??0)>0)?number_format((float)$r['success_rate'],0).'%':'—'?></b></div>
                   <div class="strategy-metric"><span>EPA</span><b><?=$publicEpa!==null?number_format($publicEpa,1):'—'?></b></div>
-                  <div class="strategy-metric"><span>Nep. EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
+                  <div class="strategy-metric"><span>SA-EPA</span><b><?=$neptuneEpa!==null?number_format($neptuneEpa,1):'—'?></b></div>
                 </div>
               </div>
               <div class="strategy-metric-group">
@@ -787,7 +806,7 @@ include dirname(__DIR__).'/partials_header.php';
                 <div class="strategy-metric-row">
                   <div class="strategy-metric"><span>Defense / match</span><b><?=$oppMatches?number_format((float)($r['defense_per_match']??0),1):'No data'?></b></div>
                   <div class="strategy-metric"><span>D-EPA</span><b><?=isset($depaMap[$n]['depa'])&&$depaMap[$n]['depa']!==null?number_format((float)$depaMap[$n]['depa'],1):'—'?></b></div>
-                  <div class="strategy-metric"><span>Nep. D-EPA</span><b><?=isset($depaMap[$n]['neptune_depa'])&&$depaMap[$n]['neptune_depa']!==null?number_format((float)$depaMap[$n]['neptune_depa'],1):'—'?></b></div>
+                  <div class="strategy-metric"><span>SV-Points Denied</span><b><?=isset($depaMap[$n]['neptune_depa'])&&$depaMap[$n]['neptune_depa']!==null?number_format((float)$depaMap[$n]['neptune_depa'],1):'—'?></b></div>
                 </div>
               </div>
               <?php $drive=strategy_first_nonempty([$pit['drive_notes']??''],[$pre['drive_notes']??'']);if($drive!==''):?><div class="strategy-source"><span>Drive notes</span><p><?=e($drive)?></p></div><?php endif;?>
@@ -829,7 +848,7 @@ include dirname(__DIR__).'/partials_header.php';
           <label class="strategy-check"><input type="checkbox" name="endgame_confirmed" <?=$endgameConfirmed?'checked':''?> <?=$canEdit&&$tableReady?'':'disabled'?>> Endgame responsibilities confirmed</label>
         </div>
         <div class="strategy-savebar">
-          <div class="muted"><?php if($strategyRow):?>Last saved <?=e($strategyRow['updated_at'])?><?php elseif($canEdit&&$tableReady):?>No saved plan for this match yet.<?php elseif(!$canEdit):?>Your role has view-only access.<?php else:?>Install the strategy table to enable saving.<?php endif;?></div>
+          <div class="muted"><?php if($strategyRow):?>Last saved <?=e(neptune_time($strategyRow['updated_at']))?><?php elseif($canEdit&&$tableReady):?>No saved plan for this match yet.<?php elseif(!$canEdit):?>Your role has view-only access.<?php else:?>Install the strategy table to enable saving.<?php endif;?></div>
           <?php if($canEdit&&$tableReady):?><button type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Match Strategy</button><?php endif;?>
         </div>
       </section>
@@ -837,11 +856,46 @@ include dirname(__DIR__).'/partials_header.php';
 
     <dialog class="prediction-info-dialog" id="predictionInfoDialog" aria-labelledby="predictionInfoTitle">
       <div class="prediction-info-head">
-        <div><h2 id="predictionInfoTitle"><i class="fa-solid fa-circle-info"></i> How AUGUR is predicting this match</h2><p><?=e(neptune_match_label($match))?> · pre-match data rules</p></div>
+        <div><h2 id="predictionInfoTitle"><i class="fa-solid fa-circle-info"></i> Prediction details</h2><p><?=e(neptune_match_label($match))?> · uses only data from before this match</p></div>
         <button type="button" class="secondary compact" id="predictionInfoCloseBtn" aria-label="Close prediction information"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="prediction-info-body">
-        <p>AUGUR treats this card as a historical pre-match prediction, so the score above only uses data available before <b><?=e(neptune_match_label($match))?></b>. The separate <b>Current Neptune EPA</b> line is today's no-cutoff value and is the same reference used by Alliance Selection.</p>
+        <?php if($projectionReady):
+          $f1=static fn($v)=>$v===null?'—':number_format((float)$v,1);
+          $sa=static fn(array $p)=>$p['neptune_epa']??$p['augur_epa']??null;
+          $rows=[
+            ['Predicted score','Points AUGUR expects each alliance to score.',$f1($redPred['predicted_score']),$f1($bluePred['predicted_score'])],
+            ['Win chance','How likely each alliance is to win.',number_format((float)$redPred['win_probability'],0).'%',number_format((float)$bluePred['win_probability'],0).'%'],
+            ['80% score range','The real score should land in this range about 8 times out of 10.',number_format((float)$redPred['low'],0).'–'.number_format((float)$redPred['high'],0),number_format((float)$bluePred['low'],0).'–'.number_format((float)$bluePred['high'],0)],
+            ['EPA','Public EPA from official results, summed for the three robots, as of before this match. Penalty points are excluded.',$f1($redPred['epa']),$f1($bluePred['epa'])],
+            ['SA-EPA','Scouting-Augmented EPA: public EPA blended with your scouting and recent trend, summed for the three robots, as of before this match.',$f1($sa($redPred)),$f1($sa($bluePred))],
+          ];
+          if($redEpaShare!==null&&$blueEpaShare!==null)$rows[]=['EPA share of SA-EPA','How much of SA-EPA comes from EPA rather than scouting. Set by the EPA baseline slider (now '.number_format((float)$predictionSettings['epa_weight'],0).').',number_format($redEpaShare,0).'%',number_format($blueEpaShare,0).'%'];
+          if($currentProjectionReady)$rows[]=['Current SA-EPA','SA-EPA today, using every match played so far. This is the value Alliance Selection shows.',$f1($sa($currentAugurPrediction['a'])),$f1($sa($currentAugurPrediction['b']))];
+          $rows[]=['Trend','Points-per-match change over recent scouted matches. Positive means improving.',$f1($redPred['slope']),$f1($bluePred['slope'])];
+          $rows[]=['Defense impact','Points this alliance\'s defense is expected to take off the opponent\'s score.',$f1($redPred['defense_estimate']),$f1($bluePred['defense_estimate'])];
+        ?>
+        <table class="prediction-detail-table">
+          <thead><tr><th></th><th class="red">Red</th><th class="blue">Blue</th></tr></thead>
+          <tbody>
+            <?php foreach($rows as [$label,$tip,$red,$blue]):?>
+              <tr><th scope="row"><span class="prediction-tip" tabindex="0" title="<?=e($tip)?>"><?=e($label)?> <i class="fa-solid fa-circle-info" aria-hidden="true"></i></span></th><td><?=e($red)?></td><td><?=e($blue)?></td></tr>
+            <?php endforeach;?>
+            <?php if($actualResultAvailable):?><tr class="prediction-detail-actual"><th scope="row">Actual final</th><td><?=e((int)$match['red_score'])?></td><td><?=e((int)$match['blue_score'])?></td></tr><?php endif;?>
+          </tbody>
+        </table>
+        <?php if($augurTrackRecord):?>
+          <h3 class="prediction-detail-h"><i class="fa-solid fa-scale-balanced"></i> Track record at this event</h3>
+          <p>AUGUR picked the winner in <b><?=number_format((float)$augurTrackRecord['accuracy'],0)?>%</b> of <?=(int)$augurTrackRecord['decided']?> finished matches<?=$trEpa!==null?' (EPA alone: '.number_format((float)$trEpa,0).'%)':''?>.<?php if($trBucket&&$trBucket['n']>=5):?> When its favorite was <?=$trBucket['from']?>–<?=$trBucket['to']?>% likely, that favorite won <?=number_format((float)$trBucket['favorite_won'],0)?>% of <?=(int)$trBucket['n']?> matches.<?php endif;?>
+            <a href="<?=e(base_url('analytics/prediction-track-record.php').'?'.http_build_query(['event_id'=>$eventId]))?>">Full track record</a></p>
+        <?php endif;?>
+        <details class="prediction-detail-more"><summary>What these mean</summary>
+          <ul><?php foreach($rows as [$label,$tip]):?><li><b><?=e($label)?>:</b> <?=e($tip)?></li><?php endforeach;?>
+            <li><b>Confidence:</b> how much scouting and EPA evidence AUGUR has for these six robots. Low confidence pulls the win chance toward 50/50.</li></ul>
+        </details>
+        <details class="prediction-detail-more"><summary>How this prediction is made</summary>
+        <?php endif;?>
+        <p>AUGUR treats this card as a historical pre-match prediction, so the score above only uses data available before <b><?=e(neptune_match_label($match))?></b>. The separate <b>Current SA-EPA</b> line is today's no-cutoff value and is the same reference used by Alliance Selection.</p>
         <p>If a robot has little or no usable current-event scouting, the shared prediction model can fall back to:</p>
         <ul>
           <li>prior-event Neptune scouting from the current season/game,</li>
@@ -852,12 +906,13 @@ include dirname(__DIR__).'/partials_header.php';
           <i class="fa-solid <?=$projectionReady&&!empty($augurPrediction['method']['epa_used'])?'fa-chart-line':'fa-clock-rotate-left'?>"></i>
           <span>
             <?php if($projectionReady&&!empty($augurPrediction['method']['epa_used'])):?>
-              <b>EPA baseline:</b> this prediction uses Neptune's TBA-derived EPA snapshot from before this match, then blends available Neptune scouting to produce Neptune EPA. Later match results cannot leak backward.
+              <b>EPA baseline:</b> this prediction uses Neptune's TBA-derived EPA snapshot from before this match, then blends available Neptune scouting to produce SA-EPA. Later match results cannot leak backward.
             <?php else:?>
               <b>EPA unavailable:</b> AUGUR is temporarily relying on scouting, prior-event Neptune data, and field-average fallbacks until public EPA is archived.
             <?php endif;?>
           </span>
         </div>
+        <?php if($projectionReady):?></details><?php endif;?>
       </div>
     </dialog>
 
@@ -937,6 +992,7 @@ include dirname(__DIR__).'/partials_header.php';
   function fill(values){for(const input of inputs()){if(Object.prototype.hasOwnProperty.call(values,input.name))input.value=values[input.name];syncOutput(input);}}
 
   infoOpenBtn?.addEventListener('click',()=>{if(infoDialog&&!infoDialog.open)infoDialog.showModal();});
+  document.querySelectorAll('[data-open-prediction-details]').forEach(btn=>btn.addEventListener('click',()=>{if(infoDialog&&!infoDialog.open)infoDialog.showModal();}));
   infoCloseBtn?.addEventListener('click',()=>infoDialog?.close());
   infoDialog?.addEventListener('click',event=>{if(event.target===infoDialog)infoDialog.close();});
   openBtn?.addEventListener('click',()=>{if(dialog&&!dialog.open)dialog.showModal();});

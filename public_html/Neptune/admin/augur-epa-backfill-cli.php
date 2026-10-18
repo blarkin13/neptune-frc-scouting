@@ -189,7 +189,7 @@ for($year=$start;$year<=$end;$year++){
 
 
             if($withDepa){
-                echo "[{$year}] Rebuilding public + Neptune D-EPA from LOCAL archived samples and scouting evidence...\n";
+                echo "[{$year}] Rebuilding public D-EPA + SV-Points Denied from LOCAL archived samples and scouting evidence...\n";
                 $depa0=microtime(true);
                 try{
                     // Keep the maintenance console self-contained: installing/upgrading

@@ -28,6 +28,14 @@ function neptune_event_selector_rows(PDO $pdo,int $org,int $selectedEventId=0,?b
     $showHistory=$showHistory??neptune_selector_show_history();
     $params=[$org];
     $where="e.organization_id=? AND e.active=1";
+    // Dedicated QA fixtures stay out of routine selectors; "Show full history" still lists them, and an
+    // explicitly requested event (event_id in a QA tester's direct link) is always allowed so pages that
+    // validate the event against this list keep working for QA events.
+    if(!$showHistory){
+        $where.=" AND (NOT (e.event_code IN ('NEPTUNE_QA_1','NEPTUNE_QA_2') AND e.tba_event_key IS NULL)";
+        if($selectedEventId>0){$where.=" OR e.id=?";$params[]=$selectedEventId;}
+        $where.=')';
+    }
     // Match-driven screens can opt in without changing the site-wide 18-month rule.
     // event_id is the tenant-safe relationship: once the event belongs to this org,
     // legacy/imported match rows remain usable even if their redundant organization_id
@@ -40,7 +48,7 @@ function neptune_event_selector_rows(PDO $pdo,int $org,int $selectedEventId=0,?b
         // Future events naturally qualify because their date is newer than the cutoff.
         // Keep the current event and an explicitly selected event visible even when an
         // old/manual record has incomplete dates, so navigation never strands the user.
-        $where.=" AND (e.is_current=1 OR COALESCE(e.end_date,e.start_date,DATE(e.created_at))>=DATE_SUB(CURDATE(),INTERVAL ".NEPTUNE_EVENT_RECENT_MONTHS." MONTH)";
+        $where.=" AND (e.is_current=1 OR COALESCE(e.end_date,e.start_date,DATE(e.created_at))>=DATE_SUB(".neptune_sql_today().",INTERVAL ".NEPTUNE_EVENT_RECENT_MONTHS." MONTH)";
         if($selectedEventId>0){$where.=" OR e.id=?";$params[]=$selectedEventId;}
         $where.=')';
     }

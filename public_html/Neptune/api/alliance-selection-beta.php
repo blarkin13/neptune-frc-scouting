@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_json_request_guard.php';neptune_require_request_header();
 require_once dirname(__DIR__).'/analytics/_alliance_beta_helpers.php';
 require_once dirname(__DIR__).'/analytics/_augur_prediction_model.php';
 require_once dirname(__DIR__).'/analytics/_depa_metrics.php';
@@ -33,7 +34,7 @@ function beta_team_metrics(PDO $pdo,int $org,array $event,array $roster,array $r
             $prediction=augur_prediction_run($pdo,$org,$event,$a,$b,$settings,['use_tba_rankings'=>false,'use_epa'=>true,'side_a_number'=>'Pool A','side_b_number'=>'Pool B']);
             foreach(['a','b'] as $side)foreach(($prediction[$side]['teams']??[]) as $row){$n=(int)($row['team']??0);if($n>0&&is_array($row['metrics']??null))$metrics[$n]=$row['metrics'];}
         }
-    }catch(Throwable $e){error_log('Alliance Beta AUGUR: '.$e->getMessage());$error='Neptune EPA is temporarily unavailable.';}
+    }catch(Throwable $e){error_log('Alliance Beta AUGUR: '.$e->getMessage());$error='SA-EPA is temporarily unavailable.';}
     if(!$metrics){
         try{if(function_exists('augur_epa_tables_ready')&&augur_epa_tables_ready($pdo))$epaMap=augur_epa_rating_map($pdo,$org,$event,$teamNumbers,null);}catch(Throwable $ignored){}
         try{$depaMap=neptune_depa_event_map($pdo,$event,$teamNumbers);}catch(Throwable $ignored){}
@@ -127,7 +128,7 @@ function beta_projection(array $teamRow,array $richTeams,array $remaining): arra
         $why[]=$remainingCount." qualification match".($remainingCount===1?'':'es')." remain on the local schedule.";
         $why[]="Remaining schedule projects about ".round($avgWin*100)."% average win probability using available EPA strength.";
     }else $why[]='No remaining qualification matches are loaded; the projection is close to final.';
-    $why[]="Neptune EPA ranks this robot about #{$epaRank} in the event field.";
+    $why[]="SA-EPA ranks this robot about #{$epaRank} in the event field.";
     if($low<=8&&$high>8)$why[]='The projected rank range crosses the captain boundary, so dual planning is appropriate.';
     elseif($high<=8)$why[]='The projected rank range stays inside the captain band.';
     elseif($low>8)$why[]='The projected rank range is outside the captain band.';

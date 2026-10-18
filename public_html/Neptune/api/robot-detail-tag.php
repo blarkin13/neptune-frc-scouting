@@ -119,9 +119,9 @@ $defConf=$rating['defense_confidence']??null;
 
   <div class="robot-intel-rating-grid">
     <div class="robot-intel-rating augur"><span>Public EPA</span><b><?=tag_modal_num($rating['public_epa']??null,1)?></b><small>Public AUGUR baseline</small></div>
-    <div class="robot-intel-rating primary"><span>Nep. EPA</span><b><?=tag_modal_num($nepEpa,1)?></b><small>Tag Scouting offense model</small></div>
+    <div class="robot-intel-rating primary"><span>SA-EPA</span><b><?=tag_modal_num($nepEpa,1)?></b><small>Tag Scouting offense model</small></div>
     <div class="robot-intel-rating augur"><span>D-EPA</span><b><?=tag_modal_signed($rating['public_depa']??null,1)?></b><small>All-match public suppression</small></div>
-    <div class="robot-intel-rating primary"><span>Nep. D-EPA</span><b><?=tag_modal_signed($nepDepa,1)?></b><small>Tag-verified defense only</small></div>
+    <div class="robot-intel-rating primary"><span>SV-Points Denied</span><b><?=tag_modal_signed($nepDepa,1)?></b><small>Tag-verified defense only</small></div>
   </div>
 
   <div class="robot-tag-rating-meta">

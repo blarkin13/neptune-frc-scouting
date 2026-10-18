@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_json_request_guard.php';neptune_require_request_header();
 require_once __DIR__.'/_validate-scout-action.php';
 $u=require_login();
 $d=json_decode(file_get_contents('php://input'),true);
@@ -10,7 +11,22 @@ $s=$pdo->prepare('SELECT ss.*,m.game_id,m.run_number,m.state,gr.match_config_jso
 $s->execute([$sid,$u['organization_id'],$u['id']]);$ss=$s->fetch(PDO::FETCH_ASSOC);
 if(!$ss) json_response(['status'=>'error','message'=>'Invalid scout session'],403);
 if((int)$ss['match_run_number']!==(int)$ss['run_number']) json_response(['status'=>'error','message'=>'This scout session belongs to an older match run. Return to Agent and reselect the station.'],409);
-if($ss['state']!=='running') json_response(['status'=>'error','message'=>'The match is not currently running.'],409);
+// Actions that were captured while the match was live may reach the server late
+// (a scout was offline, or the match was paused/ended before the tablet reconnected).
+// Only requests that came through the Connection Guard (idempotent, UUID-tagged)
+// get this allowance, and only for the same match run and a bounded grace period.
+$lateOk=false;
+if($ss['state']!=='running'&&!empty($GLOBALS['neptune_guarded_request'])){
+    if($ss['state']==='paused') $lateOk=true;
+    elseif($ss['state']==='ended'){
+        $e=$pdo->prepare('SELECT ended_at FROM matches WHERE id=? AND organization_id=?');
+        $e->execute([(int)$ss['match_id'],(int)$u['organization_id']]);
+        $endedAt=$e->fetchColumn();
+        $endedTs=$endedAt?strtotime($endedAt.' UTC'):false;
+        $lateOk=$endedTs!==false&&(time()-$endedTs)<=1800;
+    }
+}
+if($ss['state']!=='running'&&!$lateOk) json_response(['status'=>'error','message'=>'The match is not currently running.'],409);
 try {
     $validated=neptune_validated_scout_action($d['action']??null,$d['result']??'Neutral',$d['match_time_sec']??null,$ss['config_json']);
 } catch(InvalidArgumentException $e) {
