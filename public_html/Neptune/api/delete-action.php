@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_json_request_guard.php';neptune_require_request_header();
 $u=require_role(['owner','admin','strategy']);
 $d=json_decode(file_get_contents('php://input'),true)?:[];
 $actionId=(int)($d['action_id']??0);$matchId=(int)($d['match_id']??0);$csrf=(string)($d['csrf']??'');

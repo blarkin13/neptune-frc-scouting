@@ -6,14 +6,26 @@ function neptune_event_robot_stats(PDO $pdo,int $org,int $eventId): array {
     $stats=[];
     $s=$pdo->prepare('SELECT frc_team_number,nickname FROM event_teams WHERE event_id=? ORDER BY frc_team_number');$s->execute([$eventId]);
     foreach($s->fetchAll() as $t){$n=(int)$t['frc_team_number'];$stats[$n]=['team'=>$n,'nickname'=>$t['nickname']??'', 'matches'=>0,'points'=>0.0,'ppm'=>0.0,'successes'=>0,'failures'=>0,'success_rate'=>0.0,'defense'=>0,'defense_per_match'=>0.0,'cycle_time'=>null,'actions'=>0,'pit_status'=>null,'pit_data'=>[]];}
-    $s=$pdo->prepare("SELECT frc_team_number,match_id,match_run_number,action_type,result,points,match_time_sec FROM scouting_actions WHERE organization_id=? AND event_id=? AND deleted_at IS NULL ORDER BY frc_team_number,match_id,match_run_number,match_time_sec,id");$s->execute([$org,$eventId]);
+    $s=$pdo->prepare("SELECT a.frc_team_number,a.match_id,a.match_run_number,a.action_type,a.result,a.points,a.match_time_sec,COALESCE(a.created_by,ss.user_id) scout_uid,ss.scout_name FROM scouting_actions a LEFT JOIN scout_sessions ss ON ss.id=a.scout_session_id AND ss.organization_id=a.organization_id WHERE a.organization_id=? AND a.event_id=? AND a.deleted_at IS NULL ORDER BY a.frc_team_number,a.match_id,a.match_run_number,a.match_time_sec,a.id");$s->execute([$org,$eventId]);
+    $actionRows=$s->fetchAll();
+    // When several scouts covered the same robot in the same match, each scout's rows count
+    // with share weight/Σweights (scout accuracy weights; 1 when never computed). One scout
+    // per robot-match keeps a factor of exactly 1. Without this, two scouts doubled the points.
+    require_once __DIR__.'/_scout_accuracy.php';
+    $scoutWeights=neptune_scout_weights($pdo,$org,$eventId);$keyScouts=[];
+    foreach($actionRows as $r){$keyScouts[$r['frc_team_number'].':'.$r['match_id'].':'.$r['match_run_number']][nsa_scout_key($r['scout_uid'],$r['scout_name'])]=true;}
+    $shareOf=static function(string $key,string $scout) use($keyScouts,$scoutWeights):float{
+        $scouts=$keyScouts[$key]??[];if(count($scouts)<2)return 1.0;
+        $total=0.0;foreach($scouts as $sk=>$_)$total+=$scoutWeights[$sk]??1.0;
+        return $total>0?($scoutWeights[$scout]??1.0)/$total:1.0/count($scouts);
+    };
     $seen=[];$scoutedTeamMatches=[];$scoredTeamMatches=[];$scoreTimes=[];
-    foreach($s->fetchAll() as $r){
+    foreach($actionRows as $r){
         $n=(int)$r['frc_team_number'];if(!isset($stats[$n]))$stats[$n]=['team'=>$n,'nickname'=>'','matches'=>0,'points'=>0.0,'ppm'=>0.0,'successes'=>0,'failures'=>0,'success_rate'=>0.0,'defense'=>0,'defense_per_match'=>0.0,'cycle_time'=>null,'actions'=>0,'pit_status'=>null,'pit_data'=>[]];
-        $key=$n.':'.$r['match_id'].':'.$r['match_run_number'];$seen[$key]=true;$scoutedTeamMatches[$n][(int)$r['match_id']]=true;
-        if((($r['action_type']??'')==='offense'&&in_array($r['result'],['Success','Failure'],true))||(float)$r['points']!=0.0)$scoredTeamMatches[$n][(int)$r['match_id']]=true;$stats[$n]['actions']++;$stats[$n]['points']+=(float)$r['points'];
-        if(($r['action_type']??'')==='defense'&&($r['result']??'')==='Success')$stats[$n]['defense']++;
-        if(($r['action_type']??'')==='offense'&&in_array($r['result'],['Success','Failure'],true)){if($r['result']==='Success')$stats[$n]['successes']++;else$stats[$n]['failures']++;}
+        $key=$n.':'.$r['match_id'].':'.$r['match_run_number'];$seen[$key]=true;$share=$shareOf($key,nsa_scout_key($r['scout_uid'],$r['scout_name']));$scoutedTeamMatches[$n][(int)$r['match_id']]=true;
+        if((($r['action_type']??'')==='offense'&&in_array($r['result'],['Success','Failure'],true))||(float)$r['points']!=0.0)$scoredTeamMatches[$n][(int)$r['match_id']]=true;$stats[$n]['actions']++;$stats[$n]['points']+=(float)$r['points']*$share;
+        if(($r['action_type']??'')==='defense'&&($r['result']??'')==='Success')$stats[$n]['defense']+=$share;
+        if(($r['action_type']??'')==='offense'&&in_array($r['result'],['Success','Failure'],true)){if($r['result']==='Success')$stats[$n]['successes']+=$share;else$stats[$n]['failures']+=$share;}
         if(($r['result']??'')==='Success'&&(float)$r['points']>0&&$r['match_time_sec']!==null)$scoreTimes[$key][]=(int)$r['match_time_sec'];
     }
     foreach(array_keys($seen) as $key){$n=(int)explode(':',$key,2)[0];$stats[$n]['matches']++;}

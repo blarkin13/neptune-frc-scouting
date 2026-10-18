@@ -8,6 +8,14 @@ $isAdmin=in_array($u['role'],['owner','admin'],true);
 $isOwner=$u['role']==='owner';
 $platformOrgId=max(1,(int)($config['app']['platform_organization_id']??1));
 $isPlatformOwner=$isOwner && (int)($u['organization_id']??0)===$platformOrgId;
+// Event-Day Health status for the hub card. A failing probe must never break the hub.
+$eventHealthOverall=null;
+if($isAdmin){
+    try{
+        require_once __DIR__.'/_event_health.php';
+        $eventHealthOverall=neptune_event_health($pdo,isset($config)&&is_array($config)?$config:[],(int)$u['organization_id'])['overall'];
+    }catch(Throwable $e){error_log('[Neptune hub health] '.$e->getMessage());}
+}
 ?>
 
 <!-- Neptune ocean atmosphere matching the dashboard. -->
@@ -82,10 +90,22 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
     <div class="neptune-hub-grid three">
       <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/match-control.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-circle-play"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">Run the field workflow</span><h3>Match Control</h3><p>Ready, start, pause, end, and re-scout matches while preserving match-run history.</p><div class="neptune-hub-meta"><span>Ready</span><span>Start</span><span>Pause</span><span>Replay</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
       <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/live.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-chart-line"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">See scouting as it happens</span><h3>Live Monitor</h3><p>Watch connected scouts, robot assignments, recorded actions, and the current match state.</p><div class="neptune-hub-meta"><span>Scouts</span><span>Actions</span><span>Connections</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
-      <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/events.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-calendar-days"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">Prepare competition data</span><h3>Event Operations</h3><p>Set up events, manage rosters and live synchronization, and review game history.</p><div class="neptune-hub-meta"><span>Events</span><span>Rosters</span><span>History</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
+      <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/events.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-calendar-days"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">Prepare competition data</span><h3>Event Management</h3><p>Set up events, manage rosters and live synchronization, and review game history.</p><div class="neptune-hub-meta"><span>Events</span><span>Rosters</span><span>History</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
       <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/manual-schedule.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-table-list"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">Run without a TBA listing</span><h3>Manual Match Schedule</h3><p>Enter qualification matches by field and assign the R1–R3 / B1–B3 robots that scouts will follow.</p><div class="neptune-hub-meta"><span>Matches</span><span>Fields</span><span>Robot Stations</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
       <?php if($isAdmin):?>
       <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/scouting-assignments.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-user-check"></i></span><span class="neptune-hub-badge access-admin"><i class="fa-solid fa-user-shield"></i> Admin+</span></div><span class="neptune-hub-card-kicker">Plan who scouts what</span><h3>Assignment Center</h3><p>Assign match positions, distribute pit teams, request photos and answers, and track acknowledgments and completion.</p><div class="neptune-hub-meta"><span>Match Slots</span><span>Pit Tasks</span><span>Requests</span><span>Coverage</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
+      <?php endif;?>
+      <?php if($isAdmin):
+        [$ehText,$ehIcon,$ehColor]=match($eventHealthOverall){
+          'good'=>['All OK','fa-circle-check','var(--c1-green,#45A77D)'],
+          'warn'=>['Check','fa-triangle-exclamation','#d9a400'],
+          'bad'=>['Action needed','fa-circle-xmark','var(--c1-red,#D03027)'],
+          default=>['Status unavailable','fa-circle-question','var(--muted)'],
+        };?>
+      <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/system-check.php'))?>#event-health"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-heart-pulse"></i></span><span class="neptune-hub-badge" style="color:<?=$ehColor?>;border-color:color-mix(in srgb,<?=$ehColor?> 45%,var(--line))"><i class="fa-solid <?=$ehIcon?>"></i> <?=e($ehText)?></span></div><span class="neptune-hub-card-kicker">Check before doors open</span><h3>Event-Day Health</h3><p>Database, last production backup, scheduler heartbeat, disk space, and field data not yet uploaded, on one page.</p><div class="neptune-hub-meta"><span>Backup</span><span>Scheduler</span><span>Disk</span><span>Sync</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
+      <?php endif;?>
+      <?php if(in_array($u['role'],['owner','admin','strategy'],true)):?>
+      <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/handoff-import.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-qrcode"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">When a tablet can't connect</span><h3>Import Hand-off</h3><p>Scan a scout's hand-off QR codes with a USB scanner or camera, or load a hand-off file. Entries are saved under that scout.</p><div class="neptune-hub-meta"><span>Scanner</span><span>Camera</span><span>File</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
       <?php endif;?>
       <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/pit-games.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-dice"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">Interactive pit activities</span><h3>Pit Games</h3><p>Launch Robot Recall, reaction challenges, and hands-free FRC card-magic tricks for the pit monitor.</p><div class="neptune-hub-meta"><span>Memory</span><span>Reaction</span><span>Card Magic</span><span>Auto Cycle</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
     </div>

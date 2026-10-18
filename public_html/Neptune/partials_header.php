@@ -202,6 +202,7 @@ $homeStructuredData=[
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script src="<?=e(base_url('assets/js/neptune-request-header.js'))?>?v=20261017-1"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#05080b">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -520,7 +521,7 @@ if(($u || $isDashboardBreadcrumb) && !$hideChrome && !$hideBreadcrumbs && !$isLi
     // and role checks continue to control which screens may be opened.
     if($neptuneBreadcrumbParent==='command' && $neptuneRouteRelative!=='admin/index.php'){
         $commandGroups=[
-            'Event Operations'=>['admin/match-control.php','admin/live.php','admin/live-live.php','admin/events.php','admin/manual-schedule.php','admin/tba-sync.php','admin/first-sync.php','admin/pit-games.php','admin/field-practice-signups.php'],
+            'Event Operations'=>['admin/handoff-import.php','admin/match-control.php','admin/live.php','admin/events.php','admin/manual-schedule.php','admin/tba-sync.php','admin/first-sync.php','admin/pit-games.php','admin/field-practice-signups.php'],
             'Builders'=>['admin/tag-manager.php','admin/game-builder.php','admin/pit-builder.php','admin/pre-scout-builder.php','admin/card-magic.php','admin/time-games.php'],
             'Organization'=>['admin/teams.php','admin/access-activity.php','admin/styling.php','admin/sharing.php'],
             'System'=>['admin/system-check.php','admin/history.php','admin/platform-administration.php','admin/file-manager.php','admin/augur-maintenance.php','admin/augur-operations.php','admin/maintenance.php','admin/portable.php','admin/developer-guide.php'],

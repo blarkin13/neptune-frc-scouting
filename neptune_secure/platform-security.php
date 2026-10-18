@@ -50,7 +50,9 @@ p{line-height:1.65;color:#c4cfdf;margin:0 0 15px}
   <h1>Strong authentication is required for this area.</h1>
   <div class="user">'.$displayName.'</div>
   <p>This Platform Owner session has not completed the extra authentication required for File Manager, Maintenance Console, Platform Administration, and other high-value platform tools.</p>
-  <p>Sign out and sign in again. A password login will require your authenticator code. Google sign-in also satisfies this requirement.</p>
+  <p>'.(neptune_platform_owner_mode()==='google'
+        ?'Sign out and sign in again with Google. Password sign-in cannot open these tools.'
+        :'Sign out and sign in again. A password login will require your authenticator code. Google sign-in also satisfies this requirement.').'</p>
 
   <div class="actions">
     <a class="btn" href="'.$logoutUrl.'">Sign out</a>
@@ -73,7 +75,8 @@ function neptune_require_platform_owner_google(array $user): void {
 
     if(!neptune_platform_owner_is($user))return;
 
-    $mode=strtolower(trim((string)($config['app']['platform_owner_auth']??'strong')));
+    $mode=neptune_platform_owner_mode();
+    if($mode==='basic')return;
     if($mode==='google'){
         if(strtolower((string)($user['auth_method']??''))==='google')return;
         neptune_platform_strong_auth_required_page($user);

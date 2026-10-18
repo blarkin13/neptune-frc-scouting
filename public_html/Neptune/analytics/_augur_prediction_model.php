@@ -62,6 +62,9 @@ function augur_prediction_weighted_recent(array $values, int $limit = 6): float 
     return $weightTotal > 0 ? $weighted / $weightTotal : 0.0;
 }
 
+/** Backtested: scaling the 80% score range by this holds ~80% of real alliance scores. */
+const AUGUR_PREDICTION_RANGE_SCALE = 1.7;
+
 function augur_prediction_normal_cdf(float $x): float {
     $sign = $x < 0 ? -1.0 : 1.0;
     $x = abs($x) / sqrt(2.0);
@@ -366,6 +369,8 @@ function augur_prediction_offense_blend(array $points, ?float $epa, array $setti
         'event_avg'=>$eventAverage,'recent_avg'=>$recentAverage,'p75'=>$p75,
         'scouting_influence'=>$scoutingInfluence,'evidence_quality'=>$evidenceQuality,
         'base'=>$base,'weight_total'=>$weightTotal,
+        // Fraction of the pre-trend offense estimate that came from EPA (0 when EPA is missing).
+        'epa_share'=>($epa!==null&&$weightTotal>0)?max(0.0,(float)$settings['epa_weight'])/$weightTotal:0.0,
         'slope_raw'=>$slopeRaw,'slope'=>$slope,'trend_adjustment'=>$trendAdjustment,
         'neptune_epa'=>max(0.0,$base+$trendAdjustment),
         'augur_epa'=>max(0.0,$base+$trendAdjustment), // legacy compatibility alias
@@ -493,6 +498,7 @@ function augur_prediction_team_metrics(
         'tag_estimated_matches'=>$tagEstimateMatches,'tag_evidence_confidence'=>$tagEvidenceConfidence,'points_source'=>$tagEstimateMatches?($tagEstimateMatches===$currentMatches?'tag_estimate':'mixed'):'traditional',
         'event_avg'=>$eventAverage,'recent_avg'=>$recentAverage,'p75'=>$p75,
         'scouting_influence'=>$blend['scouting_influence'],
+        'epa_share'=>$currentEstimate>0?$blend['epa_share']:0.0,
         'scouting_evidence_quality_pct'=>round($blend['evidence_quality']*100.0,1),
         'prior_season_avg'=>$priorAverage,'prior_tba_opr'=>$tbaOpr,'field_avg_fallback'=>$fieldAverage,
         'baseline_source'=>$source,'baseline_before_trend'=>$base,'slope_raw'=>$slopeRaw,'slope'=>$slope,
@@ -577,8 +583,10 @@ function augur_prediction_apply_opponent(array $self, array $opponent, array $se
         'form_adjustment' => $formAdjustment,
         'predicted_score' => $predicted,
         'sigma' => $uncertainty,
-        'low' => max(0.0, $predicted - 1.28 * $uncertainty),
-        'high' => $predicted + 1.28 * $uncertainty,
+        // The 80% range is widened by AUGUR_PREDICTION_RANGE_SCALE: backtests showed the raw sigma
+        // held only ~61% of real scores. Win probability still uses the unscaled sigma.
+        'low' => max(0.0, $predicted - 1.28 * AUGUR_PREDICTION_RANGE_SCALE * $uncertainty),
+        'high' => $predicted + 1.28 * AUGUR_PREDICTION_RANGE_SCALE * $uncertainty,
     ];
 }
 
@@ -812,7 +820,8 @@ function augur_prediction_run(
     );
     // Never let a thin-data matchup claim 98% certainty. Pull probability toward
     // 50/50 in proportion to the model's actual evidence confidence.
-    $calibration = augur_prediction_clamp($overallConfidence / 100.0, 0.10, 1.0);
+    // Square root: the linear pull made favorites win far more often than predicted in backtests.
+    $calibration = sqrt(augur_prediction_clamp($overallConfidence / 100.0, 0.10, 1.0));
     $probabilityA = 0.5 + ($rawProbabilityA - 0.5) * $calibration;
     $probabilityA = augur_prediction_clamp($probabilityA, 0.05, 0.95);
 

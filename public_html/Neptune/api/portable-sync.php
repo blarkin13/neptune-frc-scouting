@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/portable.php';
 require_once dirname(__DIR__,3).'/neptune_secure/_portable_match_version.php';
+require_once dirname(__DIR__).'/scout/_tag_synthetic.php';
 
 if (!isset($pdo) || !($pdo instanceof PDO)) {
     nps_json(['ok'=>false,'error'=>'Database unavailable.'],500);
@@ -171,6 +172,12 @@ function nps_skipped(array &$counts, string $reason): void {
     $counts['skip_reasons'][$reason]=($counts['skip_reasons'][$reason]??0)+1;
 }
 $matchConflicts=[];
+/** Synthetic Tag estimates are acknowledged without writing, so an older laptop
+ * that still holds them does not report its upload as incomplete. */
+function nps_synthetic_excluded(array &$counts): void {
+    $counts['existing']++;
+    $counts['synthetic_excluded']=($counts['synthetic_excluded']??0)+1;
+}
 
 try{
     $pdo->beginTransaction();
@@ -550,6 +557,7 @@ try{
                 $uuid=strtolower(trim((string)($r['uuid']??'')));
                 $rowEvent=(int)($r['event_id']??0);
                 if(!nps_valid_uuid($uuid)||($rowEvent!==0&&$rowEvent!==$event)){ $counts['skipped']++; continue; }
+                if(neptune_tag_row_is_synthetic($r)){nps_synthetic_excluded($counts);continue;}
                 $mid=null;
                 if((int)($r['match_id']??0)>0)$mid=nps_match_id($pdo,$org,$event,$r);
                 $ctx=nps_enum((string)($r['context']??'team'),['match','pit','team'],'team');
@@ -664,6 +672,7 @@ try{
             );
             foreach($rows as $r){
                 if(!is_array($r)){ $counts['skipped']++; continue; }
+                if(neptune_tag_row_is_synthetic($r)){nps_synthetic_excluded($counts);continue;}
                 $uuid=strtolower(trim((string)($r['observation_uuid']??'')));
                 $obs->execute([$uuid,$org,$event]);$oid=(int)$obs->fetchColumn();
                 $mid=nps_match_id($pdo,$org,$event,$r);
@@ -786,6 +795,16 @@ try{
     }
 
     $pdo->commit();
+    // Synced rows bypass the per-save hooks, so reconcile assignments here.
+    $sweepKinds=match($section){
+        'pit_scouting'=>['pit'],
+        'tag_match_data','scouting_actions','matches'=>['match'],
+        default=>null,
+    };
+    if($sweepKinds!==null){
+        require_once dirname(__DIR__).'/_assignment_auto_complete.php';
+        nac_try_sweep($pdo,$org,$event,$sweepKinds);
+    }
     nps_json([
         'ok'=>true,
         'organization_id'=>$org,

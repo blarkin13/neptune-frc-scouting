@@ -102,10 +102,10 @@ function metricStrip(r){
     <span><small>Q Rank</small><b>${r.rank?'#'+r.rank:'—'}</b></span>
     <span><small>${esc(rankingLabel())}</small><b>${fmtPoints(r)}</b></span>
     <span><small>Record</small><b>${record(r)}</b></span>
-    <span class="nep"><small>Nep. EPA</small><b>${num(r.neptune_epa,1)}</b></span>
+    <span class="nep"><small>SA-EPA</small><b>${num(r.neptune_epa,1)}</b></span>
     <span><small>Public EPA</small><b>${num(r.epa,1)}</b></span>
     <span><small>D-EPA</small><b>${num(r.depa,1)}</b></span>
-    <span class="nep"><small>Nep. D-EPA</small><b>${num(r.neptune_depa,1)}</b></span>
+    <span class="nep"><small>SV-Points Denied</small><b>${num(r.neptune_depa,1)}</b></span>
   </div>`;
 }
 function statusBadges(t){
@@ -253,7 +253,7 @@ function renderScenarioPlan(){
     title='Captain Planning';
     subtitle='Build around your own robot, estimate who else will captain, and rank complementary robots that are realistically available.';
     focus=`<div class="asb-panel-head"><span class="asb-kicker">Draft pressure</span><h3>Who else will probably captain?</h3><p>These teams are currently in the captain band. Robots above your projected slot create the most draft pressure on your first-choice candidates.</p></div><div class="asb-mini-list">${projectedCaptainCards()}</div>`;
-    candidates=`<div class="asb-panel-head"><span class="asb-kicker">Best complement</span><h3>Top fit candidates</h3><p>Fit uses qualification performance, Neptune EPA, your editable alliance needs, tags, and defense evidence.</p></div>${fitCandidateCards()}<a class="secondary asb-wide-link" href="${esc(cfg.matchStrategy)}?event_id=${cfg.eventId}"><i class="fa-solid fa-chart-line"></i> Open Prediction / Match Strategy</a>`;
+    candidates=`<div class="asb-panel-head"><span class="asb-kicker">Best complement</span><h3>Top fit candidates</h3><p>Fit uses qualification performance, SA-EPA, your editable alliance needs, tags, and defense evidence.</p></div>${fitCandidateCards()}<a class="secondary asb-wide-link" href="${esc(cfg.matchStrategy)}?event_id=${cfg.eventId}"><i class="fa-solid fa-chart-line"></i> Open Prediction / Match Strategy</a>`;
     check=['Confirm our likely captain position','Set alliance needs','Review top first-pick candidates','Watch defense evidence for specialist candidates','Test the top pairings in AUGUR','Rank first- and second-pick lists','Mark Do Not Pick / robot-health concerns'];
   }else if(mode==='first_pick'){
     title='First-Pick Planning';
@@ -305,7 +305,7 @@ function renderGuide(){
     <button type="button" class="asb-rec" data-open-team="${r.team}">
       <span class="asb-rec-rank">${i+1}</span>
       <div class="asb-rec-main"><small>${i===0?'Neptune recommendation':'Next option'}</small><b>#${r.team} ${esc(r.nickname||'')}</b>
-      <span>Fit ${r.fit} · #${r.rank||'—'} qual · ${fmtPoints(r)} ${esc(rankingLabel())} · Nep. EPA ${num(r.neptune_epa,1)}</span>
+      <span>Fit ${r.fit} · #${r.rank||'—'} qual · ${fmtPoints(r)} ${esc(rankingLabel())} · SA-EPA ${num(r.neptune_epa,1)}</span>
       <div class="asb-tag-row">${tagChips(r,3)}</div></div><i class="fa-solid fa-chevron-right"></i>
     </button>`).join(''):'<div class="asb-empty">No currently available robots meet the active strategy filters.</div>';
   const msgs=[];
@@ -365,7 +365,7 @@ function poolRows(){
 }
 function renderPool(){
   const rows=poolRows();
-  $('#asbPoolSummary').textContent=`${rows.length} robot${rows.length===1?'':'s'} · ${rankingLabel()} + Neptune EPA + scouting tags`;
+  $('#asbPoolSummary').textContent=`${rows.length} robot${rows.length===1?'':'s'} · ${rankingLabel()} + SA-EPA + scouting tags`;
   el.pool.innerHTML=rows.length?rows.map(r=>robotCard(r)).join(''):'<div class="asb-empty">No robots match this view.</div>';
 }
 function render(){
@@ -415,7 +415,7 @@ function openDetail(team){
   $('#asbDetailSubtitle').textContent=[r.city,r.state_prov,r.country].filter(Boolean).join(', ');
   const defenseHtml=de.count?`<section class="asb-explain"><h3>Defense evidence</h3><p>${de.count} tagged Spot Scouting observation${de.count===1?'':'s'}${de.tags?.length?' · '+esc(de.tags.join(', ')):''}.</p>${(de.media||[]).filter(m=>m.type==='video').slice(0,3).map(v=>`<a class="secondary compact" href="${esc(cfg.spotMedia)}?id=${v.id}" target="_blank"><i class="fa-solid fa-play"></i> ${esc(v.match||'Defense video')}</a>`).join(' ')}</section>`:'';
   el.detailBody.innerHTML=`<section class="asb-detail-summary">${metricStrip(r)}<div class="asb-tag-row large">${tagChips(r,8)||'<span class="muted">No alliance-selection tags yet.</span>'}</div><div class="asb-badges">${statusBadges(r.team)}</div></section>
-    <section class="asb-explain"><h3>Why Neptune is showing this team</h3><p>Scenario fit score: <b>${candidateFit(r)}</b>. Qualification performance and Neptune EPA establish the baseline; the active alliance-needs priorities, strategy tags, favorites, and defense evidence adjust the recommendation.</p></section>${defenseHtml}`;
+    <section class="asb-explain"><h3>Why Neptune is showing this team</h3><p>Scenario fit score: <b>${candidateFit(r)}</b>. Qualification performance and SA-EPA establish the baseline; the active alliance-needs priorities, strategy tags, favorites, and defense evidence adjust the recommendation.</p></section>${defenseHtml}`;
   el.detailActions.innerHTML=`<a class="secondary" href="${esc(cfg.robotLookup||'robot-lookup.php')}?team=${r.team}"><i class="fa-solid fa-magnifying-glass-chart"></i> Full Robot Intelligence</a>
     <a class="secondary" href="${esc(cfg.matchStrategy||'match-strategy.php')}?event_id=${cfg.eventId}"><i class="fa-solid fa-chart-line"></i> Prediction Lab</a>
     <button type="button" class="secondary" data-toggle-favorite="${r.team}"><i class="${isFavorite(r.team)?'fa-solid':'fa-regular'} fa-star"></i> ${isFavorite(r.team)?'Unfavorite':'Favorite'}</button>

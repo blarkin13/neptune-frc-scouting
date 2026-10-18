@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 $u=require_role(['owner','admin','strategy']);
 $org=(int)$u['organization_id'];$canConfig=in_array((string)$u['role'],['owner','admin'],true);
-$pageTitle='Event Operations';$moduleName='SATURN';$msg='';$error='';
+$pageTitle='Event Management';$moduleName='SATURN';$msg='';$error='';
 $selectedId=(int)($_POST['event_id']??$_GET['event_id']??0);
 function eo_h($v): string {return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 function eo_stage_label(string $v): string {return ['planned'=>'Planned','pit_open'=>'Pit Open','schedule_ready'=>'Schedule Ready','running'=>'Running','complete'=>'Complete'][$v]??ucwords(str_replace('_',' ',$v));}
@@ -322,11 +322,11 @@ include dirname(__DIR__).'/partials_header.php';
 @media(max-width:550px){.eo-event-archive-control{flex-wrap:wrap}.eo-event-archive-control form{width:100%}}
 </style>
 <div class="eo-workspace">
-<header class="eo-page-head module-page-header neptune-page-hero" aria-label="Event Operations">
+<header class="eo-page-head module-page-header neptune-page-hero" aria-label="Event Management">
  <div class="eo-hero-intro">
-  <h1>Event Operations</h1>
+  <h1>Event Management</h1>
   <p class="eo-muted">Prepare, manage, and monitor every competition in one place.</p>
-  <div class="neptune-hero-pills" aria-label="Event Operations quick guide">
+  <div class="neptune-hero-pills" aria-label="Event Management quick guide">
    <span class="neptune-hero-pill"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i><strong>1</strong> Choose event</span>
    <span class="neptune-hero-pill"><i class="fa-solid fa-sliders" aria-hidden="true"></i><strong>2</strong> Manage operations</span>
    <span class="neptune-hero-pill"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><strong>3</strong> Monitor live sync</span>

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/_tag_schema.php';
+require_once __DIR__.'/_tag_synthetic.php';
 require_once dirname(__DIR__).'/_event_selection.php';
 require_once dirname(__DIR__,3).'/neptune_secure/image.php';
 
@@ -144,6 +145,7 @@ function tagobs_active_matches(PDO $pdo,int $org): array {
       FROM matches m
       JOIN events e ON e.id=m.event_id
       WHERE m.organization_id=? AND e.organization_id=? AND e.active=1 AND m.state<>'ended'
+        AND NOT (e.event_code IN ('NEPTUNE_QA_1','NEPTUNE_QA_2') AND e.tba_event_key IS NULL)
       ORDER BY e.is_current DESC,e.name,m.field_id,
         FIELD(m.state,'running','paused','ready','scheduled'),
         CASE WHEN m.scheduled_time IS NULL THEN 1 ELSE 0 END,m.scheduled_time,
@@ -239,7 +241,7 @@ function tagobs_observation_rows(PDO $pdo,int $org,?int $eventId=null,?int $team
       LEFT JOIN tag_scouting_tags t ON t.id=ot.tag_id
       LEFT JOIN tag_scouting_media med ON med.observation_id=o.id
       LEFT JOIN tag_scouting_match_data md ON md.observation_id=o.id
-      WHERE o.organization_id=?";
+      WHERE o.organization_id=? AND ".neptune_tag_human_observation_sql('o');
     $args=[$org];
     if($eventId){$sql.=' AND o.event_id=?';$args[]=$eventId;}
     if($team){$sql.=' AND o.frc_team_number=?';$args[]=$team;}

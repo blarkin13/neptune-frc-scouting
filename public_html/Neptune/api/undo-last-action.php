@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_json_request_guard.php';neptune_require_request_header();
 $u=require_login();
 $d=json_decode(file_get_contents('php://input'),true)?:[];
 $sid=(int)($d['session_id']??0);

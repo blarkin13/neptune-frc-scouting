@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/_json_request_guard.php';neptune_require_request_header();
 require_once __DIR__.'/_validate-scout-action.php';
 $u=require_role(['owner','admin','strategy']);
 $d=json_decode(file_get_contents('php://input'),true);

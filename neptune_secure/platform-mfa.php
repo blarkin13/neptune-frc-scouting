@@ -16,6 +16,20 @@ function neptune_platform_owner_is(array $user): bool {
         && (int)($user['organization_id']??0)===$platformOrgId;
 }
 
+/**
+ * How platform-owner access is protected (config app.platform_owner_auth):
+ *   strong - default (also "auto"/"password"): password + authenticator code, or Google sign-in.
+ *   google - password sign-in needs no authenticator, but the owner-only tools
+ *            (Maintenance Console, File Manager, Platform Administration, Access Activity)
+ *            require a Google sign-in.
+ *   basic  - password or Google sign-in; no authenticator and no extra step for owner tools.
+ */
+function neptune_platform_owner_mode(): string {
+    global $config;
+    $mode=strtolower(trim((string)($config['app']['platform_owner_auth']??'strong')));
+    return in_array($mode,['basic','google'],true)?$mode:'strong';
+}
+
 function neptune_mfa_ensure_schema(PDO $pdo): void {
     static $done=false;
     if($done)return;
@@ -310,6 +324,7 @@ function neptune_platform_mfa_mark_verified(string $method='totp'): void {
 
 function neptune_platform_mfa_session_is_strong(array $user): bool {
     if(!neptune_platform_owner_is($user))return true;
+    if(neptune_platform_owner_mode()==='basic')return true;
 
     $method=strtolower(trim((string)($user['auth_method']??$_SESSION['user']['auth_method']??'')));
     if($method==='google')return true;

@@ -10,6 +10,27 @@ $u=require_role(['owner','admin','strategy']);
 $org=(int)$u['organization_id'];
 $msg='';$error='';$issuedPassword='';$issuedInviteUrl='';
 neptune_auth_ensure_schema($pdo);
+ntu_ensure_unique_workspace_domain($pdo);
+
+/** One Workspace domain per organization, enforced by the database as well as the
+ * form check below. Self-migration: normalizes stored domains, then adds the unique
+ * index once. If two organizations already share a domain it is not installed and
+ * the conflict is logged for the platform owner to resolve. */
+function ntu_ensure_unique_workspace_domain(PDO $pdo): void {
+    $key='2026-10-17_org_google_workspace_domain_unique';
+    try{
+        $done=$pdo->prepare('SELECT 1 FROM neptune_migrations WHERE migration_key=?');$done->execute([$key]);
+        if($done->fetchColumn())return;
+        $pdo->exec("UPDATE organizations SET google_workspace_domain=NULLIF(LOWER(TRIM(google_workspace_domain)),'') WHERE google_workspace_domain IS NOT NULL");
+        $dup=$pdo->query('SELECT google_workspace_domain FROM organizations WHERE google_workspace_domain IS NOT NULL GROUP BY google_workspace_domain HAVING COUNT(*)>1 LIMIT 5')->fetchAll(PDO::FETCH_COLUMN);
+        if($dup){error_log('[Neptune] Workspace domain unique index not installed; shared by several organizations: '.implode(', ',$dup));return;}
+        $has=$pdo->query("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='organizations' AND index_name='uq_org_google_workspace_domain'")->fetchColumn();
+        if(!(int)$has)$pdo->exec('ALTER TABLE organizations ADD UNIQUE KEY uq_org_google_workspace_domain (google_workspace_domain)');
+        $pdo->prepare('INSERT IGNORE INTO neptune_migrations (migration_key,package) VALUES (?,?)')->execute([$key,'Neptune_Platform_Cleanup_v2.zip']);
+    }catch(Throwable $e){
+        error_log('[Neptune] Workspace domain unique index migration failed: '.$e->getMessage());
+    }
+}
 
 /** Delete only logos uploaded into this organization's own storage folder. */
 function ntu_delete_owned_org_logo(int $org,string $relative):void{
@@ -110,10 +131,38 @@ if($kind==='organization_logo_upload'){
             $mode=(string)($_POST['google_signin_mode']??'optional');
             if(!in_array($mode,['disabled','optional','required'],true))throw new RuntimeException('Invalid Google sign-in mode.');
             $domain=neptune_google_normalize_domain((string)($_POST['google_workspace_domain']??''));
+            if($domain!==''){
+                // Public mailbox providers are not Workspace domains and can never be claimed by an organization.
+                $publicMailDomains=['gmail.com','googlemail.com','yahoo.com','ymail.com','rocketmail.com','outlook.com','hotmail.com','live.com','msn.com','aol.com','icloud.com','me.com','mac.com','proton.me','protonmail.com','pm.me','gmx.com','gmx.net','mail.com','zoho.com','yandex.com','comcast.net','att.net','sbcglobal.net','verizon.net','cox.net','bellsouth.net','charter.net'];
+                if(in_array($domain,$publicMailDomains,true)||preg_match('/^(gmail|googlemail|yahoo|ymail|hotmail|outlook|live|msn|aol|icloud|protonmail)\.[a-z.]+$/',$domain))
+                    throw new RuntimeException('That is a public email domain, not a Workspace domain. Enter your school or organization domain, or leave this blank.');
+                // One verified domain belongs to exactly one organization. The other organization is deliberately not named.
+                $domainTaken=$pdo->prepare('SELECT COUNT(*) FROM organizations WHERE LOWER(google_workspace_domain)=? AND id<>?');
+                $domainTaken->execute([$domain,$org]);
+                if((int)$domainTaken->fetchColumn()>0)
+                    throw new RuntimeException('That Workspace domain is already registered to another Neptune organization. Contact the Neptune platform owner if it should belong to your organization.');
+                // Claiming a new domain requires proof of control: the owner must be signed in
+                // with Google, this session, as an account at that domain. An unchanged domain
+                // is not re-checked, so existing organizations keep working.
+                $currentDomain=$pdo->prepare('SELECT LOWER(COALESCE(google_workspace_domain,\'\')) FROM organizations WHERE id=?');
+                $currentDomain->execute([$org]);
+                if((string)$currentDomain->fetchColumn()!==$domain){
+                    $me=ntu_user($pdo,$org,(int)$u['id']);
+                    $googleEmail=strtolower(trim((string)($me['google_email']??'')));
+                    if(($u['auth_method']??'')!=='google'||!str_ends_with($googleEmail,'@'.$domain))
+                        throw new RuntimeException('To claim '.$domain.', sign out and sign back in with Google using your own @'.$domain.' account, then save again. This proves your organization controls the domain.');
+                }
+            }
             $auto=!empty($_POST['google_auto_provision'])?1:0;
             if($auto && $domain==='')throw new RuntimeException('Enter a Workspace domain before enabling automatic user creation.');
             if($mode==='required'&&!neptune_google_enabled())throw new RuntimeException('Google OAuth must be configured before Google sign-in can be required.');
-            $pdo->prepare('UPDATE organizations SET google_signin_mode=?,google_workspace_domain=?,google_auto_provision=? WHERE id=?')->execute([$mode,$domain?:null,$auto,$org]);
+            try{
+                $pdo->prepare('UPDATE organizations SET google_signin_mode=?,google_workspace_domain=?,google_auto_provision=? WHERE id=?')->execute([$mode,$domain?:null,$auto,$org]);
+            }catch(PDOException $domainWriteError){
+                // Covers two owners saving the same domain at the same moment when the optional unique index is installed.
+                if((string)$domainWriteError->getCode()==='23000')throw new RuntimeException('That Workspace domain is already registered to another Neptune organization. Contact the Neptune platform owner if it should belong to your organization.');
+                throw $domainWriteError;
+            }
             $msg='Google authentication settings updated.';
             neptune_auth_audit($pdo,$org,(int)$u['id'],'google_policy_updated','organization',(string)$org,['mode'=>$mode,'workspace_domain'=>$domain,'auto_provision'=>$auto]);
         } elseif($kind==='create_invite'){
@@ -418,7 +467,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
       </form>
       <?php if($orgLogoPath!==''):?><button type="button" class="secondary ntu-org-crop-adjust" id="ntuOrgAdjustLogo"><i class="fa-solid fa-crop-simple" aria-hidden="true"></i> Adjust</button><?php endif;?>
       <?php if($orgLogoPath!==''):?>
-        <form method="post" action="#ntu-organization-branding" onsubmit="return confirm('Remove the organization logo?')">
+        <form method="post" action="#ntu-organization-branding" data-confirm="Remove the organization logo? Neptune branding remains unchanged." data-confirm-title="Remove organization logo" data-confirm-button="Remove" data-confirm-danger="1">
           <input type="hidden" name="csrf" value="<?=e(csrf_token())?>">
           <input type="hidden" name="kind" value="organization_logo_remove">
           <button class="secondary ntu-org-remove-btn" type="submit" title="Remove the organization logo"><i class="fa-solid fa-trash" aria-hidden="true"></i> Remove</button>
@@ -560,7 +609,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
         <div>
           <label>Workspace domain <span class="muted">(optional)</span></label>
           <input name="google_workspace_domain" value="<?=e($policy['workspace_domain'])?>" placeholder="example.org" autocapitalize="none" spellcheck="false">
-          <div class="ntu-help">Only needed for automatic account creation. Existing Neptune users can sign in with any matching Google account. For Workspace auto-creation, Neptune verifies Google's hosted-domain value.</div>
+          <div class="ntu-help">Only needed for automatic account creation. Each domain can belong to only one organization, and public email domains such as gmail.com are not accepted. To set or change it, sign in with Google using your own account at that domain. Existing Neptune users can sign in with any matching Google account. For Workspace auto-creation, Neptune verifies Google's hosted-domain value.</div>
         </div>
         <div class="full">
           <label style="display:flex;gap:9px;align-items:flex-start"><input type="checkbox" name="google_auto_provision" value="1" <?=$policy['auto_provision']?'checked':''?> style="width:auto;margin-top:3px"><span><b>Automatically create approved Workspace users</b><br><span class="ntu-help">A first-time user from the approved Workspace domain is created as <b>Scout</b>. Admin, Strategy, and Owner roles must still be assigned manually.</span></span></label>
@@ -632,7 +681,7 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
   <div class="ntu-help">This is an alternative to <b>Add User</b>, not a requirement. The recipient verifies Google, joins only <b><?=e($u['organization_name'])?></b> as <b>Scout</b>, and the link expires after one use. Use <b>Add User</b> when you want to create and configure the account yourself.</div>
   <?php if(!$invites):?><div class="ntu-empty" style="margin-top:14px">No invitations have been created yet.</div><?php else:?><div class="table-wrap" style="margin-top:14px"><table class="table ntu-invite-table"><thead><tr><th>Invite</th><th>Created</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
   <?php foreach($invites as $inv):$now=time();$exp=strtotime((string)$inv['expires_at']);$status=!empty($inv['used_at'])?'Used':(!empty($inv['revoked_at'])?'Revoked':(($exp!==false&&$exp<=$now)?'Expired':'Active'));?>
-    <tr><td><b><?=e($inv['label']?:'Scout invitation')?></b><div class="ntu-sub">Created by <?=e($inv['created_by_name']?:'administrator')?> · One use<?php if(!empty($inv['invite_email'])):?> · <?=e($inv['invite_email'])?><?php endif;?></div></td><td><?=e($inv['created_at'])?></td><td><?=e($inv['expires_at'])?></td><td><span class="pill <?=$status==='Active'?'':'warning'?>"><?=e($status)?></span><?php if($status==='Used'&&!empty($inv['used_by_name'])):?><div class="ntu-sub"><?=e($inv['used_by_name'])?></div><?php endif;?></td><td><?php if($status==='Active'):?><form method="post" data-confirm="Revoke this invitation?" data-confirm-title="Revoke invitation" data-confirm-button="Revoke" data-confirm-danger="1"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="kind" value="revoke_invite"><input type="hidden" name="invite_id" value="<?=(int)$inv['id']?>"><button class="secondary" type="submit"><i class="fa-solid fa-ban"></i> Revoke</button></form><?php endif;?></td></tr>
+    <tr><td><b><?=e($inv['label']?:'Scout invitation')?></b><div class="ntu-sub">Created by <?=e($inv['created_by_name']?:'administrator')?> · One use<?php if(!empty($inv['invite_email'])):?> · <?=e($inv['invite_email'])?><?php endif;?></div></td><td><?=e(neptune_time($inv['created_at']))?></td><td><?=e($inv['expires_at'])?></td><td><span class="pill <?=$status==='Active'?'':'warning'?>"><?=e($status)?></span><?php if($status==='Used'&&!empty($inv['used_by_name'])):?><div class="ntu-sub"><?=e($inv['used_by_name'])?></div><?php endif;?></td><td><?php if($status==='Active'):?><form method="post" data-confirm="Revoke this invitation?" data-confirm-title="Revoke invitation" data-confirm-button="Revoke" data-confirm-danger="1"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="kind" value="revoke_invite"><input type="hidden" name="invite_id" value="<?=(int)$inv['id']?>"><button class="secondary" type="submit"><i class="fa-solid fa-ban"></i> Revoke</button></form><?php endif;?></td></tr>
   <?php endforeach;?></tbody></table></div><?php endif;?>
 </div>
 
@@ -911,9 +960,8 @@ html:not([data-theme="light"]) .ntu-modal-section{background:var(--panel2)!impor
  editLogoRemove?.addEventListener('click',async()=>{
    const team=editingLogoTeam;if(logoBusy||!team||teamCard(team)?.dataset.logoOwner!=='local')return;
    if(logoEditorHasUnsavedNumber()){logoMessage(team,'Save the changed team number first.','error');return;}
-   const confirmed=window.NeptuneUI?.confirm
-     ?await window.NeptuneUI.confirm('Remove the local logo for team #'+team+'? A shared logo may appear if available.',{title:'Remove team logo',confirmText:'Remove',danger:true})
-     :window.confirm('Remove the local logo for team #'+team+'?');
+   if(!window.NeptuneUI?.confirm){logoMessage(team,'Page is still loading. Try again in a moment.','error');return;}
+   const confirmed=await window.NeptuneUI.confirm('Remove the local logo for team #'+team+'? A shared logo may appear if available.',{title:'Remove team logo',confirmText:'Remove',danger:true});
    if(!confirmed)return;
    setLogoBusy(team,true);logoMessage(team,'Removing logo…');
    try{

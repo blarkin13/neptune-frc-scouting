@@ -74,7 +74,7 @@
   let matchupSelected = [];
   let matchupRequestToken = 0;
   const matchupDefaults = {
-    event_offense_weight: 25, recent_offense_weight: 40, ceiling_weight: 15, epa_weight: 35,
+    event_offense_weight: 25, recent_offense_weight: 40, ceiling_weight: 15, epa_weight: 100,
     trend_strength: 1.5, defense_suppression_weight: 75, defense_activity_weight: 25,
     defense_action_points: 1.5, max_defense_adjustment_pct: 20, tba_form_strength: 5
   };
@@ -895,13 +895,13 @@
       const epa = allianceNeptuneEpa(row);
       const epaText = epa.rated ? num(epa.subtotal, 1) : '—';
       const epaTitle = epa.members
-        ? `Sum of ${epa.rated} of ${epa.members} selected field robot${epa.members === 1 ? '' : 's'} with Neptune EPA. Backup is excluded.`
-        : 'Add field robots to build the alliance Neptune EPA subtotal.';
+        ? `Sum of ${epa.rated} of ${epa.members} selected field robot${epa.members === 1 ? '' : 's'} with SA-EPA. Backup is excluded.`
+        : 'Add field robots to build the alliance SA-EPA subtotal.';
       html += `<article class="alliance-alliance ${activeAlliance ? 'active' : ''} ${matchupIndex >= 0 ? 'matchup-selected' : ''}" data-alliance="${a}">
         <div class="alliance-alliance-head">
           <span class="alliance-alliance-title">Alliance ${a}</span>
           <div class="alliance-alliance-head-actions">
-            <span class="alliance-card-epa" title="${esc(epaTitle)}"><small>Nep. EPA</small><b>${esc(epaText)}</b></span>
+            <span class="alliance-card-epa" title="${esc(epaTitle)}"><small>SA-EPA</small><b>${esc(epaText)}</b></span>
             <button type="button" class="alliance-potential-button" data-potential-alliance="${a}" title="View Alliance ${a} offensive potential"><i class="fa-solid fa-chart-line"></i><span>Potential</span></button>
             <button type="button" class="alliance-matchup-selector ${matchupIndex >= 0 ? 'active' : ''}" data-matchup-alliance="${a}" aria-pressed="${matchupIndex >= 0 ? 'true' : 'false'}" title="${matchupIndex >= 0 ? 'Remove from matchup' : 'Add to matchup'}">${matchupIndex >= 0 ? matchupIndex + 1 : 'VS'}</button>
             <span class="alliance-alliance-number">${a}</span>
@@ -1142,7 +1142,7 @@
           return `<div role="button" tabindex="${editable() ? '0' : '-1'}" draggable="${team && editable() ? 'true' : 'false'}" class="alliance-pick-list-slot ${team ? 'filled' : 'empty'} ${unavailable ? 'taken' : ''} ${alreadyPicked ? 'already-picked' : ''}" data-pick-tier="${tier}" data-pick-index="${index}" data-pick-team="${team || ''}" aria-label="${team ? `Pick list slot ${index + 1}, team ${team}` : `Choose team for ${esc(slotLabel)}`}">
             <span class="alliance-pick-list-position">${index + 1}</span>
             ${team
-              ? `<button type="button" class="alliance-pick-list-team" data-open-pick-team="${team}" draggable="false"><b>#${team}</b><span>${esc(info?.nickname || 'FRC Team')}</span><small>Nep. EPA ${neptuneEpa(info) == null ? '—' : num(neptuneEpa(info), 1)}</small></button>
+              ? `<button type="button" class="alliance-pick-list-team" data-open-pick-team="${team}" draggable="false"><b>#${team}</b><span>${esc(info?.nickname || 'FRC Team')}</span><small>SA-EPA ${neptuneEpa(info) == null ? '—' : num(neptuneEpa(info), 1)}</small></button>
                  <div class="alliance-pick-list-actions">
                    ${alreadyPicked ? '<span class="alliance-pick-list-picked-badge"><i class="fa-solid fa-handshake"></i> Picked</span>' : ''}
                    ${liveMode && !alreadyPicked ? `<button type="button" class="alliance-pick-list-taken ${unavailable ? 'active' : ''}" data-pick-taken data-team="${team}" aria-label="${unavailable ? 'Mark team ' + team + ' available again' : 'Mark team ' + team + ' unavailable'}" aria-pressed="${unavailable ? 'true' : 'false'}" ${editable() ? '' : 'disabled'} title="${unavailable ? 'Mark this team available again' : 'Mark this team unavailable during live alliance selection'}"><i class="fa-solid ${unavailable ? 'fa-rotate-left' : 'fa-circle'}"></i><span>${unavailable ? 'Available' : 'Unavailable'}</span></button>` : ''}
@@ -1308,7 +1308,7 @@
         <span class="alliance-pick-team-choice-name"><b>${esc(team.nickname || 'FRC Team')}</b><small>${esc(stateLabel(status.state))}${unavailable ? ' · Unavailable' : ''}${existing ? ` · ${esc(existing)}` : ''}</small><span class="alliance-pick-team-choice-tags">${allianceTagChips(number, true, 3)}</span></span>
         <span class="alliance-pick-team-choice-metrics">
           <span><small>${esc(rankingLabel)}</small><b>${num(Number(team.points || 0), rankingPrecision)}</b></span>
-          <span><small>Nep. EPA</small><b>${neptuneEpa(team) == null ? '—' : num(neptuneEpa(team), 1)}</b></span>
+          <span><small>SA-EPA</small><b>${neptuneEpa(team) == null ? '—' : num(neptuneEpa(team), 1)}</b></span>
         </span>
         <i class="fa-solid fa-chevron-right"></i>
       </button>`;
@@ -1455,7 +1455,7 @@
         <span class="alliance-team-tail">
           <span class="alliance-team-metrics">
             <span class="alliance-team-record" title="Qualification record">${record}</span>
-            <span class="alliance-team-epa" title="Neptune EPA"><span>Nep. EPA</span><b>${neptuneEpa(team) == null ? '—' : num(neptuneEpa(team), 1)}</b></span>
+            <span class="alliance-team-epa" title="SA-EPA"><span>SA-EPA</span><b>${neptuneEpa(team) == null ? '—' : num(neptuneEpa(team), 1)}</b></span>
             <i class="fa-solid ${stateIcon(st.state)} alliance-team-state-icon" title="${esc(stateLabel(st.state))}"></i>
           </span>
         </span>
@@ -1665,9 +1665,9 @@
         <div class="alliance-decision-kpi"><span>Defense trend</span><b>${defense.length ? decisionTrend(defSlope, 'actions') : '—'}</b><small>Last 6 scored samples</small></div>
         <div class="alliance-decision-kpi"><span>Offense success</span><b>${success == null ? '—' : `${num(success, 0)}%`}</b><small>${Number(detail.event_stats?.actions || 0)} recorded actions</small></div>
         <div class="alliance-decision-kpi"><span>Public EPA</span><b>${detail.epa_rating?.epa == null ? '—' : num(detail.epa_rating.epa, 1)}</b><small>${detail.epa_rating?.confidence == null ? 'EPA not built' : `${num(detail.epa_rating.confidence, 0)}% public-data confidence`}</small></div>
-        <div class="alliance-decision-kpi"><span>Neptune EPA</span><b>${neptuneEpa(detail.epa_rating) == null ? '—' : num(neptuneEpa(detail.epa_rating), 1)}</b><small>${Number(detail.epa_rating?.scouting_matches || 0)} Neptune match${Number(detail.epa_rating?.scouting_matches || 0) === 1 ? '' : 'es'} blended</small></div>
+        <div class="alliance-decision-kpi"><span>SA-EPA</span><b>${neptuneEpa(detail.epa_rating) == null ? '—' : num(neptuneEpa(detail.epa_rating), 1)}</b><small>${Number(detail.epa_rating?.scouting_matches || 0)} Neptune match${Number(detail.epa_rating?.scouting_matches || 0) === 1 ? '' : 'es'} blended</small></div>
         <div class="alliance-decision-kpi"><span>D-EPA</span><b>${detail.depa_rating?.depa == null ? '—' : num(detail.depa_rating.depa, 1)}</b><small>All-match defensive suppression</small></div>
-        <div class="alliance-decision-kpi"><span>Nep. D-EPA</span><b>${detail.depa_rating?.neptune_depa == null ? '—' : num(detail.depa_rating.neptune_depa, 1)}</b><small>${Number(detail.depa_rating?.verified_defense_matches || 0)} verified defense match${Number(detail.depa_rating?.verified_defense_matches || 0)===1?'':'es'}</small></div>
+        <div class="alliance-decision-kpi"><span>SV-Points Denied</span><b>${detail.depa_rating?.neptune_depa == null ? '—' : num(detail.depa_rating.neptune_depa, 1)}</b><small>${Number(detail.depa_rating?.verified_defense_matches || 0)} verified defense match${Number(detail.depa_rating?.verified_defense_matches || 0)===1?'':'es'}</small></div>
         <div class="alliance-decision-kpi"><span>EPA trend</span><b>${detail.epa_rating?.trend == null ? '—' : decisionTrend(Number(detail.epa_rating.trend), 'pts')}</b><small>${detail.epa_rating?.source === 'FIRST provisional' ? 'FIRST provisional trend' : 'TBA-derived rating trend'}</small></div>
         <div class="alliance-decision-kpi"><span>Scoring sample</span><b>${rows.length}</b><small>qualification matches</small></div>
       </div>`;
@@ -1962,7 +1962,7 @@
       return `<div class="matchup-team-row">
         <div class="matchup-team-id"><b>#${row.team} ${esc(row.nickname || '')}</b><span>${m.matches || 0} scouted quals · ${m.wins || 0}-${m.losses || 0}${Number(m.ties || 0) ? `-${m.ties}` : ''}</span></div>
         <div class="matchup-team-kpi"><span>Public EPA</span><b>${num(m.epa, 1)}</b></div>
-        <div class="matchup-team-kpi" title="Neptune EPA"><span>Nep. EPA</span><b>${num(neptuneEpa(m), 1)}</b></div>
+        <div class="matchup-team-kpi" title="SA-EPA"><span>SA-EPA</span><b>${num(neptuneEpa(m), 1)}</b></div>
         <div class="matchup-team-kpi"><span>Slope</span><b>${matchupTrendBadge(m.slope)}</b></div>
         <div class="matchup-team-kpi"><span>Opponent impact</span><b class="${suppression > .2 ? 'good-text' : suppression < -.2 ? 'bad-text' : ''}">${esc(suppressionText)}</b></div>
         <div class="matchup-team-kpi"><span>Defense / match</span><b>${num(m.defense_actions_per_match, 1)}</b></div>
@@ -1984,7 +1984,7 @@
     </div>
     <div class="matchup-summary-grid">
       <article><span>Public EPA</span><b>${num(a.epa, 1)} <small>vs</small> ${num(b.epa, 1)}</b><small>Independent TBA-derived contribution estimate</small></article>
-      <article><span>Neptune EPA</span><b>${num(neptuneEpa(a), 1)} <small>vs</small> ${num(neptuneEpa(b), 1)}</b><small>Public EPA blended with Neptune scouting and trend</small></article>
+      <article><span>SA-EPA</span><b>${num(neptuneEpa(a), 1)} <small>vs</small> ${num(neptuneEpa(b), 1)}</b><small>Public EPA blended with Neptune scouting and trend</small></article>
       <article><span>Recent slope</span><b>${matchupTrendBadge(a.slope)} <small>vs</small> ${matchupTrendBadge(b.slope)}</b><small>Combined robot scoring trend</small></article>
       <article><span>Defense estimate</span><b>${num(a.defense_estimate, 1)} <small>vs</small> ${num(b.defense_estimate, 1)}</b><small>Estimated points suppressed</small></article>
     </div>
@@ -2153,7 +2153,7 @@
   }
 
   function potentialHeader(alliance) {
-    return `<div class="alliance-potential-head"><div><span>Alliance ${alliance}</span><h2>Offensive Potential</h2></div><div class="toolbar" style="margin:0"><button type="button" class="secondary compact" data-potential-model-settings title="View or update the shared AUGUR model"><i class="fa-solid fa-sliders"></i> Model Settings</button><span class="pill" title="Neptune EPA"><i class="fa-solid fa-chart-line"></i> Nep. EPA</span><button type="button" class="secondary compact alliance-potential-close" data-potential-close aria-label="Close offensive potential"><i class="fa-solid fa-xmark"></i></button></div></div>`;
+    return `<div class="alliance-potential-head"><div><span>Alliance ${alliance}</span><h2>Offensive Potential</h2></div><div class="toolbar" style="margin:0"><button type="button" class="secondary compact" data-potential-model-settings title="View or update the shared AUGUR model"><i class="fa-solid fa-sliders"></i> Model Settings</button><span class="pill" title="SA-EPA"><i class="fa-solid fa-chart-line"></i> SA-EPA</span><button type="button" class="secondary compact alliance-potential-close" data-potential-close aria-label="Close offensive potential"><i class="fa-solid fa-xmark"></i></button></div></div>`;
   }
 
   function renderPotential() {
@@ -2167,7 +2167,7 @@
     const backup = Number(row.backup || 0);
 
     if (!members.length) {
-      holder.innerHTML = `${potentialHeader(alliance)}<div class="alliance-intel-empty alliance-potential-empty"><i class="fa-solid fa-chart-line"></i><b>No field teams yet</b><span>Add a captain or picks to Alliance ${alliance}. The Current Subtotal will be the sum of their Neptune EPA values.</span></div>`;
+      holder.innerHTML = `${potentialHeader(alliance)}<div class="alliance-intel-empty alliance-potential-empty"><i class="fa-solid fa-chart-line"></i><b>No field teams yet</b><span>Add a captain or picks to Alliance ${alliance}. The Current Subtotal will be the sum of their SA-EPA values.</span></div>`;
       return;
     }
 
@@ -2186,7 +2186,7 @@
       const augur = neptuneEpa(info);
       if (augur === null || augur === undefined || !Number.isFinite(Number(augur))) {
         return `<div class="potential-team-row">
-          <div class="potential-team-main"><b>${esc(item.label)} · #${item.team} ${esc(info?.nickname || '')}</b><span>Neptune EPA is not available for this robot yet.</span></div>
+          <div class="potential-team-main"><b>${esc(item.label)} · #${item.team} ${esc(info?.nickname || '')}</b><span>SA-EPA is not available for this robot yet.</span></div>
           <span class="potential-spark" aria-hidden="true"></span>
           <div class="potential-team-trend"><small>No model data</small></div>
           <strong>—</strong>
@@ -2208,11 +2208,11 @@
     holder.innerHTML = `${potentialHeader(alliance)}
       <div class="alliance-potential-body">
         <div class="potential-hero">
-          <div><span>Current subtotal</span><strong>${usable.length ? num(subtotal, 1) : '—'}</strong><small>${usable.length ? `Sum of ${usable.length} selected field robot${usable.length === 1 ? '' : 's'}' Neptune EPA` : 'Waiting for Neptune EPA data'}</small></div>
+          <div><span>Current subtotal</span><strong>${usable.length ? num(subtotal, 1) : '—'}</strong><small>${usable.length ? `Sum of ${usable.length} selected field robot${usable.length === 1 ? '' : 's'}' SA-EPA` : 'Waiting for SA-EPA data'}</small></div>
           <div class="potential-hero-meta">${slopeValues.length ? trendMarkup(slope) : ''}<span><b>${confidenceValues.length ? Math.round(confidence) + '%' : '—'}</b> model confidence</span><span><b>${members.length}/3</b> field robots selected</span></div>
         </div>
         <div class="potential-team-list">${teamRows}</div>
-        <div class="potential-method"><i class="fa-solid fa-circle-info"></i><span><b>How this is calculated:</b> Current Subtotal is the straight sum of the selected field robots' Neptune EPA values—the same Neptune EPA shown on the Team Pool cards. Neptune EPA blends Public EPA with Neptune full-event offense, recent offense, high-end output, and trend using the shared model weights. ${esc(backupInfo)} Defense and qualification-form settings are used for head-to-head matchup predictions, not this offensive subtotal.${esc(modelError)}</span></div>
+        <div class="potential-method"><i class="fa-solid fa-circle-info"></i><span><b>How this is calculated:</b> Current Subtotal is the straight sum of the selected field robots' SA-EPA values—the same SA-EPA shown on the Team Pool cards. SA-EPA blends Public EPA with Neptune full-event offense, recent offense, high-end output, and trend using the shared model weights. ${esc(backupInfo)} Defense and qualification-form settings are used for head-to-head matchup predictions, not this offensive subtotal.${esc(modelError)}</span></div>
       </div>`;
   }
 
@@ -2504,7 +2504,7 @@
       const sourceLabel = firstProvisional ? 'FIRST event-local provisional EPA (not public TBA)' : 'TBA public EPA';
       const rankTotal = Number(s.rank_total || 0);
       const epaRank = s.rank ? `#${s.rank}${rankTotal ? ` / ${rankTotal}` : ''}` : '—';
-      return `<div class="alliance-detail-source">Source: ${esc(sourceLabel)} · ${esc(s.model_version || '')}</div><div class="alliance-kpis">${kpi(num(s.epa, 1), firstProvisional ? 'FIRST EPA' : 'Public EPA')}${kpi(s.auto == null ? '—' : num(s.auto, 1), 'Auto EPA')}${kpi(s.teleop == null ? '—' : num(s.teleop, 1), 'Teleop EPA')}${kpi(s.endgame == null ? '—' : num(s.endgame, 1), 'Endgame EPA')}${kpi(neptuneEpa(s) == null ? '—' : num(neptuneEpa(s), 1), 'Neptune EPA')}${kpi(s.record || '—', 'Qualification record')}${kpi(epaRank, 'Event EPA rank')}${kpi(trend, 'EPA trend')}${kpi(s.confidence == null ? '—' : `${num(s.confidence, 0)}%`, 'EPA confidence')}</div><p class="alliance-trend-note">${firstProvisional ? 'FIRST provisional EPA uses recorded event results.' : 'Public EPA uses TBA results.'} Neptune EPA also uses ${Number(s.scouting_matches || 0)} Neptune-scout${Number(s.scouting_matches || 0) === 1 ? 'ed match' : 'ed matches'} when available.</p>`;
+      return `<div class="alliance-detail-source">Source: ${esc(sourceLabel)} · ${esc(s.model_version || '')}</div><div class="alliance-kpis">${kpi(num(s.epa, 1), firstProvisional ? 'FIRST EPA' : 'Public EPA')}${kpi(s.auto == null ? '—' : num(s.auto, 1), 'Auto EPA')}${kpi(s.teleop == null ? '—' : num(s.teleop, 1), 'Teleop EPA')}${kpi(s.endgame == null ? '—' : num(s.endgame, 1), 'Endgame EPA')}${kpi(neptuneEpa(s) == null ? '—' : num(neptuneEpa(s), 1), 'SA-EPA')}${kpi(s.record || '—', 'Qualification record')}${kpi(epaRank, 'Event EPA rank')}${kpi(trend, 'EPA trend')}${kpi(s.confidence == null ? '—' : `${num(s.confidence, 0)}%`, 'EPA confidence')}</div><p class="alliance-trend-note">${firstProvisional ? 'FIRST provisional EPA uses recorded event results.' : 'Public EPA uses TBA results.'} SA-EPA also uses ${Number(s.scouting_matches || 0)} Neptune-scout${Number(s.scouting_matches || 0) === 1 ? 'ed match' : 'ed matches'} when available.</p>`;
     }
     if (tab === 'game') {
       const matches = d.matches || [];

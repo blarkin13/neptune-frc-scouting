@@ -29,25 +29,6 @@ $realtimeRoom=neptune_scouting_realtime_room($org);
 $lobbySnapshot=neptune_scouting_lobby_snapshot($pdo,$org);
 $lobbyVersion=(string)$lobbySnapshot['version'];
 
-/*
- * Only show the Scouter CBT callout until this logged-in user has passed
- * at least one Scouter CBT. Completed-but-failed attempts still require
- * the callout so the user can retake the certification.
- */
-$showScouterTraining=true;
-try{
-    $trainingStmt=$pdo->prepare("SELECT id
-      FROM training_attempts
-      WHERE organization_id=? AND user_id=? AND course_code='scouter' AND status='completed' AND passed=1
-      ORDER BY completed_at DESC,id DESC
-      LIMIT 1");
-    $trainingStmt->execute([$org,$uid]);
-    $showScouterTraining=!$trainingStmt->fetchColumn();
-}catch(Throwable $trainingError){
-    /* If the training table is not available yet, keep the callout visible. */
-    $showScouterTraining=true;
-}
-
 function scout_match_label(array $m): string {
     $level=['qm'=>'Qual','ef'=>'Eighth','qf'=>'Quarter','sf'=>'Semi','f'=>'Final'][$m['comp_level']]??strtoupper($m['comp_level']);
     return $m['comp_level']==='qm' ? $level.' '.$m['match_number'] : $level.' '.$m['set_number'].'-'.$m['match_number'];
@@ -106,18 +87,7 @@ include dirname(__DIR__).'/partials_header.php';
     </div>
   </section>
 
-  <?php if($showScouterTraining):?>
-  <section class="scout-training-alert" aria-label="Scouter training required">
-    <div class="scout-training-copy">
-      <div class="scout-training-icon"><i class="fa-solid fa-graduation-cap"></i></div>
-      <div><b>Complete your Scouter Certification CBT</b><div class="muted">This reminder disappears automatically after you submit your first Scouter CBT attempt.</div></div>
-    </div>
-    <div class="scout-training-actions">
-      <a class="btn secondary" href="<?=e(base_url('help/event-training.php'))?>"><i class="fa-solid fa-book-open"></i> Manual</a>
-      <a class="btn" href="<?=e(base_url('help/training/cbt.php?course=scouter'))?>"><i class="fa-solid fa-laptop-file"></i> Scouter CBT</a>
-    </div>
-  </section>
-  <?php endif;?>
+
 
   <?php if(!$matches):?>
     <section class="card match-scout-empty">

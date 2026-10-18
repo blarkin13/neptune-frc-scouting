@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__).'/scout/_tag_synthetic.php';
 $u=require_login();$org=(int)$u['organization_id'];$canDatabaseLab=in_array(($u['role']??''),['strategy','admin','owner'],true);
 
 // My Account lives on this existing route because Maintenance Console deployments
@@ -628,7 +629,7 @@ if (($_GET['view'] ?? '') === 'account') {
   <details class="account-panel account-collapsible" id="account-activity" open>
     <summary><h2><i class="fa-solid fa-clock-rotate-left"></i> Recent activity</h2><span class="account-fold-right"><i class="fa-solid fa-chevron-down account-fold-chevron" aria-hidden="true"></i></span></summary>
     <div class="account-fold-body"><div class="account-activity-toolbar"><p class="account-note">Latest scouting reports credited to your account.</p><label for="accountActivityLimit">Show <select id="accountActivityLimit" aria-label="Maximum recent activity items"><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select></label></div>
-    <?php if($accountActivity): ?><ul class="account-activity" id="accountRecentActivityList"><?php foreach($accountActivity as $item): ?><li><span class="account-activity-icon"><i class="fa-solid <?=e($item['icon'])?>"></i></span><div><a href="<?=e(base_url($item['href']))?>"><?=e($item['label'])?> · Team <?=e($item['frc_team_number'])?></a><small><?=e($item['event_name'])?> · <?=e($item['activity_at'])?></small></div></li><?php endforeach; ?></ul><?php else: ?><p class="account-note">No completed scouting records linked to your account yet.</p><?php endif; ?>
+    <?php if($accountActivity): ?><ul class="account-activity" id="accountRecentActivityList"><?php foreach($accountActivity as $item): ?><li><span class="account-activity-icon"><i class="fa-solid <?=e($item['icon'])?>"></i></span><div><a href="<?=e(base_url($item['href']))?>"><?=e($item['label'])?> · Team <?=e($item['frc_team_number'])?></a><small><?=e($item['event_name'])?> · <?=e(neptune_time($item['activity_at']))?></small></div></li><?php endforeach; ?></ul><?php else: ?><p class="account-note">No completed scouting records linked to your account yet.</p><?php endif; ?>
     </div>
   </details>
 <dialog class="account-help-dialog" id="accountHelpDialog" aria-labelledby="accountHelpTitle"><div class="account-help-dialog-head"><h3 id="accountHelpTitle"></h3><button type="button" class="account-help-close" id="accountHelpClose" aria-label="Close assignment help"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><div id="accountHelpText"></div></dialog>
@@ -795,8 +796,8 @@ try {
         WHERE e.organization_id=? AND e.active=1
         ORDER BY e.is_current DESC,
         CASE e.event_status WHEN 'running' THEN 0 WHEN 'schedule_ready' THEN 1 WHEN 'pit_open' THEN 2 WHEN 'planned' THEN 3 ELSE 4 END,
-        CASE WHEN CURDATE() BETWEEN e.start_date AND e.end_date THEN 0 WHEN e.start_date>=CURDATE() THEN 1 ELSE 2 END,
-        ABS(DATEDIFF(COALESCE(e.start_date,CURDATE()),CURDATE())),e.id DESC LIMIT 1");
+        CASE WHEN ".neptune_sql_today()." BETWEEN e.start_date AND e.end_date THEN 0 WHEN e.start_date>=".neptune_sql_today()." THEN 1 ELSE 2 END,
+        ABS(DATEDIFF(COALESCE(e.start_date,".neptune_sql_today()."),".neptune_sql_today().")),e.id DESC LIMIT 1");
     $q->execute([$org]); $opsEvent=$q->fetch(PDO::FETCH_ASSOC)?:null;
     if ($opsEvent) {
         $eid=(int)$opsEvent['id'];
@@ -822,15 +823,16 @@ try {
         $q->execute([$org,$eid,$opsUserId]);$opsOpenAssignments=(int)$q->fetchColumn();
         $q=$pdo->prepare("SELECT a.id,a.kind,a.alliance,a.station,a.frc_team_number,a.status,a.match_id,m.match_number,m.comp_level,m.set_number FROM scouting_assignments a LEFT JOIN matches m ON m.id=a.match_id AND m.organization_id=a.organization_id WHERE a.organization_id=? AND a.event_id=? AND a.assignee_user_id=? AND a.status IN ('assigned','acknowledged') ORDER BY CASE WHEN a.kind='match' THEN 0 ELSE 1 END, COALESCE(m.match_number,99999), a.id LIMIT 1");
         $q->execute([$org,$eid,$opsUserId]);$opsAssignment=$q->fetch(PDO::FETCH_ASSOC)?:null;
-        $q=$pdo->prepare('SELECT COUNT(*) FROM tag_scouting_match_data WHERE organization_id=? AND event_id=?');
+        $opsTagHuman=neptune_tag_human_match_data_sql('tag_scouting_match_data');
+        $q=$pdo->prepare('SELECT COUNT(*) FROM tag_scouting_match_data WHERE organization_id=? AND event_id=? AND '.$opsTagHuman);
         $q->execute([$org,$eid]);$opsTagReports=(int)$q->fetchColumn();
         $q=$pdo->prepare("SELECT COUNT(*) FROM matches WHERE organization_id=? AND event_id=? AND state IN ('ended','completed','complete','final')");
         $q->execute([$org,$eid]);$opsMatchesComplete=(int)$q->fetchColumn();
         if ($opsCanSeeOrgActivity) {
-            $q=$pdo->prepare('SELECT frc_team_number,alliance,station,UNIX_TIMESTAMP(updated_at) AS saved_epoch FROM tag_scouting_match_data WHERE organization_id=? AND event_id=? ORDER BY updated_at DESC,id DESC LIMIT 5');
+            $q=$pdo->prepare('SELECT frc_team_number,alliance,station,UNIX_TIMESTAMP(updated_at) AS saved_epoch FROM tag_scouting_match_data WHERE organization_id=? AND event_id=? AND '.$opsTagHuman.' ORDER BY updated_at DESC,id DESC LIMIT 5');
             $q->execute([$org,$eid]);
         } else {
-            $q=$pdo->prepare('SELECT frc_team_number,alliance,station,UNIX_TIMESTAMP(updated_at) AS saved_epoch FROM tag_scouting_match_data WHERE organization_id=? AND event_id=? AND user_id=? ORDER BY updated_at DESC,id DESC LIMIT 5');
+            $q=$pdo->prepare('SELECT frc_team_number,alliance,station,UNIX_TIMESTAMP(updated_at) AS saved_epoch FROM tag_scouting_match_data WHERE organization_id=? AND event_id=? AND user_id=? AND '.$opsTagHuman.' ORDER BY updated_at DESC,id DESC LIMIT 5');
             $q->execute([$org,$eid,$opsUserId]);
         }
         $opsRecentTags=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
@@ -1232,7 +1234,7 @@ body.ntv-open #ntv-stage .ntv-actions>*{pointer-events:auto!important;flex-shrin
  </section>
 </div>
 <?php else:?>
-<section class="card ops-panel"><h2>Ready when your event is</h2><p class="muted">Once your organization activates an event, live matches, scouting coverage, assignments, and saved reports will appear here automatically.</p><div class="ops-links"><?php if($opsCanManage):?><a class="btn" href="<?=e(base_url('admin/index.php'))?>">Set up an event</a><?php endif;?><a class="btn secondary" href="<?=e(base_url('help/index.php'))?>">Help &amp; Training</a></div></section>
+<section class="card ops-panel"><h2>Ready when your event is</h2><p class="muted">Once your organization activates an event, live matches, scouting coverage, assignments, and saved reports will appear here automatically.</p><div class="ops-links"><?php if($opsCanManage):?><a class="btn" href="<?=e(base_url('admin/index.php'))?>">Set up an event</a><?php endif;?><a class="btn secondary" href="<?=e(base_url('event/'))?>">Discover Neptune</a></div></section>
 <?php endif;?>
 </div>
 <?php if($opsEvent && $opsMatch):?>

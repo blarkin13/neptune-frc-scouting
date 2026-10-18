@@ -326,15 +326,15 @@ return [
             ],
             [
                 'id' => 'adm26',
-                'question' => 'Which statement correctly distinguishes Public EPA from Neptune EPA?',
+                'question' => 'Which statement correctly distinguishes Public EPA from SA-EPA?',
                 'options' => [
                     'a' => 'They are always the same value displayed in two places.',
-                    'b' => 'Public EPA is Neptune\'s public-data rating layer; Neptune EPA is an organization-private offensive strength estimate that blends public baseline with the organization\'s observed scouting factors.',
-                    'c' => 'Neptune EPA is the official FIRST ranking score.',
+                    'b' => 'Public EPA is Neptune\'s public-data rating layer; SA-EPA is an organization-private offensive strength estimate that blends public baseline with the organization\'s observed scouting factors.',
+                    'c' => 'SA-EPA is the official FIRST ranking score.',
                     'd' => 'Public EPA includes your private pit notes by default.',
                 ],
                 'correct' => 'b',
-                'explanation' => 'The two ratings have different data scopes. Public EPA comes from the public data layer; Neptune EPA can incorporate your organization\'s observed scouting performance.',
+                'explanation' => 'The two ratings have different data scopes. Public EPA comes from the public data layer; SA-EPA can incorporate your organization\'s observed scouting performance.',
             ],
             [
                 'id' => 'adm27',

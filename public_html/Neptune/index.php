@@ -102,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }elseif(strtolower((string)($row['google_signin_mode']??'optional'))==='required'){
                     $error='This organization requires Google sign-in.';
                 }else{
-                    if(neptune_platform_owner_is($row)){
+                    if(neptune_platform_owner_is($row) && neptune_platform_owner_mode()==='strong'){
                         neptune_mfa_ensure_schema($pdo);
                         neptune_platform_mfa_begin($row);
                         neptune_auth_audit(

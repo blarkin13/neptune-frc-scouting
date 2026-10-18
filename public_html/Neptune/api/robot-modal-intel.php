@@ -90,7 +90,7 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
   <section class="robot-modal-section robot-intel-dashboard">
     <div class="robot-overview-hero-grid">
       <div class="robot-overview-neptune">
-        <span>Neptune EPA</span>
+        <span>SA-EPA</span>
         <b><?=rmi_num($neptune,1)?></b>
         <?php if($delta!==null):?><small class="<?=$delta>0?'positive':($delta<0?'negative':'')?>"><?=$delta>0?'+':''?><?=rmi_num($delta,1)?> vs <?=$ratingSource==='FIRST provisional'?'FIRST EPA':'Public EPA'?></small><?php else:?><small>Private AUGUR offense rating</small><?php endif;?>
       </div>
@@ -114,7 +114,7 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
   <section class="robot-modal-section robot-defense-panel">
     <div class="robot-intel-section-title"><h3><i class="fa-solid fa-shield-halved"></i> Defense</h3><?php if($defConfidence!==null):?><span class="pill"><?=rmi_num($defConfidence,0)?>% confidence</span><?php elseif($defValidation!==''):?><span class="pill"><?=rmi_e($defValidation)?></span><?php endif;?></div>
     <div class="robot-defense-dashboard">
-      <div><span>Neptune D-EPA</span><b><?=rmi_num($depa['neptune_depa']??null,1)?></b></div>
+      <div><span>SV-Points Denied</span><b><?=rmi_num($depa['neptune_depa']??null,1)?></b></div>
       <div><span>D-EPA</span><b><?=rmi_num($depa['depa']??null,1)?></b></div>
       <div><span>Verified matches</span><b><?=rmi_e($verified)?></b></div>
       <div><span>Possible matches</span><b><?=rmi_e($possible)?></b></div>
@@ -148,7 +148,7 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
 </div>
 
 <div data-robot-intel-target="auton">
-  <div class="robot-auto-rating-strip"><div><span>Auto EPA</span><b><?=rmi_num($augur['auto_epa']??$epa['auto']??null,1)?></b></div><div><span>Neptune EPA</span><b><?=rmi_num($neptune,1)?></b></div><div><span>Confidence</span><b><?=is_numeric($confidence)?rmi_num($confidence,0).'%':'—'?></b></div></div>
+  <div class="robot-auto-rating-strip"><div><span>Auto EPA</span><b><?=rmi_num($augur['auto_epa']??$epa['auto']??null,1)?></b></div><div><span>SA-EPA</span><b><?=rmi_num($neptune,1)?></b></div><div><span>Confidence</span><b><?=is_numeric($confidence)?rmi_num($confidence,0).'%':'—'?></b></div></div>
 </div>
 
 <div data-robot-intel-target="scout">
@@ -165,7 +165,7 @@ $verified=(int)($depa['verified_defense_matches']??0);$possible=(int)($depa['pos
           <?php if(!empty($row['tags'])):?><div class="robot-intel-spot-tags"><?php foreach($row['tags'] as $tag):?><span class="robot-intel-spot-tag"><i class="<?=rmi_e($tag['icon']??'fa-solid fa-tag')?>"></i>#<?=rmi_e(strtolower(trim((string)preg_replace('/[^\p{L}\p{N}]+/u','-',(string)($tag['label']??'Tag')),'-')))?></span><?php endforeach;?></div><?php endif;?>
           <?php if(trim((string)($row['note']??''))!==''):?><p class="robot-intel-spot-note"><?=nl2br(rmi_e($row['note']))?></p><?php endif;?>
           <?php if($media):?><div class="robot-intel-spot-media"><?php foreach($media as $item):?><?php if(($item['media_type']??'')==='photo'):?><a href="<?=rmi_e($item['url'])?>" target="_blank" rel="noopener"><img src="<?=rmi_e($item['url'])?>" loading="lazy" alt="<?=rmi_e($item['original_filename']??'Tag scouting photo')?>"></a><?php else:?><div class="video"><video controls preload="metadata" src="<?=rmi_e($item['url'])?>"></video><span class="video-label"><i class="fa-solid fa-video"></i><?=rmi_e($item['original_filename']??'Video')?></span></div><?php endif;?><?php endforeach;?></div><?php endif;?>
-          <div class="robot-intel-spot-meta"><?php if(!empty($row['scout_name'])):?><span><i class="fa-solid fa-user"></i> <?=rmi_e($row['scout_name'])?></span><?php endif;?><?php if(!empty($row['created_at'])):?><span><i class="fa-regular fa-clock"></i> <?=rmi_e($row['created_at'])?></span><?php endif;?><?php if(!empty($row['resolution_note'])):?><span><i class="fa-solid fa-check"></i> <?=rmi_e($row['resolution_note'])?></span><?php endif;?></div>
+          <div class="robot-intel-spot-meta"><?php if(!empty($row['scout_name'])):?><span><i class="fa-solid fa-user"></i> <?=rmi_e($row['scout_name'])?></span><?php endif;?><?php if(!empty($row['created_at'])):?><span><i class="fa-regular fa-clock"></i> <?=rmi_e(neptune_time($row['created_at']))?></span><?php endif;?><?php if(!empty($row['resolution_note'])):?><span><i class="fa-solid fa-check"></i> <?=rmi_e($row['resolution_note'])?></span><?php endif;?></div>
         </article>
         <?php endforeach;?>
       </div>

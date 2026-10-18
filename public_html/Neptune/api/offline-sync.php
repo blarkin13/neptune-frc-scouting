@@ -324,6 +324,9 @@ try {
     }
 
     $pdo->commit();
+    // Field-server actions bypass the per-save hooks; reconcile match assignments.
+    require_once dirname(__DIR__) . '/_assignment_auto_complete.php';
+    nac_try_sweep($pdo, $organizationId, null, ['match']);
     sync_json([
         'ok' => true,
         'organization_id' => $organizationId,

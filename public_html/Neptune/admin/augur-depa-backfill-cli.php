@@ -12,7 +12,7 @@ try{
     echo "Neptune AUGUR public D-EPA network rebuild {$start}-{$end}\n";
     echo "Uses scouting from every Neptune organization. Duplicate coverage is canonicalized by TBA match key + FRC team.\n";
     echo "Cross-org defense button counts are never summed; the maximum independently observed count is retained for each canonical match/team.\n";
-    echo "Neptune D-EPA = mean Raw D-EPA across canonical Verified defense matches.\n\n";
+    echo "SV-Points Denied = mean Raw D-EPA across canonical Verified defense matches.\n\n";
     for($year=$start;$year<=$end;$year++){
         try{
             echo "[{$year}] Rebuilding public samples + Neptune network D-EPA...\n";$t0=microtime(true);$r=augur_depa_rebuild_year($pdo,$year);

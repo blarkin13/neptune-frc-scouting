@@ -234,7 +234,7 @@ body.npd-sync-modal-open{overflow:hidden}
 ?'Run your organization locally over a private LAN with no Internet, then synchronize all event changes back to Neptune when connectivity returns.'
 :'Build Neptune for offline Mac, Linux, or Windows (WSL2 beta). Organization packages include your complete Neptune organization and do not require selecting one event.'?></p>
 </div>
-<a class="btn secondary" href="<?=e(base_url('admin/index.php'))?>"><i class="fa-solid fa-arrow-left"></i> Command Center</a>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn secondary" href="<?=e(base_url('admin/handoff-import.php'))?>"><i class="fa-solid fa-qrcode"></i> Import Hand-off</a><a class="btn secondary" href="<?=e(base_url('admin/index.php'))?>"><i class="fa-solid fa-arrow-left"></i> Command Center</a></div>
 </header>
 
 <?php if($flash):?>

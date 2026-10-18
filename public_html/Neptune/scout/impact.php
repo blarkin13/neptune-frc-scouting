@@ -1065,6 +1065,7 @@ body.impact-modal-open{overflow:hidden!important}
 
           <div class="impact-section-label">Optional note</div>
           <div class="impact-note"><textarea name="note" maxlength="500" placeholder="Only add a note if the tags don't tell the story."></textarea></div>
+          <?php $nrrMatchId=(int)$matchId; $nrrAlliance=(string)($selectedRobot['alliance']??'Red'); $nrrMatchLabel=$match?impact_match_label($match):''; require __DIR__.'/_ranking_widget.php'; ?>
           <div class="impact-auto-note"><i class="fa-solid fa-cloud-arrow-up"></i> No submit button. Changes are saved on this device immediately and synced automatically.</div>
         </form>
       </section>
@@ -2047,7 +2048,7 @@ body.impact-modal-open{overflow:hidden!important}
     } catch (error) {
       matchNavigating = false;
       setStatus('error', 'Could not safely save; match unchanged');
-      window.alert('Your current observation could not be stored. Stay on this match and check the device connection.');
+      window.NeptuneUI?.toast('Your current observation could not be stored. Stay on this match and check the device connection.','bad',{title:'Not saved',persistent:true});
     }
   }
   matchStepLinks.forEach(link => link.addEventListener('click', event => {
@@ -2691,9 +2692,10 @@ window.NeptuneQaTracker={
  runId:<?=(int)$_GET['qa_run']?>,
  csrf:<?=json_encode(csrf_token(),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
  url:<?=json_encode(base_url('api/qa-nav.php'),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
- kind:'tag-match',matchId:(int)$matchId,robot:(int)$selectedTeam
+ kind:'tag-match',matchId:<?=(int)$matchId?>,robot:<?=(int)$selectedTeam?>
 };
 </script>
 <script defer src="<?=e(base_url('assets/js/neptune-qa-tracker.js'))?>?v=1"></script>
 <?php endif; ?>
+<?php require __DIR__.'/_handoff_widget.php'; ?>
 <?php include dirname(__DIR__) . '/partials_footer.php'; ?>
