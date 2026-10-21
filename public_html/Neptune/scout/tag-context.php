@@ -537,7 +537,7 @@ include dirname(__DIR__).'/partials_header.php';
   const $$=s=>Array.from(document.querySelectorAll(s));
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const toast=(m,t='info',o={})=>window.NeptuneUI?.toast?.(m,t,o);
-  const fmtTime=v=>{if(!v)return '';const d=new Date(String(v).replace(' ','T'));return Number.isNaN(d.getTime())?String(v):d.toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});};
+  const fmtTime=v=>{if(!v)return '';const raw=String(v).replace(' ','T');const d=new Date(/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(raw)?raw:raw+'Z');return Number.isNaN(d.getTime())?String(v):d.toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});};
   const fieldName=m=>`${m.event_name}${Number(m.field_id)>1?' · Field '+m.field_id:''}`;
 
   function resetRobotSelection(eventId=Number($('#spotTeamEvent')?.value||0)){
@@ -1059,4 +1059,5 @@ include dirname(__DIR__).'/partials_header.php';
 </script>
 <?php endif;?>
 </section>
+<?php require __DIR__.'/_handoff_widget.php'; ?>
 <?php include dirname(__DIR__).'/partials_footer.php';

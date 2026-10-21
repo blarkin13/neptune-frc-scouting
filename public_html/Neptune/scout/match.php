@@ -241,7 +241,7 @@ function num_label($value): string {
   </div>
 </div>
 
-<script src="/admin/connection-guard.php?asset=js&amp;v=20260920-1"></script>
+<script src="/admin/connection-guard.php?asset=js&amp;v=20261017-1"></script>
 <script src="<?=e(base_url('assets/js/neptune-realtime-v2.js?v=20261006-2'))?>"></script>
 <script>
 const MID=<?=$mid?>,SID=<?=$sid?>,RT_URL=<?=json_encode(base_url('rr-realtime'))?>,RT_ROOM=<?=json_encode($realtimeRoom)?>,RT_AUTH_URL=<?=json_encode(base_url('api/realtime-token.php'))?>;
@@ -528,6 +528,10 @@ async function processQueue(){
 }
 async function undoLastAction(){
   if(processing||queue.length){statusEl.textContent='Wait for queued actions to finish before undoing.';return;}
+  try{
+    const waitingSync=window.NeptuneConnectionGuard&&window.NeptuneConnectionGuard.waiting?await window.NeptuneConnectionGuard.waiting():0;
+    if(waitingSync>0){const m=`${waitingSync} saved action${waitingSync===1?' is':'s are'} still syncing. Undo once ${waitingSync===1?'it finishes':'they finish'}.`;statusEl.textContent=m;window.NeptuneConnectionGuard.notice?.(m.toUpperCase());return;}
+  }catch(_){}
   if(undoLast.disabled)return;
   undoLast.disabled=true;
   undoLast.classList.add('working');
@@ -583,9 +587,11 @@ window.NeptuneQaTracker={
  runId:<?=(int)$_GET['qa_run']?>,
  csrf:<?=json_encode(csrf_token(),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
  url:<?=json_encode(base_url('api/qa-nav.php'),JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>,
- kind:'traditional',matchId:(int)$mid,robot:(int)$robot
+ kind:'traditional',matchId:<?=(int)$mid?>,robot:<?=(int)$robot?>
 };
 </script>
 <script defer src="<?=e(base_url('assets/js/neptune-qa-tracker.js'))?>?v=1"></script>
 <?php endif; ?>
+<div style="max-width:1100px;margin:18px auto 0;padding:0 12px"><?php $nrrMatchId=$mid; $nrrAlliance=$alliance; $nrrMatchLabel=function_exists('neptune_match_label')?neptune_match_label($m):''; require __DIR__.'/_ranking_widget.php'; ?></div>
+<?php require __DIR__.'/_handoff_widget.php'; ?>
 <?php include dirname(__DIR__).'/partials_footer.php';
