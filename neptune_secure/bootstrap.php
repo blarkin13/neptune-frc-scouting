@@ -35,8 +35,14 @@ function base_url(string $path=''): string {
 function e($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 
 function neptune_migrations_ensure_table(PDO $pdo): void {
-    static $done=false;
-    if($done)return;
+    static $done=null;
+    $done??=new WeakMap();
+    if(isset($done[$pdo]))return;
+    // Normal requests must not run DDL: MySQL may implicitly commit even
+    // when CREATE TABLE IF NOT EXISTS finds an existing table.
+    $exists=(int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='neptune_migrations'")->fetchColumn()===1;
+    if(!$exists&&$pdo->inTransaction())throw new RuntimeException('Initialize migration storage before starting a transaction.');
+    if(!$exists){
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS neptune_migrations (
         migration_key VARCHAR(190) NOT NULL PRIMARY KEY,
@@ -44,6 +50,10 @@ function neptune_migrations_ensure_table(PDO $pdo): void {
         package VARCHAR(255) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+    }
+    $seed=$pdo->prepare('SELECT 1 FROM neptune_migrations WHERE migration_key=? LIMIT 1');
+    $seed->execute(['core.migration-tracking.v1']);
+    if(!$seed->fetchColumn()){
     $stmt=$pdo->prepare(
         "INSERT IGNORE INTO neptune_migrations(migration_key,applied_at,package)
          VALUES(?,UTC_TIMESTAMP(),?)"
@@ -53,7 +63,8 @@ function neptune_migrations_ensure_table(PDO $pdo): void {
         'Neptune_Migration_Tracking_v1_Maintenance_Console.zip',
     ]);
 
-    $done=true;
+    }
+    $done[$pdo]=true;
 }
 function neptune_migration_is_applied(PDO $pdo,string $migrationKey): bool {
     neptune_migrations_ensure_table($pdo);
