@@ -406,3 +406,10 @@ html[data-theme="light"]{
 }
 
 .robot-match-video-cell .robot-match-video{margin-top:4px;width:100%;justify-content:center;white-space:nowrap}
+
+/* Auto Scout: remove the duplicate Outside Scouting import shortcut from the hub.
+   Kept in shared CSS so newer live scouting.php is never overwritten.
+   The Community Learning import workflow remains available. */
+.neptune-hub .auto-scout-section a.neptune-hub-card[href*="community-learning.php#outside-scouting"] {
+  display: none !important;
+}

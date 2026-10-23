@@ -428,9 +428,53 @@ if (($_GET['view'] ?? '') === 'account') {
 .account-empty-copy .account-empty-kicker{display:block;font-size:.73rem;letter-spacing:.13em;text-transform:uppercase;color:var(--module-accent-readable,var(--accent));font-weight:900;margin-bottom:11px}
 .account-empty-copy h3{margin:0 0 9px;font-size:clamp(1.35rem,2.5vw,1.75rem);letter-spacing:-.025em;color:var(--text)}
 .account-empty-copy p{margin:0;color:var(--muted);font-size:.9rem;line-height:1.55}
+html[data-theme="light"] .account-empty-bubble{border:1.5px solid rgba(19,37,55,.92);box-shadow:inset -1px -2px 5px rgba(19,37,55,.23),0 0 0 .4px rgba(19,37,55,.3)}
 @keyframes account-bubble-rise{0%{transform:translate3d(0,10px,0) scale(.65);opacity:0}14%{opacity:.42}75%{opacity:.30}100%{transform:translate3d(var(--drift),-290px,0) scale(1.12);opacity:0}}
 @media(max-width:550px){.account-collapsible>summary{align-items:flex-start}.account-fold-right{justify-content:flex-end}.account-empty-bubbles{min-height:220px}.account-empty-copy{padding:55px 23px}}
 @media(prefers-reduced-motion:reduce){.account-empty-bubble{animation:none!important;opacity:.15;bottom:var(--static-y,20%)}}
+
+/* My Assignments: compact, accessible actions and mobile layout. */
+.account-assignment-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:6px 10px;flex-wrap:wrap}
+.account-assignment-title-row>strong{flex:1 1 100px;line-height:1.4;font-size:1rem}
+.account-assignment-title-row .account-assignment-status{flex:0 0 auto;margin:0;align-self:flex-start}
+.account-assignment-item{display:grid;grid-template-columns:34px minmax(0,1fr);align-items:start;gap:9px 12px;padding:15px}
+.account-assignment-item.has-bulk-select{grid-template-columns:20px 34px minmax(0,1fr)}
+.account-assignment-item>.account-assignment-icon{grid-column:1;grid-row:1}
+.account-assignment-item>.account-assignment-info{grid-column:2;grid-row:1}
+.account-assignment-item>.account-task-select{grid-column:1;grid-row:1}
+.account-assignment-item.has-bulk-select>.account-assignment-icon{grid-column:2}
+.account-assignment-item.has-bulk-select>.account-assignment-info{grid-column:3}
+.account-assignment-item>.account-assignment-controls{grid-column:2;grid-row:2;margin-top:0}
+.account-assignment-item.has-bulk-select>.account-assignment-controls{grid-column:3}
+.account-assignment-controls{gap:8px 10px;margin-top:13px}
+.account-assignment-controls>details{width:auto;max-width:100%;min-width:0}
+.account-assignment-controls>details[open]{width:100%;flex:1 1 100%}
+.account-assignment-controls>details>summary{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;list-style:none;border:1px solid var(--border,#425a6e);border-radius:10px;color:var(--text,#eef6ff);background:color-mix(in srgb,var(--panel,#14263e) 70%,transparent);padding:9px 12px;font-size:.9rem;font-weight:750;line-height:1.4;white-space:nowrap}
+.account-assignment-controls>details>summary::-webkit-details-marker{display:none}
+.account-assignment-controls>details>summary::before{content:'▸';font-size:.9em;margin-right:7px;color:var(--accent,#42b9e9)}
+.account-assignment-controls>details[open]>summary::before{content:'▾'}
+.account-assignment-controls>details>summary:focus-visible{outline:2px solid var(--accent,#42b9e9);outline-offset:2px}
+.account-assignment-controls>details>form{padding:10px 0 0}
+.account-bulk-toolbar button:disabled{background:transparent;color:var(--muted,#a4b8ca);opacity:.7}
+@media(max-width:560px){
+ .account-collapsible>summary{padding:17px 16px;min-height:68px;gap:10px}
+ .account-collapsible>summary h2{font-size:clamp(1.1rem,5vw,1.45rem);line-height:1.25}
+ .account-assignment-count{padding:6px 10px;font-size:.78rem;white-space:nowrap}
+ .account-fold-right{gap:9px}
+ .account-fold-body{padding:16px 14px}
+ .account-help-row{gap:7px;margin-bottom:11px}
+ .account-help-pill{font-size:.77rem;padding:7px 10px}
+ .account-assignment-item{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:13px 12px}
+ .account-assignment-item.has-bulk-select{grid-template-columns:20px 32px minmax(0,1fr)}
+ .account-assignment-item>.account-assignment-controls,.account-assignment-item.has-bulk-select>.account-assignment-controls{grid-column:1/-1}
+ .account-assignment-icon{flex:0 0 32px;width:32px;height:32px}
+ .account-task-select{flex:0 0 20px;padding-top:7px}
+ .account-assignment-title-row>strong{font-size:.96rem}
+ .account-assignment-info small{line-height:1.4;font-size:.8rem}
+ .account-assignment-controls button,.account-assignment-controls>details>summary{padding:9px 10px;font-size:.83rem;min-height:40px}
+ .account-assignment-status{font-size:.73rem;padding:4px 7px}
+ .account-bulk-toolbar{padding:10px;gap:7px}
+}
 </style>
 <div class="account-ocean" id="accountOcean" aria-hidden="true"></div>
 <section class="account-panel account-profile-unified" id="account-profile">
@@ -520,7 +564,12 @@ if (($_GET['view'] ?? '') === 'account') {
 <details class="account-panel account-collapsible" id="account-assignments" open>
   <summary><h2><i class="fa-solid fa-clipboard-list"></i> My Assignments</h2><span class="account-fold-right"><span class="account-assignment-count"><?=count($myAssignments)?> active</span><i class="fa-solid fa-chevron-down account-fold-chevron" aria-hidden="true"></i></span></summary>
   <div class="account-fold-body">
-    <div class="account-help-row" aria-label="Assignment help"><button type="button" class="account-help-pill" data-account-help="ranges"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Assignment ranges</button><button type="button" class="account-help-pill" data-account-help="bulk"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Bulk acknowledgment</button></div>
+    <?php if(count($myAssignments)>1 && (count($assignmentDisplay)<count($myAssignments) || $pendingAssignmentCount>1)): ?>
+    <div class="account-help-row" aria-label="Assignment help">
+      <?php if(count($assignmentDisplay)<count($myAssignments)): ?><button type="button" class="account-help-pill" data-account-help="ranges"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Assignment ranges</button><?php endif; ?>
+      <?php if($pendingAssignmentCount>1): ?><button type="button" class="account-help-pill" data-account-help="bulk"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Bulk acknowledgment</button><?php endif; ?>
+    </div>
+    <?php endif; ?>
   <?php if(isset($_GET['assignment_saved'])): ?><div class="account-alert" role="status">Assignment status saved.</div><?php endif; ?>
   <?php if(isset($_GET['acknowledged'])): ?><div class="account-alert" role="status"><?=(int)$_GET['acknowledged']?> assignment(s) acknowledged.</div><?php endif; ?>
   <?php if($myAssignmentsError): ?><p class="account-note">Assignment records are unavailable in this environment. Ask an administrator to check the assignment database setup.</p>
@@ -555,7 +604,7 @@ if (($_GET['view'] ?? '') === 'account') {
     <div class="account-empty-copy"><span class="account-empty-kicker"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> All clear</span><h3>No active scouting assignments.</h3><p>You're all caught up. New assignments will appear here when they're ready.</p></div>
   </div>
   <?php else: ?>
-    <?php if($pendingAssignmentCount): ?>
+    <?php if($pendingAssignmentCount>1): ?>
     <form id="accountBulkAcknowledgeForm" method="post" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-assignments">
       <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="bulk_acknowledge">
       <div class="account-bulk-toolbar" role="group" aria-label="Bulk acknowledgment">
@@ -576,7 +625,7 @@ if (($_GET['view'] ?? '') === 'account') {
       <?php if($isRange): ?>
         <div class="account-range-group">
           <div class="account-range-header">
-            <?php if($groupStatus['assigned']>0): ?><label class="account-range-select"><input type="checkbox" class="account-range-toggle" aria-label="Select all pending assignments in this match range"><span>Select pending</span></label><?php endif; ?>
+            <?php if($pendingAssignmentCount>1 && $groupStatus['assigned']>0): ?><label class="account-range-select"><input type="checkbox" class="account-range-toggle" aria-label="Select all pending assignments in this match range"><span>Select pending</span></label><?php endif; ?>
             <div class="account-range-heading"><strong><?=e(account_assignment_match_label($first).'–'.account_assignment_match_label($last))?> · <?=e((string)$first['alliance'])?> <?=(int)$first['station']?></strong>
               <small><?=count($items)?> consecutive matches, including every match between · <?=e((string)($first['event_name']??'Event'))?> · <?=e(ucfirst((string)($first['scouting_mode']??'either')))?> scouting</small>
               <span class="account-range-counts"><?php if($groupStatus['assigned']): ?><span><?=$groupStatus['assigned']?> awaiting acknowledgment</span><?php endif; ?><?php if($groupStatus['acknowledged']): ?><span><?=$groupStatus['acknowledged']?> acknowledged</span><?php endif; ?><?php if($groupStatus['completed']): ?><span><?=$groupStatus['completed']?> completed</span><?php endif; ?><?php if($groupStatus['cancelled']): ?><span><?=$groupStatus['cancelled']?> cancelled</span><?php endif; ?></span>
@@ -590,12 +639,13 @@ if (($_GET['view'] ?? '') === 'account') {
          $title=$kind==='match'?(account_assignment_match_label($assignment).' · '.(string)$assignment['alliance'].' '.(int)$assignment['station']):($kind==='pit'?'Pit scouting · Team #'.(int)$assignment['frc_team_number']:'Request · '.ucfirst((string)($assignment['request_kind']??'task')));
          $icon=$kind==='match'?'fa-flag-checkered':($kind==='pit'?'fa-robot':'fa-camera');
       ?>
-        <article class="account-assignment-item <?= $isRange?'account-range-item':'' ?>">
-          <?php if($status==='assigned'): ?><label class="account-task-select"><input type="checkbox" class="account-assignment-select" name="assignment_ids[]" value="<?=(int)$assignment['id']?>" form="accountBulkAcknowledgeForm" aria-label="Select <?=e($title)?> for bulk acknowledgment"></label><?php endif; ?>
+        <article class="account-assignment-item <?= $isRange?'account-range-item':'' ?><?= $pendingAssignmentCount>1 && $status==='assigned'?' has-bulk-select':'' ?>">
+          <?php if($pendingAssignmentCount>1 && $status==='assigned'): ?><label class="account-task-select"><input type="checkbox" class="account-assignment-select" name="assignment_ids[]" value="<?=(int)$assignment['id']?>" form="accountBulkAcknowledgeForm" aria-label="Select <?=e($title)?> for bulk acknowledgment"></label><?php endif; ?>
           <span class="account-assignment-icon"><i class="fa-solid <?=e($icon)?>" aria-hidden="true"></i></span>
-          <div class="account-assignment-info"><strong><?=e($title)?></strong><small><?=e($assignment['event_name']??'Event')?><?php if($kind==='match'):?> · <?=e(ucfirst((string)($assignment['scouting_mode']??'either')))?> scouting<?php endif;?></small>
+          <div class="account-assignment-info"><div class="account-assignment-title-row"><strong><?=e($title)?></strong><span class="account-assignment-status account-status-<?=e($status)?>"><?=e(ucfirst($status))?></span></div><small><?=e($assignment['event_name']??'Event')?><?php if($kind==='match'):?> · <?=e(ucfirst((string)($assignment['scouting_mode']??'either')))?> scouting<?php endif;?></small>
           <?php if($kind==='request' && trim((string)($assignment['instructions']??''))!==''):?><p><?=nl2br(e((string)$assignment['instructions']))?></p><?php endif;?>
           <?php if($kind==='request' && trim((string)($assignment['response_text']??''))!==''):?><p><b>Response:</b> <?=nl2br(e((string)$assignment['response_text']))?></p><?php endif;?>
+          </div>
             <?php if(in_array($status,['assigned','acknowledged'],true)): ?>
             <div class="account-assignment-controls">
             <?php if($status==='assigned'): ?>
@@ -605,7 +655,7 @@ if (($_GET['view'] ?? '') === 'account') {
                 <button type="submit"><i class="fa-solid fa-check"></i> Acknowledge</button>
               </form>
             <?php endif; ?>
-            <details><summary>Mark complete<?= $kind==='request'?' / provide response':'' ?></summary>
+            <details><summary><?= $kind==='request'?'Respond &amp; complete':'Complete' ?></summary>
               <form method="post" enctype="multipart/form-data" action="<?=e(base_url('dashboard/index.php'))?>?view=account#account-assignments">
                 <input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="account_action" value="assignment_status">
                 <input type="hidden" name="assignment_id" value="<?=(int)$assignment['id']?>"><input type="hidden" name="transition" value="complete">
@@ -618,7 +668,6 @@ if (($_GET['view'] ?? '') === 'account') {
             </details>
             </div>
             <?php endif; ?>
-          </div><span class="account-assignment-status account-status-<?=e($status)?>"><?=e(ucfirst($status))?></span>
         </article>
       <?php endforeach; ?>
       <?php if($isRange): ?></div></details></div><?php endif; ?>

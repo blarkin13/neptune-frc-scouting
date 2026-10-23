@@ -15,7 +15,7 @@ include dirname(__DIR__).'/partials_header.php';
 .nd-ocean__rays {background:repeating-conic-gradient(from 191deg at 50% -10%, transparent 0deg 8deg,color-mix(in srgb,var(--nd-sea) 8%,transparent) 9deg 11deg,transparent 12deg 24deg);opacity:.5;filter:blur(14px);transform:translate3d(0,calc(var(--nd-scroll,0px)*.14),0);animation:nd-current 20s ease-in-out infinite alternate}
 .nd-ocean__particles {transform:translate3d(0,calc(var(--nd-scroll,0px)*-.09),0)}
 .nd-ocean__bubble {position:absolute;bottom:-20px;left:var(--x);height:var(--size);width:var(--size);border:1px solid rgba(194,225,241,.58);border-radius:50%;background:radial-gradient(circle at 28% 23%,rgba(248,253,255,.32),transparent 45%);box-shadow:inset -1px -2px 5px rgba(104,158,187,.2),0 0 9px rgba(192,228,248,.14);opacity:0;animation:nd-rise var(--duration) linear var(--delay) infinite;will-change:transform,opacity}
-html[data-theme="light"] .nd-ocean__bubble{border-color:rgba(58,104,132,.38);background:radial-gradient(circle at 28% 23%,rgba(255,255,255,.42),transparent 45%);box-shadow:inset -1px -2px 5px rgba(58,103,133,.15),0 0 8px rgba(76,120,150,.12)}
+html[data-theme="light"] .nd-ocean__bubble{border:1.5px solid rgba(19,37,55,.92);background:radial-gradient(circle at 28% 23%,rgba(255,255,255,.42),transparent 45%);box-shadow:inset -1px -2px 5px rgba(19,37,55,.23),0 0 0 .4px rgba(19,37,55,.3);--alpha:.68!important}
 @keyframes nd-rise {0%{opacity:0;transform:translate3d(0,0,0) scale(.65)}12%{opacity:var(--alpha)}86%{opacity:var(--alpha)}100%{opacity:0;transform:translate3d(var(--drift),-130vh,0) scale(1.1)}}
 @keyframes nd-current{from{translate:-1.5% 0}to{translate:1.5% 0}}
 /* Fixed ocean spans the viewport behind the hero and all subsequent sections. */

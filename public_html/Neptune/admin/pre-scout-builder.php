@@ -186,7 +186,7 @@ const rebuiltTemplate=[
 {group:'2026 REBUILT Robot Questions',code:'endgame_capability',label:'Climb',type:'text',options:[],required:false},
 {group:'2026 REBUILT Robot Questions',code:'scoring_throughput',label:'Throughput',type:'text',options:[],required:false},
 {group:'2026 REBUILT Robot Questions',code:'drive_notes',label:'Drive Notes',type:'textarea',options:[],required:false},
-{group:'2026 REBUILT Robot Questions',code:'defense_notes',label:'Defence / CounterDefence (Ramming Speed, Behavior, etc)',type:'textarea',options:[],required:false},
+{group:'2026 REBUILT Robot Questions',code:'defense_notes',label:'Defense / Counter-Defense (Ramming Speed, Behavior, etc)',type:'textarea',options:[],required:false},
 {group:'2026 REBUILT Robot Questions',code:'robot_archetype',label:'Archetype',type:'text',options:[],required:false}
 ];
 (initial||[]).forEach(add);document.getElementById('addQuestion').onclick=()=>add({group:'Game Specific',type:'yes_no'});

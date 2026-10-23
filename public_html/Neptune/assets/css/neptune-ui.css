@@ -1338,3 +1338,69 @@ body:not(.tv-mode) main.wrap:not(.wrap-wide) .neptune-page-hero{
 /* Do not let the chrome itself create document-level horizontal scrolling. */
 .topbar-clean{box-sizing:border-box}
 .topbar-clean>*{min-width:0}
+
+
+/* 2026-10-22 shared card / phone consistency pass.
+   Scoped to normal page/card surfaces. Competition-specific controls, drag
+   surfaces, fullscreen views, and the scouting grid retain their own rules. */
+:root{--neptune-card-radius:12px}
+:where(main.wrap) .card{
+  min-width:0;
+  max-width:100%;
+  border-radius:var(--neptune-card-radius);
+}
+:where(main.wrap) .card > :is(h2,h3){
+  margin-top:0;
+  margin-bottom:12px;
+  line-height:1.25;
+  overflow-wrap:break-word;
+}
+:where(main.wrap) .card > :last-child{margin-bottom:0}
+:where(main.wrap) .card > p{line-height:1.5}
+:where(main.wrap) :is(.quick-link,.status-panel){
+  min-width:0;
+  border-radius:var(--neptune-card-radius);
+}
+:where(main.wrap) :is(.grid,.quick-grid,.neptune-hub-grid) > *{min-width:0}
+:where(main.wrap) .quick-link > *{min-width:0}
+:where(main.wrap) .neptune-hub-card :is(h3,p){overflow-wrap:break-word}
+:where(main.wrap) .neptune-hub-meta{
+  min-width:0;
+  padding-right:20px; /* keep tag text clear of the lower-right arrow */
+}
+:where(main.wrap) .neptune-hub-badge{
+  max-width:100%;
+  white-space:normal;
+  overflow-wrap:break-word;
+  line-height:1.25;
+  text-align:center;
+}
+:where(main.wrap) .neptune-hub-card-top > .neptune-hub-badge{
+  max-width:calc(100% - 60px);
+}
+:where(main.wrap) :is(.toolbar,.analytics-toolbar,.neptune-hub-section-head) > *{
+  min-width:0;
+}
+:where(main.wrap) :is(.neptune-page-hero,.home-hero) :is(h1,h2){
+  overflow-wrap:break-word;
+}
+@media(max-width:720px){
+  :where(main.wrap) .card{padding:16px}
+  :where(main.wrap) .quick-link{padding:16px}
+  :where(main.wrap) .neptune-hub-card{padding:16px}
+  :where(main.wrap) .neptune-hub-grid{gap:14px}
+  :where(main.wrap) .neptune-hub-card-top{gap:10px}
+  :where(main.wrap) .neptune-hub-card-top > .neptune-hub-badge{
+    max-width:calc(100% - 58px);
+  }
+  :where(main.wrap) .table-wrap{
+    max-width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+}
+@media(max-width:360px){
+  :where(main.wrap) .neptune-hub-card-top{align-items:flex-start;flex-wrap:wrap}
+  :where(main.wrap) .neptune-hub-badge{font-size:.6rem}
+  :where(main.wrap) .neptune-hub-card h3{font-size:1.07rem}
+}
