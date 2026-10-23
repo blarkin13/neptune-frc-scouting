@@ -135,6 +135,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
             'VULCAN'  => ['fa-hammer', 'BUILDERS & CONFIGURATION'],
             'MERCURY' => ['fa-gear', 'SYSTEM OPERATIONS'],
             'SALT'    => ['fa-database', 'ANALYTICS & DATA'],
+            'AUTO SCOUT' => ['fa-tags', 'COMMUNITY SCOUTING'],
             default   => ['fa-compass', 'PLATFORM'],
         };
     }
@@ -194,6 +195,12 @@ if (!function_exists('neptune_hero_buffer_start')) {
             ['~maintenance console~i', [['fa-file-zipper','Upload patch'],['fa-magnifying-glass','Inspect contents'],['fa-screwdriver-wrench','Install safely']]],
             ['~system check~i', [['fa-stethoscope','Run checks'],['fa-circle-exclamation','Review issues'],['fa-wrench','Fix configuration']]],
             ['~file manager~i', [['fa-folder-open','Browse files'],['fa-upload','Upload / organize'],['fa-shield-halved','Stay org scoped']]],
+            ['~train & test robot scouting~i', [['fa-laptop','Connect a worker'],['fa-brain','Train and evaluate'],['fa-circle-check','Release a model']]],
+            ['~community scouting settings~i', [['fa-toggle-on','Enable tagging'],['fa-tags','Review contributions'],['fa-brain','Open training']]],
+            ['~scoring areas~i', [['fa-calendar-days','Choose a match'],['fa-draw-polygon','Mark targets & zones'],['fa-cloud-arrow-up','Save to Neptune']]],
+            ['~community tag scouting~i', [['fa-calendar-days','Choose a match'],['fa-video','Watch the footage'],['fa-tags','Tag robot actions']]],
+            ['~community scouting data~i', [['fa-tags','Review examples'],['fa-file-export','Export observations'],['fa-brain','Train a model']]],
+            ['~watch and tag~i', [['fa-robot','Choose robot'],['fa-tags','Tag the video'],['fa-floppy-disk','Save observations']]],
             ['~training records~i', [['fa-users','Review scouters'],['fa-graduation-cap','Check CBT results'],['fa-file-csv','Export records']]],
             ['~training center|operations, scouting.*training manual|walkthrough~i', [['fa-book-open','Study the guide'],['fa-graduation-cap','Complete CBT'],['fa-circle-check','Verify readiness']]],
             ['~epa ratings|d-epa ratings~i', [['fa-calendar-days','Choose scope'],['fa-chart-column','Compare ratings'],['fa-robot','Open robot details']]],
@@ -205,7 +212,40 @@ if (!function_exists('neptune_hero_buffer_start')) {
             ['~^scouting$~i', [['fa-crosshairs','Scout matches'],['fa-clipboard-list','Scout pits'],['fa-tags','Capture observations']]],
         ];
         foreach ($rules as [$re, $steps]) if (preg_match($re, $title)) return $steps;
-        return [['fa-circle-1','Choose context'],['fa-eye','Review information'],['fa-circle-check','Take action']];
+        return [['fa-list-ol','Choose context'],['fa-eye','Review information'],['fa-circle-check','Take action']];
+    }
+
+    /** Decorative Font Awesome relief for Mission Control page heroes. */
+    function neptune_hero_relief_icon(string $title, string $module): string
+    {
+        $rules = [
+            ['~train & test|machine learning|model training~i', 'fa-brain'],
+            ['~scoring areas~i', 'fa-draw-polygon'],
+            ['~community scouting settings~i', 'fa-sliders'],
+            ['~community.*data|saved.*tags|scouting results~i', 'fa-chart-column'],
+            ['~community.*tag|watch and tag|tag scouting~i', 'fa-tags'],
+            ['~robot recall~i', 'fa-robot'],
+            ['~file manager~i', 'fa-folder-open'],
+            ['~developer|documentation~i', 'fa-code'],
+            ['~font awesome|interface styling~i', 'fa-palette'],
+            ['~match control~i', 'fa-circle-play'],
+            ['~assignment~i', 'fa-user-check'],
+            ['~pit game~i', 'fa-gamepad'],
+            ['~event|schedule|calendar~i', 'fa-calendar-days'],
+            ['~live monitor~i', 'fa-tower-broadcast'],
+            ['~system check|maintenance~i', 'fa-screwdriver-wrench'],
+            ['~import|sync|portable~i', 'fa-cloud-arrow-down'],
+            ['~data sharing~i', 'fa-handshake'],
+            ['~game builder|form builder~i', 'fa-hammer'],
+            ['~team|user|organization|access~i', 'fa-users'],
+            ['~epa|analytics|rating~i', 'fa-chart-line'],
+            ['~training|qa|test~i', 'fa-graduation-cap'],
+            ['~scout~i', 'fa-crosshairs'],
+        ];
+        foreach ($rules as [$regex, $icon]) {
+            if (preg_match($regex, $title)) return $icon;
+        }
+        return neptune_hero_module_meta($module)[0];
     }
 
     function neptune_hero_open_tag(string $html, array $el, array $addClasses = [], array $attrs = []): string
@@ -237,9 +277,11 @@ if (!function_exists('neptune_hero_buffer_start')) {
         // strings like 'home-hero-logo' that must not disable every page hero.
         if (preg_match('~<(?:section|div|article|header)\b[^>]*\bclass\s*=\s*(["\'])[^"\']*\b(?:home-hero|auth-card|nd-mission-header)\b[^"\']*\1~i', $html)) return $html;
 
-        // Heroes live at the top of Neptune pages. Parse only the initial document
-        // window so large analytics/data tables do not pay a full-page DOM scan cost.
-        $scanHtml = strlen($html) > 131072 ? substr($html, 0, 131072) : $html;
+        // Heroes live at the top of Neptune pages. Some admin pages embed large
+        // editor styles before their headings; keep a capped scan that can reach
+        // these heroes without parsing full analytics/data exports.
+        $heroScanLimit = 262144;
+        $scanHtml = strlen($html) > $heroScanLimit ? substr($html, 0, $heroScanLimit) : $html;
         $els = neptune_hero_parse($scanHtml);
         if (!$els) return $html;
         $children = [];
@@ -279,7 +321,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
         }
 
         $selectorClasses = [
-            'match-scout-hero','vgb-hero','impact-hero','tag-context-hero','module-page-header','builder-page-header','dg-hero','style-head','page-head',
+            'community-platform-hero','neptune-page-hero','npd-hero','match-scout-hero','vgb-hero','impact-hero','tag-context-hero','module-page-header','builder-page-header','dg-hero','style-head','page-head',
             'spot-page-head','asb-head','alliance-page-head','ar-head','dr-head','training-hero','cbt-hero','ng-hero','robot-page-titlebar','mb-titlebar','pit-board-titlebar'
         ];
 
@@ -370,6 +412,21 @@ if (!function_exists('neptune_hero_buffer_start')) {
         }
 
         $insertions = [];
+        // These pages use the same large, low-contrast Font Awesome insignia as
+        // the four mission hubs. Keeping this inside the compositor covers both
+        // existing and newly generated heroes without editing every admin view.
+        $route = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+        $hasRelief = $hero !== null && (bool)array_filter(
+            $descendants,
+            static fn($idx) => in_array('nd-page-mission-mark', $els[$idx]['classes'], true)
+        );
+        if (preg_match('~/(?:admin|community)/~i', $route) && !$hasRelief) {
+            $relief = neptune_hero_relief_icon($title, $bodyModule);
+            $insertions[] = [
+                $els[$h1]['start'],
+                '<i class="fa-solid '.htmlspecialchars($relief, ENT_QUOTES, 'UTF-8').' nd-page-mission-mark" aria-hidden="true"></i>'
+            ];
+        }
         if ($recognizedKicker !== null) {
             $tagMods[$recognizedKicker]['classes'][] = 'neptune-hero-kicker';
         } else {

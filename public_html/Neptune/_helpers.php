@@ -8,7 +8,7 @@ function neptune_prescout_rebuilt_2026_questions(): array {
         ['group'=>'2026 REBUILT Robot Questions','code'=>'endgame_capability','label'=>'Climb','type'=>'text','required'=>false],
         ['group'=>'2026 REBUILT Robot Questions','code'=>'scoring_throughput','label'=>'Throughput','type'=>'text','required'=>false,'help'=>'Reported scoring rate, such as 20 Bps.'],
         ['group'=>'2026 REBUILT Robot Questions','code'=>'drive_notes','label'=>'Drive Notes','type'=>'textarea','required'=>false],
-        ['group'=>'2026 REBUILT Robot Questions','code'=>'defense_notes','label'=>'Defence / CounterDefence (Ramming Speed, Behavior, etc)','type'=>'textarea','required'=>false],
+        ['group'=>'2026 REBUILT Robot Questions','code'=>'defense_notes','label'=>'Defense / Counter-Defense (Ramming Speed, Behavior, etc)','type'=>'textarea','required'=>false],
         ['group'=>'2026 REBUILT Robot Questions','code'=>'robot_archetype','label'=>'Archetype','type'=>'text','required'=>false],
     ];
 }
@@ -18,7 +18,7 @@ function neptune_prescout_default_questions(?int $seasonYear=null, string $gameN
     return [
         ['group'=>'Robot Questions','code'=>'auton_description','label'=>'Auto','type'=>'textarea','required'=>false],
         ['group'=>'Robot Questions','code'=>'drive_notes','label'=>'Drive Notes','type'=>'textarea','required'=>false],
-        ['group'=>'Robot Questions','code'=>'defense_notes','label'=>'Defence / CounterDefence','type'=>'textarea','required'=>false],
+        ['group'=>'Robot Questions','code'=>'defense_notes','label'=>'Defense / Counter-Defense','type'=>'textarea','required'=>false],
         ['group'=>'Robot Questions','code'=>'robot_archetype','label'=>'Archetype','type'=>'text','required'=>false],
     ];
 }

@@ -262,6 +262,15 @@ try {
 <link rel="stylesheet" href="<?=e(base_url('assets/css/fontawesome-v7-compat.css'))?>?v=<?=$fontAwesomeCompatVersion?>">
 <link rel="stylesheet" href="/assets/css/app.css?v=<?=$appCssVersion?>">
 <link rel="stylesheet" href="/assets/css/neptune-ui.css?v=<?=$neptuneCssVersion?>">
+<?php // Shared Mission Control atmosphere + embossed hero marks for Community and all Admin screens.
+$neptuneMissionPage = str_starts_with($neptuneRouteRelative, 'community/') || ($u && str_starts_with($neptuneRouteRelative, 'admin/'));
+if ($neptuneMissionPage):
+    $neptuneMissionCssVersion=@filemtime(__DIR__.'/assets/css/mission-pages.css')?:1;
+    $neptuneMissionJsVersion=@filemtime(__DIR__.'/assets/js/mission-pages.js')?:1;
+?>
+<link rel="stylesheet" href="<?=e(base_url('assets/css/mission-pages.css'))?>?v=<?=$neptuneMissionCssVersion?>">
+<script defer src="<?=e(base_url('assets/js/mission-pages.js'))?>?v=<?=$neptuneMissionJsVersion?>"></script>
+<?php endif; ?>
 <?php if($organizationThemeCss!==''):?>
 <style id="neptune-organization-theme"><?=$organizationThemeCss?></style>
 <?php endif;?>
