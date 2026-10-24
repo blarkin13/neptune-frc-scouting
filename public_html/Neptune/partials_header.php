@@ -49,6 +49,7 @@ $neptuneNavParents=[
     'scouting'=>['label'=>'Scouting','url'=>'scouting.php'],
     'analytics'=>['label'=>'Analytics & Strategy','url'=>'analytics/index.php'],
     'command'=>['label'=>'Command Center','url'=>'admin/index.php'],
+    'autoscout'=>['label'=>'Auto Scout','url'=>'autoscout/index.php'],
 ];
 $neptuneRoutePath=str_replace('\\','/',(string)($_SERVER['SCRIPT_NAME']??''));
 $neptuneRouteRelative=preg_replace('~^.*?/Neptune/~i','',$neptuneRoutePath)??$neptuneRoutePath;
@@ -65,6 +66,7 @@ if($neptuneRouteSection===null){
         $neptuneRouteRelative==='dashboard/index.php'=>'home',
         $neptuneRouteRelative==='scouting.php',str_starts_with($neptuneRouteRelative,'scout/'),str_starts_with($neptuneRouteRelative,'pit/'),str_starts_with($neptuneRouteRelative,'prescout/'),str_starts_with($neptuneRouteRelative,'spot/')=>'scouting',
         str_starts_with($neptuneRouteRelative,'analytics/')=>'analytics',
+        str_starts_with($neptuneRouteRelative,'autoscout/')=>'autoscout',
         str_starts_with($neptuneRouteRelative,'admin/')=>'command',
         default=>null,
     };
@@ -263,7 +265,7 @@ try {
 <link rel="stylesheet" href="/assets/css/app.css?v=<?=$appCssVersion?>">
 <link rel="stylesheet" href="/assets/css/neptune-ui.css?v=<?=$neptuneCssVersion?>">
 <?php // Shared Mission Control atmosphere + embossed hero marks for Community and all Admin screens.
-$neptuneMissionPage = str_starts_with($neptuneRouteRelative, 'community/') || ($u && str_starts_with($neptuneRouteRelative, 'admin/'));
+$neptuneMissionPage = str_starts_with($neptuneRouteRelative, 'community/') || ($u && (str_starts_with($neptuneRouteRelative, 'admin/') || str_starts_with($neptuneRouteRelative, 'autoscout/')));
 if ($neptuneMissionPage):
     $neptuneMissionCssVersion=@filemtime(__DIR__.'/assets/css/mission-pages.css')?:1;
     $neptuneMissionJsVersion=@filemtime(__DIR__.'/assets/js/mission-pages.js')?:1;
@@ -591,6 +593,9 @@ if(($u || $isDashboardBreadcrumb) && !$hideChrome && !$hideBreadcrumbs && !$isLi
             <a class="<?=$isNeptuneAccountView?'active':''?>" href="<?=e(base_url('dashboard/index.php?view=account'))?>"><i class="fa-solid fa-user-gear"></i><span>My Account</span></a>
             <a class="<?=$activeSection==='scouting'?'active':''?>" href="<?=e(base_url('scouting.php'))?>"><i class="fa-solid fa-crosshairs"></i><span>Scouting</span></a>
             <a class="<?=$activeSection==='analytics'?'active':''?>" href="<?=e(base_url('analytics/index.php'))?>"><i class="fa-solid fa-chart-line"></i><span>Analytics &amp; Strategy</span></a>
+            <?php if(in_array($u['role']??'',['owner','admin'],true)&&(int)($u['organization_id']??0)===(int)($config['app']['platform_organization_id']??1)): ?>
+                <a class="<?=$activeSection==='autoscout'?'active':''?>" href="<?=e(base_url('autoscout/index.php'))?>"><i class="fa-solid fa-robot"></i><span>Auto Scout</span></a>
+            <?php endif; ?>
 
             <?php if(in_array($u['role'],['owner','admin','strategy'],true)): ?>
                 <a class="<?=$activeSection==='command'?'active':''?>" href="<?=e(base_url('admin/index.php'))?>"><i class="fa-solid fa-tower-broadcast"></i><span>Command Center</span></a>
