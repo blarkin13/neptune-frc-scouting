@@ -1,0 +1,7 @@
+# Optional VideoMAE evaluation dependencies; existing PyTorch/Pillow/NumPy required.
+transformers==4.57.1
+huggingface_hub==0.36.0
+safetensors==0.6.2
+tokenizers==0.22.1
+regex==2025.11.3
+tqdm==4.67.1
