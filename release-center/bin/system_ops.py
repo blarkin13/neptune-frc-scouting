@@ -13,18 +13,24 @@ def private_dir(p,shared=False):
  if p.is_symlink():raise ValueError('Linked state directory refused')
  p.mkdir(parents=True,exist_ok=True,mode=0o750 if shared else 0o700)
  os.chmod(p,0o750 if shared else 0o700);os.chown(p,0,pwd.getpwnam('neptunerelease').pw_gid if shared else 0)
+FILE_ROOTS=(Path('/var'),Path('/opt'))
+
 def target(raw='',existing=True):
  if not isinstance(raw,str) or '\x00' in raw:raise ValueError('Invalid file path')
  rel=Path(raw)
- if rel.is_absolute() or '..' in rel.parts:raise ValueError('Use a path within Neptune')
- p=PROD/rel
- if any(q.is_symlink() for q in (p,*p.parents) if q.is_relative_to(PROD)):raise ValueError('Symbolic links are listed but not followed')
- if not p.resolve(strict=existing).is_relative_to(PROD.resolve()):raise ValueError('Path is outside Neptune')
+ if '..' in rel.parts:raise ValueError('Parent traversal is not allowed')
+ p=rel if rel.is_absolute() else PROD/rel
+ if not any(p.is_relative_to(root) for root in FILE_ROOTS):raise ValueError('Choose a path within /var or /opt')
+ for q in (p,*p.parents):
+  if q.is_symlink():raise ValueError('Symbolic links are listed but not followed')
+ if not any(p.resolve(strict=existing).is_relative_to(root.resolve()) for root in FILE_ROOTS):
+  raise ValueError('Path is outside /var and /opt')
  return p
+
 
 def recovery(p,kind='edit'):
  private_dir(RECOVERY);ident=uuid.uuid4().hex;folder=RECOVERY/ident;folder.mkdir(mode=0o700)
- meta={'id':ident,'path':str(p.relative_to(PROD)),'kind':kind,'at':now(),'is_dir':p.is_dir()}
+ meta={'id':ident,'path':str(p),'kind':kind,'at':now(),'is_dir':p.is_dir()}
  if kind=='trash':os.replace(p,folder/'item')
  elif p.is_dir():shutil.copytree(p,folder/'item')
  else:shutil.copy2(p,folder/'item')
@@ -49,20 +55,35 @@ def db(op,args):
  return d
 
 def files(op,a):
+ if op=='pack':
+  paths=a.get('paths')
+  if not isinstance(paths,list) or not 1<=len(paths)<=100 or not all(isinstance(x,str) for x in paths):raise ValueError('Select 1–100 items')
+  sources=[target(path) for path in paths]
+  if any(p in FILE_ROOTS for p in sources):raise ValueError('Select items within a server folder')
+  import tarfile
+  private_dir(DOWNLOADS,True);temp=DOWNLOADS/(uuid.uuid4().hex+'.tar.gz')
+  try:
+   with tarfile.open(temp,'w:gz',dereference=False) as tar:
+    for p in sources:tar.add(p,arcname=str(p).lstrip('/'),filter=lambda info:info if info.isfile() or info.isdir() else None)
+   return ticket(temp,'Neptune-selected-files.tar.gz')
+  finally:temp.unlink(missing_ok=True)
+ if op=='list' and a.get('path')=='/':
+  return {'path':'/','entries':[{'name':str(root).lstrip('/'),'path':str(root),'is_dir':True,'is_link':False,'bytes':0,'modified':root.stat().st_mtime,'mode':oct(stat.S_IMODE(root.stat().st_mode))} for root in FILE_ROOTS]}
  p=target(a.get('path',''),existing=op not in ('mkdir','create'))
+ if op in ('mkdir','create','move','trash','write') and p in FILE_ROOTS:raise ValueError('Choose an item inside /var or /opt')
  if op=='list':
   if not p.is_dir():raise ValueError('Select a folder')
   rows=[]
   for x in sorted(p.iterdir(),key=lambda q:(not q.is_dir(),q.name.lower()))[:5000]:
    try:
-    st=x.lstat();rows.append({'name':x.name,'path':str(x.relative_to(PROD)),'is_dir':x.is_dir() and not x.is_symlink(),'is_link':x.is_symlink(),'bytes':st.st_size,'modified':st.st_mtime,'mode':oct(stat.S_IMODE(st.st_mode))})
+    st=x.lstat();rows.append({'name':x.name,'path':str(x),'is_dir':x.is_dir() and not x.is_symlink(),'is_link':x.is_symlink(),'bytes':st.st_size,'modified':st.st_mtime,'mode':oct(stat.S_IMODE(st.st_mode))})
    except OSError:continue
-  return {'path':str(p.relative_to(PROD)) if p!=PROD else '','entries':rows}
+  return {'path':str(p) if p!=PROD else '','entries':rows,'parent':'/' if p in FILE_ROOTS else str(p.parent)}
  if op=='upload':
   name=a.get('name','');ident=a.get('upload_id','')
   if not isinstance(name,str) or not name or '/' in name or '\\' in name or name in ('.','..') or '\x00' in name or not ID.fullmatch(ident):raise ValueError('Invalid upload name')
   if not p.is_dir():raise ValueError('Choose a folder')
-  dest=target(str(p.relative_to(PROD)/name),existing=False)
+  dest=target(str(p/name),existing=False)
   if dest.exists():raise ValueError('That file already exists')
   staged=STAGING/('system-upload-'+ident);fd=os.open(staged,os.O_RDONLY|os.O_NOFOLLOW);st=os.fstat(fd)
   if not stat.S_ISREG(st.st_mode) or st.st_uid!=pwd.getpwnam('neptunerelease').pw_uid or st.st_nlink!=1 or not 0<st.st_size<=MAX_UPLOAD:os.close(fd);raise ValueError('Invalid staged upload')
@@ -78,7 +99,7 @@ def files(op,a):
   if not p.is_file() or p.stat().st_size>MAX_EDIT:raise ValueError('Select a text file no larger than 2 MiB')
   try:content=p.read_text(encoding='utf-8')
   except UnicodeDecodeError:raise ValueError('Binary file; use Download')
-  return {'path':str(p.relative_to(PROD)),'content':content,'sha256':sha(p)}
+  return {'path':str(p),'content':content,'sha256':sha(p)}
  if op=='write':
   content=a.get('content');expected=a.get('sha256')
   if not isinstance(content,str) or len(content.encode())>MAX_EDIT:raise ValueError('Text exceeds 2 MiB')
@@ -100,11 +121,11 @@ def files(op,a):
    with p.open('x'):pass
    p.chmod(0o664)
   os.chown(p,0,33);return {'message':'Folder created' if op=='mkdir' else 'File created'}
- if p==PROD:raise ValueError('Choose an item within Neptune')
+ if p in FILE_ROOTS:raise ValueError('Choose an item inside /var or /opt')
  if op=='move':
   dest=target(a.get('destination',''),existing=False)
   if dest.exists() or not dest.parent.is_dir() or dest.is_relative_to(p):raise ValueError('Choose a new destination with an existing parent folder')
-  os.replace(p,dest);return {'message':'Item moved','path':str(dest.relative_to(PROD))}
+  os.replace(p,dest);return {'message':'Item moved','path':str(dest)}
  if op=='trash':return {'message':'Moved to Trash; restore or permanently delete it from Trash','recovery':recovery(p,'trash')}
  if op=='download':
   if p.is_dir():
@@ -145,6 +166,9 @@ def launch(a):
 
 def handle(op,a):
  if not isinstance(op,str) or not isinstance(a,dict):raise ValueError('Invalid system operation')
+ if op.startswith('releases.'):
+  import release_prune
+  return release_prune.handle(op.split('.',1)[1],a)
  if op.startswith('files.'):return files(op.split('.',1)[1],a)
  if op=='files_recovery.list':
   private_dir(RECOVERY);rows=[]

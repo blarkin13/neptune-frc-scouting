@@ -192,9 +192,11 @@ def mysql(sql):
  keys=lines[0].split('\t');return [dict(zip(keys,l.split('\t'))) for l in lines[1:]]
 def database_scan():
  tables=mysql("SELECT TABLE_NAME,ROUND((DATA_LENGTH+INDEX_LENGTH)/1048576,1) size_mb,TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA='scouting' ORDER BY DATA_LENGTH+INDEX_LENGTH DESC LIMIT 12")
- variables=mysql("SHOW GLOBAL VARIABLES WHERE Variable_name IN ('innodb_buffer_pool_size','binlog_expire_logs_seconds','binlog_expire_logs_auto_purge')")
+ variables=mysql("SHOW GLOBAL VARIABLES WHERE Variable_name IN ('innodb_buffer_pool_size','binlog_expire_logs_seconds','binlog_expire_logs_auto_purge','log_bin')")
  status=mysql("SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_buffer_pool_reads','Innodb_buffer_pool_read_requests','Slow_queries','Threads_connected','Uptime')")
- logs=mysql('SHOW BINARY LOGS');data={'sampled_at':utc(),'tables':tables,'variables':variables,'status':status,'binary_logs':{'files':len(logs),'bytes':sum(int(r['File_size']) for r in logs),'current':logs[-1]['Log_name'] if logs else None},'read_only':True}
+ binary_logging=next((str(r['Value']).upper() in ('ON','1','TRUE') for r in variables if r['Variable_name']=='log_bin'),False)
+ logs=mysql('SHOW BINARY LOGS') if binary_logging else []
+ data={'sampled_at':utc(),'tables':tables,'variables':variables,'status':status,'binary_logs':{'enabled':binary_logging,'files':len(logs),'bytes':sum(int(r['File_size']) for r in logs),'current':logs[-1]['Log_name'] if logs else None},'read_only':True}
  report('maintenance-database.json',data);return {'phase':'Database diagnostics refreshed; no records or settings changed.'}
 
 # Only old uploaded ZIPs and /root release archives are eligible. Databases,

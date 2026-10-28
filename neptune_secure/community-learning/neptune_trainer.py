@@ -332,7 +332,7 @@ def main():
     emblem=Path(__file__).with_name('neptune-logo-square.png')
     view={'page':'overview','dash':{},'models':{}}
     ui.load_state(HOME/'ui-state.json')
-    shell=ui.Shell(root,logo=Path(__file__).with_name('neptune-logo-wide.png'),on_page=lambda key:show_page(key));top_status=shell.status
+    shell=ui.Shell(root,logo=Path(__file__).with_name('hippocampus-logo.png'),on_page=lambda key:show_page(key));top_status=shell.status
     page=frame=shell.page
     from neptune_engine import VERSION as engine_version
     import neptune_telemetry

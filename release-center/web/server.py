@@ -337,15 +337,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length',str(len(payload)))
         self.secure_headers()
         for k,v in (headers or {}).items():self.send_header(k,v)
-        self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError,ConnectionResetError):
+            self.close_connection=True
 
     def secure_headers(self):
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('X-Frame-Options','DENY')
         self.send_header('Referrer-Policy','no-referrer')
-        self.send_header('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 
     def allowed(self):
         if self.headers.get('Host','').lower() not in ALLOWED_HOSTS:
@@ -1387,7 +1390,7 @@ def console_get(self):
         rel=path.removeprefix('/vendor/fontawesome/')
         allowed={'css/all.min.css','webfonts/fa-solid-900.woff2','webfonts/fa-regular-400.woff2','webfonts/fa-brands-400.woff2','webfonts/fa-v4compatibility.woff2'}
         if rel not in allowed:return self.reply(404,{'error':'Not found'})
-        file=Path('/var/www/neptune/public_html/Neptune/assets/vendor/fontawesome')/rel
+        file=WEB/'vendor/fontawesome'/rel
         if not file.is_file():return self.reply(404,{'error':'Font asset unavailable'})
         data=file.read_bytes();self.send_response(200);self.send_header('Content-Type','text/css' if rel.endswith('.css') else 'font/woff2');self.send_header('Content-Length',str(len(data)));self.secure_headers();self.end_headers();self.wfile.write(data);return
     return _before_console_get(self)

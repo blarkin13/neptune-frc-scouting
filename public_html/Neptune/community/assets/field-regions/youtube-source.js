@@ -21,9 +21,9 @@
  window.NeptuneVideo=v;
  const host=document.getElementById('video');const mount=document.createElement('div');mount.id='ytplayer';host.replaceWith(mount);
  window.onYouTubeIframeAPIReady=()=>{player=new YT.Player('ytplayer',{host:'https://www.youtube-nocookie.com',videoId:id,width:'100%',height:'100%',
-  playerVars:{playsinline:1,controls:0,disablekb:1,rel:0,modestbranding:1,origin:location.origin},
-  events:{onReady:()=>{ready=true;player.setPlaybackRate(rate);fire('onloadedmetadata');fire('ontimeupdate')},
-   onStateChange:e=>{state=e.data;if(state===1){fire('onplay');clearInterval(poll);poll=setInterval(()=>fire('ontimeupdate'),100)}else{clearInterval(poll);if(state===2||state===0)fire('onpause');fire('ontimeupdate')}},
+  playerVars:{playsinline:1,controls:0,disablekb:1,rel:0,modestbranding:1,cc_load_policy:0,iv_load_policy:3,origin:location.origin},
+  events:{onReady:()=>{ready=true;try{player.unloadModule('captions')}catch(e){}player.setPlaybackRate(rate);fire('onloadedmetadata');fire('ontimeupdate')},
+   onStateChange:e=>{state=e.data;if(state===1){try{player.unloadModule('captions')}catch(e){}fire('onplay');clearInterval(poll);poll=setInterval(()=>fire('ontimeupdate'),100)}else{clearInterval(poll);if(state===2||state===0)fire('onpause');fire('ontimeupdate')}},
    onError:()=>fire('onerror')}})};
  const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';s.onerror=()=>fire('onerror');document.head.append(s);
 })();

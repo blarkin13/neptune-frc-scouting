@@ -27,6 +27,7 @@ from pathlib import Path
 
 import neptune_ocr
 import neptune_games
+import neptune_layouts
 
 PIPELINE_VERSION = 'facts-4.2-roster-sides'
 RULES = json.loads(Path(__file__).with_name('season_rules.json').read_text())
@@ -295,29 +296,76 @@ def detect_layout(frames, texts, season, layouts=None, roster=None):
             ', red and blue on the other sides' if v.get('roster_numbers_on_other_side', 0) > v.get('roster_numbers_on_own_side', 0) else '') for k, v in report.items()))
 
 
-def generic_layout(frames, texts, roster, band):
+def generic_layout(frames, texts, roster, band, sides=None):
     """Settle a broadcast no profile matched: (sides, camera_top, stats), or None.
 
     Needs MIN_LAYOUT_FRAMES clocks and, among frames whose roster numbers or RED/BLUE words show the sides,
-    at least 90% agreeing; otherwise the video stays unsupported. camera_top is just below the clock row."""
-    clocks, votes, bottoms = 0, Counter(), []
+    at least 90% agreeing; otherwise the video stays unsupported. camera_top is just below the clock row.
+    `sides` from a confirmed learned layout replaces only the vote; the clock count still applies.
+    stats['clock'] is the median clock box and stats['clock_frames'] the frames that showed it."""
+    clocks, votes, boxes, shown = 0, Counter(), [], []
     for _, p in frames:
         r = parse_overlay_generic(texts.get(str(p), []), roster)
         if r is None:
             continue
         clocks += 1
-        bottoms.append(r['clock']['y'] + r['clock']['h'])
+        c = r['clock']
+        boxes.append((c['x'], c['y'], c['w'], c['h']))
+        shown.append(p)
         if r['sides']:
             votes[r['sides']] += 1
     stats = {'overlay_frames': clocks, 'sided_frames': sum(votes.values())}
-    if clocks < MIN_LAYOUT_FRAMES or not votes:
+    if clocks < MIN_LAYOUT_FRAMES:
         return None
-    sides, n = votes.most_common(1)[0]
-    stats['agreeing_frames'] = n
-    if n < MIN_LAYOUT_FRAMES or n < 0.9 * sum(votes.values()):
-        return None
-    camera_top = round(min(band, sorted(bottoms)[len(bottoms) // 2] * band + 0.01), 3)
+    stats['clock'] = [round(statistics.median(b[k] for b in boxes), 4) for k in range(4)]
+    stats['clock_frames'] = shown
+    if sides:
+        stats['agreeing_frames'] = votes[sides]
+        stats['disagreeing_frames'] = sum(votes.values()) - votes[sides]
+    else:
+        if not votes:
+            return None
+        sides, n = votes.most_common(1)[0]
+        stats['agreeing_frames'] = n
+        if n < MIN_LAYOUT_FRAMES or n < 0.9 * sum(votes.values()):
+            return None
+    bottom = stats['clock'][1] + stats['clock'][3]
+    camera_top = round(min(band, bottom * band + 0.01), 3)
     return sides, camera_top, stats
+
+
+def settle_generic(band, texts, roster, band_crop, season, match_key, home=None):
+    """generic_layout() plus learned layouts: (sides, camera_top, stats, learn) or None.
+
+    A passing vote always wins; a confirmed learned overlay disagreeing with it is noted. A failed vote
+    falls back to a confirmed, conflict-free learned overlay with the same look and clock position.
+    `learn` is True only when the sides came from this video's own vote."""
+    found = generic_layout(band, texts, roster, band_crop)
+    unvoted = found or generic_layout(band, texts, roster, band_crop, sides='red-left')
+    if not unvoted:
+        return None
+    stats = unvoted[2]
+    try:
+        sig = neptune_layouts.signature(stats['clock_frames'])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        sig = None
+    known = neptune_layouts.find(season, sig, stats['clock'], home)
+    if found:
+        sides, top, stats = found
+        if known:
+            stats['learned_layout'] = {'id': known['id'], 'sides': known['sides'], 'agrees': known['sides'] == sides}
+        result = sides, top, stats, True
+    elif neptune_layouts.usable(known):
+        sides, top, stats = generic_layout(band, texts, roster, band_crop, sides=known['sides'])
+        if stats['disagreeing_frames'] > stats['agreeing_frames']:
+            return None
+        stats['learned_layout'] = {'id': known['id'], 'sides': known['sides'], 'matches': len(known['matches']), 'distance': known['distance']}
+        result = sides, top, stats, False
+    else:
+        return None
+    stats['signature'] = sig
+    del stats['clock_frames']
+    return result
 
 
 def generic_samples(band, texts, sides, rules, root):
@@ -1135,12 +1183,13 @@ def analyze_video(video, match, work, stage=None, duration=None, metadata_title=
         facts['score_rereads'] = reread_scores(samples, profile, backend, work)
     except FactsError:
         # No profile matched: read the clock and scores by position, sides from the roster. Identity checks are unchanged.
-        found = generic_layout(band, texts, roster, band_crop)
+        found = settle_generic(band, texts, roster, band_crop, season, match.get('key'))
         if not found:
             raise
-        sides, top, layout_stats = found
+        sides, top, layout_stats, learn = found
         layout_id, profile = 'generic-' + sides, {'camera_top': top}
         samples, clock_rejects = generic_samples(band, texts, sides, rules, work)
+    sig = layout_stats.pop('signature', None)
     facts['layout'] = dict(layout_stats, profile=layout_id,camera_top=profile['camera_top'])
     clocked = [s for s in samples if 'clock' in s]
     periods, period_rejects = anchor_periods(clocked, rules, duration)
@@ -1170,6 +1219,10 @@ def analyze_video(video, match, work, stage=None, duration=None, metadata_title=
     stage[0] = 'Reading bumper numbers'
     facts['bumpers'] = read_bumpers(video, work, backend, roster, match_t0, match_t1, every, profile['camera_top'], profile.get('closeup_top'))
     facts['timeline_samples'] = len(band)
+    if layout_id.startswith('generic-') and learn and sig and periods['teleop'] and facts['identity']['checks']['roster']['status'] == 'match':
+        # The read was clean on its own vote and the overlay roster agrees station by station: remember this overlay (provisional until another match agrees).
+        e = neptune_layouts.learn(season, sig, layout_stats['clock'], sides, profile['camera_top'], match.get('key'))
+        facts['layout']['learned'] = {'id': e['id'], 'matches': len(e['matches']), 'confirmed': neptune_layouts.usable(e)}
     return facts
 
 

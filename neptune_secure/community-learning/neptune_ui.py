@@ -429,15 +429,18 @@ class Shell:
         self.on_page=on_page;self.nav={}
         side=tk.Frame(root,bg=SIDEBAR,width=210,padx=12,pady=16);side.pack(side='left',fill='y');side.pack_propagate(False)
         tk.Frame(root,bg=LINE,width=1).pack(side='left',fill='y')
-        # The wide NEPTUNE wordmark across the sidebar.
+        # The Hippocampus logo (Neptune mark, name and tagline in one image) across the sidebar.
         brand=tk.Frame(side,bg=SIDEBAR);brand.pack(fill='x',pady=(0,18))
+        picture=None
         if logo and Path(logo).is_file():
             try:
-                picture=tk.PhotoImage(file=str(logo));picture=picture.subsample(max(1,(picture.width()+185)//186))
-                mark=tk.Label(brand,image=picture,bg=SIDEBAR);mark.image=picture;mark.pack(anchor='w')
-            except tk.TclError:tk.Label(brand,text='NEPTUNE',font=('Arial',18,'bold'),fg=TEXT,bg=SIDEBAR,anchor='w').pack(fill='x')
-        tk.Label(brand,text='HIPPOCAMPUS',font=('Arial',13,'bold'),fg=TEXT,bg=SIDEBAR,anchor='w').pack(fill='x',pady=(6,0))
-        tk.Label(brand,text='Model Training Helper',font=('Arial',9),fg=MUTED,bg=SIDEBAR,anchor='w').pack(fill='x')
+                from PIL import Image,ImageTk
+                image=Image.open(logo);picture=ImageTk.PhotoImage(image.resize((186,round(186*image.height/image.width)),Image.LANCZOS))
+            except Exception:
+                try:picture=tk.PhotoImage(file=str(logo));picture=picture.subsample(max(1,(picture.width()+185)//186))
+                except tk.TclError:picture=None
+        if picture:mark=tk.Label(brand,image=picture,bg=SIDEBAR);mark.image=picture;mark.pack(anchor='w')
+        else:tk.Label(brand,text='HIPPOCAMPUS',font=('Arial',15,'bold'),fg=TEXT,bg=SIDEBAR,anchor='w').pack(fill='x')
         def section(title):tk.Label(side,text=title.upper(),font=('Arial',8,'bold'),fg=MUTED,bg=SIDEBAR,anchor='w').pack(fill='x',pady=(14,4))
         for i,(key,title) in enumerate(self.PAGES):
             if i==1:section('Models')

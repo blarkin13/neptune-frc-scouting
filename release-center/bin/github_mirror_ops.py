@@ -32,7 +32,7 @@ EXCLUDE = {
 RC_ROOT = Path('/opt/neptune-release-center')
 RC_FILES = {
  'release-center/' + str(p) for p in (
-  'bin/github_mirror_ops.py', 'bin/github_auto_sync.py', 'bin/mission_control_ops.py',
+  'bin/github_mirror_ops.py', 'bin/github_auto_sync.py', 'bin/release_prune.py', 'bin/neptune-prune-releases.sh', 'bin/mission_control_ops.py',
   'bin/mission_control_policy.py', 'bin/production_ops.py',
   'bin/cleanup_ops.py', 'bin/package_flow_ops.py', 'bin/maintenance_ops.py',
   'bin/qa_package_policy.py', 'bin/system_ops.py', 'bin/system_db.php',
