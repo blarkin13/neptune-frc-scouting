@@ -326,10 +326,10 @@ def external_training_datasets(config):
 
 
 def yolo_validation_from_training(dataset, every=5):
-    """Point YOLO's validation folder at every fifth training frame instead of the held-out match.
+    """Move every fifth training frame to YOLO validation, away from the held-out match.
 
     YOLO picks best.pt and stops early by its validation score, so the held-out match must never be that
-    set: it is only for the comparison that decides adoption. Its images are removed from the dataset.
+    set: it is only for the comparison that decides adoption. Validation images are removed from training.
     """
     dataset = Path(dataset)
     for kind in ('images', 'labels'):
@@ -338,9 +338,9 @@ def yolo_validation_from_training(dataset, every=5):
     if not picked:
         raise ValueError('Detector training needs labelled training frames.')
     for image in picked:
-        shutil.copy2(image, dataset/'images'/'val'/image.name)
+        shutil.move(str(image), str(dataset/'images'/'val'/image.name))
         label = dataset/'labels'/'train'/(image.stem+'.txt')
-        shutil.copy2(label, dataset/'labels'/'val'/label.name)
+        shutil.move(str(label), str(dataset/'labels'/'val'/label.name))
     return len(picked)
 
 

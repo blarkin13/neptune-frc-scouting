@@ -382,7 +382,14 @@ def main():
         reconnect_requested['value']=True
         reconnect_button.config(state='disabled')
         pause.set();closing.set();review_closing.set()
-        status.set('Finishing this match, then opening browser approval…' if busy['value'] else 'Opening browser approval…')
+        if not busy['value']:
+            # Nothing to finish: open browser approval now instead of waiting for the worker, which may be stuck
+            # retrying a connection Neptune no longer accepts.
+            try:start_reconnect_process(source)
+            except Exception as error:
+                reconnect_requested['value']=False;reconnect_button.config(state='normal');messagebox.showerror('Reconnect could not start',str(error));return
+            unsubscribe_meters();root.destroy();return
+        status.set('Finishing this match, then opening browser approval…')
     reconnect_button=ui.Button(shell.footer,'Reconnect',reconnect,icon_name='refresh',small=True)
     reconnect_button.pack(anchor='w',pady=(6,0))
     update={'release':None,'stage':None,'checking':False,'remote':False,'tried':-1e9}
@@ -490,14 +497,19 @@ def main():
     self_id=config.get('computer_id')
     def open_page(key):show_page(key)
     def render():
-        # A refresh of the same page keeps its scroll position; a new page starts at the top.
-        key=view['page'];page.show_only(pinned,top=view.get('shown')!=key);view['shown']=key
+        # Rebuild only when the page or its layout changed; otherwise update readings, progress and logs in place
+        # (rebuilding every card on each refresh made Windows and Linux flash).
+        key=view['page'];signature=(key,ui.structure_key(view['dash'],view['models'],busy['value']))
+        if view.get('signature')==signature:ui.refresh_live(view['dash']);return
+        view['signature']=signature;ui.LIVE.clear()
+        # A rebuild of the same page keeps its scroll position; a new page starts at the top.
+        page.show_only(pinned,top=view.get('shown')!=key);view['shown']=key
         if key=='overview':
             page.add(computer_card)
             ui.render_overview(page,view['dash'],view['models'],self_id=self_id,busy=busy['value'],open_page=open_page,open_url=webbrowser.open,on_cancel=cancel_run)
         elif key in ('robots','field'):ui.render_model(page,'robot' if key=='robots' else 'field',view['models'].get('robot' if key=='robots' else 'field'),open_url=webbrowser.open,on_cancel=cancel_run)
         elif key=='actions':ui.render_actions(page,view['models'].get('actions'))
-        elif key=='computers':ui.render_computers(page,view['dash'],self_id=self_id,on_update=change_update)
+        elif key=='computers':ui.render_computers(page,view['dash'],self_id=self_id,on_update=change_update,on_remove=remove_computer)
         else:page.add(activity_box)
     target=tk.StringVar(value='Any free helper')
     def targets():
@@ -521,6 +533,13 @@ def main():
             import neptune_robot_jobs
             try:neptune_robot_jobs.api(config,'cancel_run',run,timeout=30);messages.put(('run_cancelled',None))
             except Exception as error:messages.put(('run_cancelled',str(error)))
+        threading.Thread(target=work,daemon=True).start()
+    def remove_computer(computer,name):
+        if not messagebox.askyesno('Remove %s?'%name,'Remove %s from your computers? It would have to connect again to come back.'%name):return
+        def work():
+            import neptune_robot_jobs
+            try:neptune_robot_jobs.api(config,'remove_computer',{'computer':computer},timeout=30);messages.put(('removed',None))
+            except Exception as error:messages.put(('removed',str(error)))
         threading.Thread(target=work,daemon=True).start()
     def change_update(computer,change):
         # Owner's choice from the Computers page: Neptune passes it to that computer's helper at its next check-in.
@@ -579,6 +598,7 @@ def main():
                 continue
             if kind=='queued':top_status.set('Run queued' if message is None else 'Couldn’t start the run: '+message);continue
             if kind=='run_cancelled':top_status.set('Run stopped or cancelled · updating…' if message is None else 'Couldn’t cancel the run: '+message);continue
+            if kind=='removed':top_status.set('Computer removed · updating…' if message is None else 'Couldn’t remove the computer: '+message);continue
             if kind=='update_sent':top_status.set('Update request sent' if message is None else 'Couldn’t send the update request: '+message);continue
             if kind=='review_closed':review_button.config(text='  Review tracking…');continue
             if kind=='remote_settings':remote_settings(message);continue

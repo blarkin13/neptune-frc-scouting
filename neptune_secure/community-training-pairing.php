@@ -71,10 +71,19 @@ final class CommunityTrainingPairing {
             if(!$r||(int)$r['expires_at']<=time()||$r['status']!=='approved'||!hash_equals((string)$r['code_hash'],hash('sha256',$p['code']))||!hash_equals($r['challenge'],$challenge))throw new CommunityAnalysisError(401,'Connection approval is invalid, expired, or already used. Connect again.');
             $u=$this->user((int)$r['user_id']);
             if(!hash_equals($r['credential_revision'],hash('sha256',$u['password_hash'])))throw new CommunityAnalysisError(401,'Your account changed. Sign in and connect again.');
+            $this->q("UPDATE community_training_pair_requests SET status='used',code_hash=NULL WHERE id=?",[$r['id']]);
+            // Reconnecting a computer this user already has: give it a new connection and keep its record, name and settings.
+            $previous=(string)($p['computer_id']??'');
+            if(preg_match('/^[a-f0-9]{32}$/D',$previous)){
+                $token=bin2hex(random_bytes(32));$expiry=time()+30*86400;
+                $q=$this->q('UPDATE community_training_computers SET token_hash=?,credential_revision=?,expires_at=?,revoked=0 WHERE id=? AND user_id=?',[hash('sha256',$token),$r['credential_revision'],$expiry,$previous,$u['id']]);
+                if($q->rowCount())return ['access_token'=>$token,'expires_at'=>$expiry,'computer_id'=>$previous];
+            }
             $count=(int)$this->q('SELECT COUNT(*) FROM community_training_computers WHERE user_id=? AND revoked=0 AND expires_at>?',[$u['id'],time()])->fetchColumn();
             if($count>=20)throw new CommunityAnalysisError(409,'Remove an unused helper connection from Neptune Helper Setup before connecting another.');
-            $grant=(new CommunityTrainers($this->db))->enroll(array_merge($u,['credential_revision'=>$r['credential_revision']]),'Neptune Training Helper');
-            $this->q("UPDATE community_training_pair_requests SET status='used',code_hash=NULL WHERE id=?",[$r['id']]);
+            // A new computer is named after itself (its host name) instead of the app.
+            $name=trim(preg_replace('/[\x00-\x1f\x7f]+/u','',(string)($p['name']??'')));
+            $grant=(new CommunityTrainers($this->db))->enroll(array_merge($u,['credential_revision'=>$r['credential_revision']]),$name!==''?mb_substr($name,0,100):'Neptune Training Helper');
             return ['access_token'=>$grant['token'],'expires_at'=>$grant['expires_at'],'computer_id'=>$grant['id']];
         });
     }

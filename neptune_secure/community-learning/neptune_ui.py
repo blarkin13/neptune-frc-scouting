@@ -231,8 +231,8 @@ FORM_ICON={'laptop':'laptop','desktop':'computers','server':'server'}
 
 class Meter(tk.Canvas):
     """A thin rounded usage bar (0–1), like the Mac app's meters."""
-    def __init__(self,parent,fraction=None,*,height=6):
-        super().__init__(parent,height=height,bg=parent.cget('bg'),highlightthickness=0,borderwidth=0)
+    def __init__(self,parent,fraction=None,*,height=6,width=None):
+        super().__init__(parent,height=height,bg=parent.cget('bg'),highlightthickness=0,borderwidth=0,**({'width':width} if width else {}))
         self.fraction=fraction;self.bind('<Configure>',lambda e:self._draw())
     def set(self,fraction):self.fraction=fraction;self._draw()
     def _draw(self):
@@ -414,11 +414,32 @@ def page_card(page,title,*,key=None,icon_name=None):
     page.add(outer);return outer,body
 
 
+# Updaters for values that change on every refresh (meters, progress, logs). A refresh whose structure_key is unchanged
+# calls these instead of rebuilding the page, so nothing is redrawn but the changed text and bars.
+LIVE=[]
+
+
+def structure_key(dash,models,busy):
+    """What a page's layout depends on, leaving out readings, counters, logs and job messages that change every refresh."""
+    import json
+    volatile={'stats','counters','log','reported_at','last_seen','job'}
+    computers=[dict({k:v for k,v in c.items() if k not in volatile},job=bool(c.get('job'))) for c in dash.get('computers') or []]
+    queue=[{k:v for k,v in q.items() if k not in ('message','started')} for q in dash.get('queue') or []]
+    return json.dumps([computers,queue,models,bool(busy)],sort_keys=True,default=str)
+
+
+def refresh_live(dash):
+    for update in list(LIVE):
+        try:update(dash)
+        except tk.TclError:pass
+
+
 def _meter(parent,label,fraction,text):
     cell=tk.Frame(parent,bg=PANEL);top=tk.Frame(cell,bg=PANEL);top.pack(fill='x')
     tk.Label(top,text=label,font=('Arial',10),fg=MUTED,bg=PANEL).pack(side='left')
-    tk.Label(top,text=text,font=('Arial',10),fg=TEXT,bg=PANEL).pack(side='right')
-    Meter(cell,fraction).pack(fill='x',pady=(6,0))
+    value=tk.Label(top,text=text,font=('Arial',10),fg=TEXT,bg=PANEL);value.pack(side='right')
+    bar=Meter(cell,fraction);bar.pack(fill='x',pady=(6,0))
+    cell.show=lambda fraction,text:(value.config(text=text),bar.set(fraction))
     return cell
 
 
@@ -524,9 +545,8 @@ def cancel_buttons(parent,run,on_cancel):
         if run.get('state')=='running':Button(parent,'Stop after this match',lambda:on_cancel({'job':run['job'],'mode':'stop'}),small=True).pack(side='right',padx=(8,0))
 
 
-def console(page,job,worker,*,self_id=None,on_cancel=None):
-    """One running job as the website's console: part and helper, step and match, live readings,
-    stage and overall bars, next steps and recent log."""
+def console_values(job,worker,self_id=None):
+    """What the console shows for one running job: step and match, live readings, stage and overall bars, next steps, log."""
     import re,time
     lines=(job.get('message') or '').splitlines()
     get=lambda prefix:next((l[len(prefix):].strip() for l in lines if l.startswith(prefix)),'')
@@ -559,28 +579,57 @@ def console(page,job,worker,*,self_id=None,on_cancel=None):
         'VRAM '+gb(gpu['mem_used_mb'])+('/'+gb(gpu['mem_total_mb']) if gpu.get('mem_total_mb') else '')+' GB' if isinstance(gpu.get('mem_used_mb'),(int,float)) else '',
         '%d°C'%gpu['temp_c'] if isinstance(gpu.get('temp_c'),(int,float)) else '','CPU %d%%'%stats['cpu'] if isinstance(stats.get('cpu'),(int,float)) else '',
         'RAM %s/%s GB'%(gb(stats.get('ram_used_mb') or 0),gb(stats['ram_total_mb'])) if stats.get('ram_total_mb') else ''] if x)
+    def color(message):
+        low=message.lower()
+        return '#fa8c8c' if re.search('fail|error|could not|refused|timed out',low) else WARN if re.search('warn|skipp|retry|missing',low) else GOOD if re.search('finish|saved|adopted|done|complete|kept|passed',low) else '#8cc7f7'
+    return {'helper':'waiting for its helper' if not worker else (worker.get('name') or 'Computer')+(' (this computer)' if worker.get('id')==self_id else '')+(' · '+gpu['name'].replace('NVIDIA GeForce ','') if gpu.get('name') else ''),
+            'step':(step or job.get('title') or '')+(' · '+match.group(1) if match else ''),'sys':sys_line or 'no live readings from this helper yet',
+            'stage':(stage,stage_text or now or '—'),
+            'overall':(overall,' · '.join(x for x in [_clock(elapsed)+' elapsed' if elapsed else '',eta or ('estimating' if overall is not None else '')] if x)),
+            'next':('next → '+get('Next:')) if get('Next:') else '',
+            'log':[(time.strftime('%H:%M:%S',time.localtime(t))+'  '+message,color(message)) for t,message in log[-6:]]}
+
+
+def console(page,job,worker,*,self_id=None,on_cancel=None,find=None):
+    """One running job as the website's console. Built once; find(dash) -> (job, worker) lets a refresh update
+    its text and bars in place (LIVE) instead of rebuilding the card."""
     mono='Menlo'
     label=job.get('label') or job.get('title') or 'Training'
     outer,card=page_card(page,'● '+label,key='run:'+label)
     cancel_buttons(outer.head,job,on_cancel)
-    helper='waiting for its helper' if not worker else (worker.get('name') or 'Computer')+(' (this computer)' if worker.get('id')==self_id else '')+(' · '+gpu['name'].replace('NVIDIA GeForce ','') if gpu.get('name') else '')
-    tk.Label(outer.head,text=helper,font=(mono,10),fg=MUTED,bg=PANEL).pack(side='right')
-    _label(card,(step or job.get('title') or '')+(' · '+match.group(1) if match else ''),12,TEXT,'bold',mono)
-    _label(card,sys_line or 'no live readings from this helper yet',10,ACCENT,font=mono)
-    def bar_row(label,p,detail):
+    helper=tk.StringVar();tk.Label(outer.head,textvariable=helper,font=(mono,10),fg=MUTED,bg=PANEL).pack(side='right')
+    step,sysline,nxt=tk.StringVar(),tk.StringVar(),tk.StringVar()
+    tk.Label(card,textvariable=step,font=(mono,12,'bold'),fg=TEXT,bg=PANEL,anchor='w').pack(fill='x',pady=(0,3))
+    tk.Label(card,textvariable=sysline,font=(mono,10),fg=ACCENT,bg=PANEL,anchor='w').pack(fill='x',pady=(0,3))
+    bars={}
+    for name in ('stage','overall'):
         row=tk.Frame(card,bg=PANEL);row.pack(fill='x',pady=2)
-        tk.Label(row,text=label,font=(mono,11),fg=TEXT,bg=PANEL,width=8,anchor='w').pack(side='left')
-        track=tk.Frame(row,bg='#0f1d31',width=240,height=8);track.pack(side='left',padx=(0,10));track.pack_propagate(False)
-        if p:tk.Frame(track,bg='#8fb6de',width=max(1,int(240*min(100,p)/100)),height=8).place(x=0,y=0)
-        tk.Label(row,text='  —' if p is None else '%3d%%'%round(p),font=(mono,11,'bold'),fg=TEXT,bg=PANEL).pack(side='left')
-        tk.Label(row,text=detail,font=(mono,11),fg=MUTED,bg=PANEL,anchor='w').pack(side='left',padx=(10,0))
-    bar_row('stage',stage,stage_text or now or '—')
-    bar_row('overall',overall,' · '.join(x for x in [_clock(elapsed)+' elapsed' if elapsed else '',eta or ('estimating' if overall is not None else '')] if x))
-    if get('Next:'):_label(card,'next → '+get('Next:'),10,MUTED,font=mono)
-    for t,message in log[-6:]:
-        low=message.lower()
-        color='#fa8c8c' if re.search('fail|error|could not|refused|timed out',low) else WARN if re.search('warn|skipp|retry|missing',low) else GOOD if re.search('finish|saved|adopted|done|complete|kept|passed',low) else '#8cc7f7'
-        _label(card,time.strftime('%H:%M:%S',time.localtime(t))+'  '+message,10,color,font=mono)
+        tk.Label(row,text=name,font=(mono,11),fg=TEXT,bg=PANEL,width=8,anchor='w').pack(side='left')
+        meter=Meter(row,width=240,height=8);meter.pack(side='left',padx=(0,10))
+        pct,detail=tk.StringVar(),tk.StringVar()
+        tk.Label(row,textvariable=pct,font=(mono,11,'bold'),fg=TEXT,bg=PANEL).pack(side='left')
+        tk.Label(row,textvariable=detail,font=(mono,11),fg=MUTED,bg=PANEL,anchor='w').pack(side='left',padx=(10,0))
+        bars[name]=(meter,pct,detail)
+    next_label=tk.Label(card,textvariable=nxt,font=(mono,10),fg=MUTED,bg=PANEL,anchor='w')
+    logs=[tk.Label(card,font=(mono,10),fg=MUTED,bg=PANEL,anchor='w',justify='left') for _ in range(6)]
+    def show(job,worker):
+        v=console_values(job,worker,self_id)
+        helper.set(v['helper']);step.set(v['step']);sysline.set(v['sys']);nxt.set(v['next'])
+        for name,(meter,pct,detail) in bars.items():
+            p,text=v[name];meter.set(None if p is None else min(100,p)/100);pct.set('  —' if p is None else '%3d%%'%round(p));detail.set(text)
+        if v['next'] and not next_label.winfo_ismapped():next_label.pack(fill='x',pady=(0,3),before=logs[0] if logs[0].winfo_ismapped() else None)
+        elif not v['next'] and next_label.winfo_ismapped():next_label.pack_forget()
+        for i,widget in enumerate(logs):
+            if i<len(v['log']):
+                text,col=v['log'][i];widget.config(text=text,fg=col)
+                if not widget.winfo_ismapped():widget.pack(fill='x',pady=(0,3))
+            elif widget.winfo_ismapped():widget.pack_forget()
+    show(job,worker)
+    if find:
+        def refresh(dash):
+            found=find(dash)
+            if found:show(*found)
+        LIVE.append(refresh)
 
 
 def job_kind(job):
@@ -596,7 +645,13 @@ def render_overview(page,dash,models,*,self_id=None,busy=False,open_page=lambda 
     for job in running[:3]:
         # Detector runs name their helper in computer_id; action runs in target.
         helper=job.get('computer_id') or job.get('target')
-        console(page,job,next((c for c in computers if helper and c.get('id')==helper),None),self_id=self_id,on_cancel=on_cancel)
+        def find(dash,job=job):
+            ident=lambda q:(q.get('request'),q.get('job'),q.get('label') or q.get('title'))
+            current=next((q for q in dash.get('queue') or [] if q.get('state')=='running' and ident(q)==ident(job)),None)
+            if not current:return None
+            helper=current.get('computer_id') or current.get('target')
+            return current,next((c for c in dash.get('computers') or [] if helper and c.get('id')==helper),None)
+        console(page,job,next((c for c in computers if helper and c.get('id')==helper),None),self_id=self_id,on_cancel=on_cancel,find=find)
     active={job_kind(q) for q in running}
     if active:
         robot,field,actions=models.get('robot'),models.get('field'),models.get('actions')
@@ -673,7 +728,7 @@ def update_line(w):
     return ('Up to date · '+latest) if latest else 'Up to date',GOOD,None
 
 
-def render_computers(page,dash,*,self_id=None,on_update=None):
+def render_computers(page,dash,*,self_id=None,on_update=None,on_remove=None):
     """Every connected computer with its live readings; this one first. on_update(computer_id, change) requests, cancels or sets auto-update."""
     computers=sorted(dash.get('computers') or [],key=lambda c:c.get('id')!=self_id)
     if not computers:_,card=page_card(page,None);_label(card,'No computer readouts yet.',10,MUTED)
@@ -681,6 +736,11 @@ def render_computers(page,dash,*,self_id=None,on_update=None):
         state,color=('Training',ACCENT) if w.get('job') else (('Available',GOOD) if w.get('online') else ('Offline',MUTED))
         outer,card=page_card(page,(w.get('name') or 'Computer')+(' · this computer' if w.get('id')==self_id else ''),key='computer:'+str(w.get('id')),icon_name=FORM_ICON.get(w.get('form'),'computers'))
         tk.Label(outer.head,text=state,font=('Arial',10,'bold'),fg=color,bg=PANEL).pack(side='left',padx=10)
+        if on_remove and not w.get('online') and not w.get('job') and w.get('id') and w.get('id')!=self_id:
+            # An offline entry (an old connection or a duplicate) can be removed; it would have to connect again to come back.
+            x=tk.Label(outer.head,text='✕',font=('Arial',13),fg=MUTED,bg=PANEL,cursor='hand2');x.pack(side='right')
+            x.bind('<Enter>',lambda e,l=x:l.config(fg=WARN));x.bind('<Leave>',lambda e,l=x:l.config(fg=MUTED))
+            x.bind('<Button-1>',lambda e,c=w['id'],n=w.get('name') or 'this computer':on_remove(c,n))
         _label(card,' · '.join(x for x in (w.get('platform'),w.get('device'),w.get('version')) if x),9,MUTED)
         text,color,button=update_line(w);row=tk.Frame(card,bg=PANEL);row.pack(fill='x',pady=(2,0))
         tk.Label(row,text=text,font=('Arial',9),fg=color,bg=PANEL,wraplength=520,justify='left').pack(side='left')
@@ -688,13 +748,19 @@ def render_computers(page,dash,*,self_id=None,on_update=None):
             cid=w['id']
             if button:Button(row,'Update' if button=='request' else 'Cancel update',lambda c=cid,b=button:on_update(c,{'update':b}),kind='primary' if button=='request' else 'secondary',icon_name='download' if button=='request' else None,small=True).pack(side='left',padx=(10,0))
             Switch(row,'Update automatically',bool((w.get('update') or {}).get('auto')),lambda value,c=cid:on_update(c,{'auto_update':value})).pack(side='left',padx=(12,0))
-        stats=w.get('stats') or {};gpu=stats.get('gpu') or {}
-        def memory(used,total):return '—' if used is None else '%.1f / %.1f GB'%(used/1024,total/1024) if total else '%.1f GB'%(used/1024)
         grid=tk.Frame(card,bg=PANEL);grid.pack(fill='x',pady=(4,4))
-        cells=[('CPU',(stats.get('cpu') or 0)/100,'%g%%'%stats['cpu'] if isinstance(stats.get('cpu'),(int,float)) else '—'),
-               ('GPU',(gpu.get('util') or 0)/100,'%g%%'%gpu['util'] if isinstance(gpu.get('util'),(int,float)) else '—'),
-               ('RAM',stats['ram_used_mb']/stats['ram_total_mb'] if stats.get('ram_used_mb') is not None and stats.get('ram_total_mb') else None,memory(stats.get('ram_used_mb'),stats.get('ram_total_mb'))),
-               ('GPU memory',gpu['mem_used_mb']/gpu['mem_total_mb'] if gpu.get('mem_used_mb') is not None and gpu.get('mem_total_mb') else None,memory(gpu.get('mem_used_mb'),gpu.get('mem_total_mb')))]
-        for i,(name,fraction,text) in enumerate(cells):
-            grid.columnconfigure(i,weight=1,uniform='m');_meter(grid,name,fraction,text).grid(row=0,column=i,sticky='ew',padx=(0,14) if i<3 else 0)
-        _label(card,(w.get('job') or {}).get('message') or 'No assigned job',9,MUTED)
+        cells=[_meter(grid,name,None,'—') for name in ('CPU','GPU','RAM','GPU memory')]
+        for i,cell in enumerate(cells):
+            grid.columnconfigure(i,weight=1,uniform='m');cell.grid(row=0,column=i,sticky='ew',padx=(0,14) if i<3 else 0)
+        job_line=tk.Label(card,font=('Arial',9),fg=MUTED,bg=PANEL,anchor='w',justify='left');job_line.pack(fill='x',pady=(0,3))
+        def show(c,cells=cells,job_line=job_line):
+            stats=c.get('stats') or {};gpu=stats.get('gpu') or {}
+            def memory(used,total):return '—' if used is None else '%.1f / %.1f GB'%(used/1024,total/1024) if total else '%.1f GB'%(used/1024)
+            values=[((stats.get('cpu') or 0)/100,'%g%%'%stats['cpu'] if isinstance(stats.get('cpu'),(int,float)) else '—'),
+                    ((gpu.get('util') or 0)/100,'%g%%'%gpu['util'] if isinstance(gpu.get('util'),(int,float)) else '—'),
+                    (stats['ram_used_mb']/stats['ram_total_mb'] if stats.get('ram_used_mb') is not None and stats.get('ram_total_mb') else None,memory(stats.get('ram_used_mb'),stats.get('ram_total_mb'))),
+                    (gpu['mem_used_mb']/gpu['mem_total_mb'] if gpu.get('mem_used_mb') is not None and gpu.get('mem_total_mb') else None,memory(gpu.get('mem_used_mb'),gpu.get('mem_total_mb')))]
+            for cell,(fraction,text) in zip(cells,values):cell.show(fraction,text)
+            job_line.config(text=(c.get('job') or {}).get('message') or 'No assigned job')
+        show(w)
+        LIVE.append(lambda dash,cid=w.get('id'),show=show:[show(c) for c in dash.get('computers') or [] if c.get('id')==cid])

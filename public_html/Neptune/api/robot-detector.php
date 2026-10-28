@@ -63,6 +63,15 @@ try {
    $control=new CommunityTrainingControl($pdo);$job=(string)($p['job']??'');
    return ($p['mode']??'')==='stop'?$control->stop($job,(int)$computer['user_id']):community_training_cancel($pdo,$job,(int)$computer['user_id']);
   })(),
+  // Remove an old entry from the owner's computers, as the website's Remove does: only when it is not connected and holds no run.
+  'remove_computer'=>(function()use($pdo,$computer,$jobs,$p){
+   $id=(string)($p['computer']??'');$c=null;foreach((new CommunityTrainingControl($pdo))->computers((int)$computer['user_id']) as $x)if($x['id']===$id)$c=$x;
+   if(!$c)throw new CommunityAnalysisError(422,'Choose one of your computers.');
+   if($id===$computer['id']||($c['online']&&!$c['revoked']))throw new CommunityAnalysisError(409,'This computer is connected right now. Close its helper first.');
+   $q=$pdo->prepare('SELECT COUNT(*) FROM community_training_leases WHERE computer_id=? AND expires_at>?');$q->execute([$id,time()]);if((int)$q->fetchColumn())throw new CommunityAnalysisError(409,'This computer still holds a run. Cancel the run first.');
+   $q=$pdo->prepare('DELETE FROM community_training_computers WHERE id=? AND user_id=?');$q->execute([$id,(int)$computer['user_id']]);$jobs->forget($id);
+   return ['ok'=>true];
+  })(),
   'claim'=>['request'=>$jobs->claim($computer)],
   'training_supplement_index'=>['packages'=>(new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->index()],
   'training_supplements'=>(function()use($computer,$p){$store=new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']);if(isset($p['id']))return ['datasets'=>[$store->get((string)$p['id'],(string)($p['sha256']??''))]];foreach($store->index() as $item)if($item['id']==='6962-workshop-v1')return ['datasets'=>[$store->get($item['id'],$item['sha256'])]];return ['datasets'=>[]];})(),
