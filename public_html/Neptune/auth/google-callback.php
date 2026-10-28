@@ -5,6 +5,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/google-auth.php';
 neptune_auth_ensure_schema($pdo);
 
 function google_fail(string $message,string $intent='login',string $inviteToken=''): never{
+    if(($_SESSION['google_oauth']['intent']??'')==='mobile'){global $pdo;require_once dirname(__DIR__,3).'/neptune_secure/mobile-google.php';mobile_google_fail($pdo,$message);}
     unset($_SESSION['google_oauth']);
     $_SESSION['auth_error']=$message;
     if($intent==='reset_password')$target='forgot-password.php';
@@ -49,6 +50,7 @@ try{
     $hostedDomain=strtolower(trim((string)($profile['hd']??'')));
     $displayName=trim((string)($profile['name']??''));
     if($sub===''||$email===''||!$verified)throw new RuntimeException('Google did not provide a verified email address.');
+    if($intent==='mobile'){require_once dirname(__DIR__,3).'/neptune_secure/mobile-google.php';mobile_google_complete($pdo,$pending,$profile);}
     // Store Google's verified account photo in this login session, without storing it in the database.
     $picture = trim((string)($profile['picture'] ?? ''));
     $urlParts = parse_url($picture);

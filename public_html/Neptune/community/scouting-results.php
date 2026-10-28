@@ -1,0 +1,23 @@
+<?php
+declare(strict_types=1);
+require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
+require_once dirname(__DIR__,3).'/neptune_secure/community-owner-only.php';
+require_once dirname(__DIR__,3).'/neptune_secure/community-analysis-install.php';
+require_once dirname(__DIR__,3).'/neptune_secure/community-video-tags.php';
+$settings=community_analysis_settings($pdo,$config);if(empty($settings['enabled'])){http_response_code(404);exit('Community scouting is not enabled.');}
+header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');
+community_video_tags_schema($pdo);$match=null;$error='';$rows=[];
+try{$match=(new CommunityVideoTags($pdo))->match((int)($_GET['match_id']??0));
+$q=$pdo->prepare("SELECT team_number,tag_label,tag_category,label_scope,start_ms,end_ms,certainty,note,scoring_json,created_at FROM community_video_labels WHERE match_id=? AND source_url=? AND review_state IN ('contributed','verified') AND polarity='present' ORDER BY created_at DESC,id DESC LIMIT 501");$q->execute([$match['id'],$match['source_url']]);$rows=$q->fetchAll(PDO::FETCH_ASSOC);
+}catch(CommunityAnalysisError $ex){http_response_code($ex->httpStatus);$error=$ex->getMessage();}
+$truncated=count($rows)>500;$rows=array_slice($rows,0,500);
+function community_result_time(?int $ms):string{if($ms===null)return 'Whole match / phase';$s=(int)floor($ms/1000);return intdiv($s,60).':'.str_pad((string)($s%60),2,'0',STR_PAD_LEFT);}
+require_once __DIR__.'/layout.php';community_page_start('Saved Robot Tags & Scores',$match?$match['title']:'Choose a match to see its saved scouting.','results');
+?>
+<?php if($error):?><section role="alert"><?=e($error)?></section><?php else:?>
+<section><h2><?=e($match['title'])?></h2><p>Saved human observations for each robot. Estimates from different people are shown separately; overlapping entries are not added together.</p><p><a class="community-button" href="tag-video.php?match_id=<?=(int)$match['id']?>">Watch &amp; add tags →</a><a href="./?view=results">All saved matches</a></p><?php if($truncated):?><p>Showing the most recent 500 contributions.</p><?php endif ?></section>
+<?php foreach(['red'=>'Red alliance','blue'=>'Blue alliance'] as $alliance=>$label):?><h2><?=e($label)?></h2><?php foreach($match['roster'][$alliance] as $team):$robotRows=array_values(array_filter($rows,fn($row)=>(int)$row['team_number']===(int)$team));?><section id="robot-<?=(int)$team?>"><h2>Robot <?=(int)$team?></h2>
+<?php if(!$robotRows):?><p>No saved contributions yet. That does not mean the robot did nothing.</p><?php else:$estimates=[];$actions=[];foreach($robotRows as $row){$score=$row['scoring_json']?json_decode($row['scoring_json'],true):null;if(($score['mode']??'')==='alliance_share')$estimates[]=[$row,$score];else $actions[]=[$row,$score];}usort($actions,fn($a,$b)=>($a[0]['start_ms']??PHP_INT_MAX)<=>($b[0]['start_ms']??PHP_INT_MAX));?>
+<h3>Scoring estimates</h3><?php if(!$estimates):?><p>No whole-match score estimate yet.</p><?php else:foreach($estimates as [$row,$score]):?><p><strong><?=e((string)$score['robot_points'])?> points<?php if($score['share_percent']!==null):?> · <?=e((string)round((float)$score['share_percent'],1))?>% of the alliance score<?php endif ?></strong> · <?=e($score['method']==='counted'?'Counted by a contributor':'Estimated by a contributor')?></p><?php if($row['note']):?><p><?=e($row['note'])?></p><?php endif ?><?php endforeach ?><p><small>Percentage uses the full final alliance score, including penalties. This is contributed scouting, not an official individual robot score.</small></p><?php endif ?>
+<h3>Saved tags</h3><?php if(!$actions):?><p>No timestamped action tags yet.</p><?php else:?><ul><?php foreach($actions as [$row,$score]):?><li><strong><?=e($row['tag_category'])?> · <?=e($row['tag_label'])?></strong> · <?=e(community_result_time($row['start_ms']===null?null:(int)$row['start_ms']))?><?php if($row['label_scope']==='interval'&&$row['end_ms']!==null):?>–<?=e(community_result_time((int)$row['end_ms']))?><?php endif ?> · <?=e($row['certainty']==='observed'?'Observed':'Uncertain')?><?php if($score):?><p><?=e($score['component_label']??'Scoring sequence')?><?php if(isset($score['points_min'])):?> · <?=e((string)$score['points_min'])?><?=($score['points_max']??null)!==$score['points_min']?'–'.e((string)$score['points_max']):''?> points for this entry<?php else:?> · amount unknown<?php endif ?></p><?php endif ?><?php if($row['note']):?><p><?=e($row['note'])?></p><?php endif ?></li><?php endforeach ?></ul><?php endif ?><?php endif ?></section><?php endforeach;endforeach;endif ?>
+<?php community_page_end(); ?>

@@ -1,0 +1,9 @@
+/* Year -> event -> match picker on the Auto Scout labelling pages (scoped to .match-picker-v2). */
+.match-picker-v2{display:grid;grid-template-columns:110px minmax(0,1.6fr) minmax(0,1fr);gap:12px;align-items:end;width:100%}
+.match-picker-v2 .mp-field{display:flex;flex-direction:column;gap:6px;margin:0;color:var(--muted,#93a5b3);font-size:12px;font-weight:650;min-width:0}
+.match-picker-v2 .mp-event{display:flex;flex-direction:column;gap:6px;min-width:0}
+.match-picker-v2 select,.match-picker-v2 input{width:100%;max-width:none;font:inherit;font-size:13px;color:var(--text,#edf5fa);border:1px solid var(--as-line,var(--line,#25333e));background:var(--panel2,#182630);border-radius:9px;padding:9px 11px}
+.match-picker-v2 select:focus-visible,.match-picker-v2 input:focus-visible{outline:2px solid var(--accent,#47c6e5);outline-offset:2px}
+.match-picker-v2 .mp-note{grid-column:1/-1;color:var(--muted,#93a5b3);font-size:11px;min-height:14px}
+@media(max-width:800px){.match-picker-v2{grid-template-columns:1fr}}
+.field-regions .sources .match-picker-v2{flex:1 1 100%}

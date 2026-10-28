@@ -1,0 +1,78 @@
+.community-main{padding-bottom:20px}.community-main .page-intro{max-width:1000px}.community-main .page-intro h1{font-size:clamp(2.8rem,7vw,6rem);line-height:1.04;overflow-wrap:anywhere}.community-nav{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 30px}.community-nav a{display:inline-block;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 16px;background:var(--panel2);font-weight:700}.community-nav a[aria-current=page]{color:var(--solid-text);background:var(--accent);border-color:var(--accent)}.community-main>section,.community-main>article,.connection-panel{border:1px solid var(--line);background:linear-gradient(145deg,var(--panel),var(--panel2));border-radius:20px;box-shadow:0 15px 55px var(--shadow);padding:clamp(18px,3vw,30px);margin:0 0 24px;overflow-wrap:anywhere}.community-main h2{font-size:clamp(1.35rem,3vw,2rem);line-height:1.25;margin:0 0 18px}.community-main h3{font-size:1.2rem;margin-top:24px}.community-main p,.community-main li{color:var(--muted)}.community-main strong{color:var(--text)}.community-main small{color:var(--muted)}.community-main label{display:block;color:var(--muted);margin:16px 0 8px}.community-main form{margin:14px 0 22px}.community-main select{width:100%;max-width:800px;margin:8px 0 12px;display:block}.community-main input[type=text],.community-main textarea{display:block;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:11px;padding:13px;font:inherit;width:100%;max-width:800px}.community-main textarea{min-height:100px}.community-main input[type=checkbox]{accent-color:var(--accent);margin-right:8px}.community-main button,.community-button{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:var(--solid-text);border:1px solid transparent;border-radius:11px;padding:12px 18px;font:inherit;font-weight:800;cursor:pointer;margin:4px 8px 4px 0;text-decoration:none;white-space:normal;text-align:center}.community-main button:hover,.community-button:hover{background:var(--accent);text-decoration:none}.community-main button:disabled{opacity:.6;cursor:default}.community-main :focus-visible{outline:3px solid var(--accent);outline-offset:4px}.community-main pre{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--line);background:var(--panel2);padding:16px;border-radius:11px}.community-main [role=alert],.community-main [role=status]{border-left:4px solid var(--accent)}.community-main ol{padding-left:24px}.community-main li{padding:5px 0}.connection-code{display:inline-block;font-size:clamp(1.6rem,5vw,2.6rem);letter-spacing:.16em;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 20px;color:var(--accent)}.community-main .connection-actions{display:flex;gap:8px;flex-wrap:wrap}.community-main .connection-panel{max-width:900px}.community-main .helper-download{display:inline-flex;background:var(--accent);color:var(--solid-text);padding:14px 22px;border-radius:11px;font-weight:800;margin:4px 0}.community-main .helper-download:hover{background:var(--accent);text-decoration:none}.community-main>article h2{font-size:clamp(1.2rem,2.4vw,1.65rem)}.footer p{margin:6px 0}.community-main>p{padding:5px 0}@media(max-width:600px){.community-nav{gap:8px}.community-nav a{flex:1 1 calc(50% - 8px);padding:10px 12px;text-align:center;font-size:.9rem}.community-main .page-intro{padding-top:36px}.community-main select{max-width:100%}.community-main button{max-width:100%}.connection-code{letter-spacing:.1em;padding:12px 14px}}
+
+.mast nav a[aria-current=page]{color:var(--accent);text-decoration:underline;text-underline-offset:6px}
+
+.community-stage{display:flex;align-items:center;justify-content:space-between;gap:20px;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px 20px;margin:0 0 25px}.community-stage strong{display:block;color:var(--c1-green);margin-bottom:5px}.community-stage span{display:block;color:var(--muted);font-size:14px;line-height:1.5}.community-stage a{color:var(--accent);font-weight:750;white-space:nowrap}.workflow-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.workflow-grid>div{border:1px solid var(--line);border-radius:12px;padding:18px;background:var(--panel)}.workflow-grid h3{margin:0 0 8px!important}.workflow-grid p{font-size:15px;margin:0;line-height:1.6}.stage-label{display:inline-block;font-size:12px;font-weight:750;color:var(--c1-green);border:1px solid var(--line);border-radius:20px;padding:5px 10px;margin-bottom:12px}.stage-label.planned{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}body:has(.tag-studio) .community-stage{display:none}@media(max-width:800px){.workflow-grid{grid-template-columns:1fr}.community-stage{align-items:flex-start;flex-direction:column;gap:12px}}
+
+.studio-purpose{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+/* Auto Scout uses Neptune's authenticated platform shell and organization theme. */
+.auto-scout-platform{--as-card:var(--panel);--as-line:var(--line);--as-text:var(--text);--as-muted:var(--muted);color:var(--as-text);padding:22px 0}.auto-scout-platform .community-platform-hero{padding:clamp(24px,4vw,40px);border:1px solid var(--as-line);border-radius:20px;margin-bottom:22px;background:linear-gradient(125deg,var(--as-card),color-mix(in srgb,var(--as-card) 75%,transparent))}.auto-scout-platform .community-platform-hero h1{font-size:clamp(2rem,4vw,3.2rem);line-height:1.12;margin:12px 0}.auto-scout-platform p,.auto-scout-platform li{color:var(--as-muted);line-height:1.65}.auto-scout-platform h1,.auto-scout-platform h2,.auto-scout-platform h3,.auto-scout-platform strong{color:var(--as-text)}.auto-scout-platform>section,.auto-scout-platform>article,.auto-scout-platform #training-app>section,.auto-scout-platform .connection-panel{border:1px solid var(--as-line);background:var(--as-card);border-radius:18px;padding:clamp(20px,3vw,30px);margin-bottom:24px;box-shadow:0 12px 35px var(--shadow)}.auto-scout-platform .community-nav a{background:var(--as-card);color:var(--as-text);border-color:var(--as-line);text-decoration:none}.auto-scout-platform .community-nav a[aria-current=page]{background:var(--accent);border-color:var(--accent);color:var(--solid-text)}.auto-scout-platform button,.auto-scout-platform .community-button{background:var(--accent);color:var(--solid-text);border:1px solid transparent;border-radius:10px;padding:12px 18px;font:inherit;font-weight:750;cursor:pointer}.auto-scout-platform input,.auto-scout-platform select{font:inherit}.auto-scout-platform #training-app .training-start{background:linear-gradient(125deg,var(--as-card),color-mix(in srgb,var(--accent) 9%,var(--as-card)))!important}.auto-scout-platform #training-app .training-more,.auto-scout-platform #training-app .training-live,.auto-scout-platform #training-app .import-actions{border-color:var(--as-line)}.auto-scout-platform #training-app .source-links a,.auto-scout-platform #training-app .import-drop{background:color-mix(in srgb,var(--as-card) 75%,var(--black));border-color:var(--as-line)}.auto-scout-platform #training-app .training-field-grid input,.auto-scout-platform #training-app .training-field-grid select,.auto-scout-platform #training-app dialog,.auto-scout-platform #training-app .import-actions{background:var(--as-card);color:var(--as-text)}.auto-scout-platform #training-app .training-note,.auto-scout-platform #training-app .training-counts,.auto-scout-platform #training-app .source-links span,.auto-scout-platform #training-app .training-table td{color:var(--as-muted)}.auto-scout-platform .community-main{padding:0}@media(max-width:760px){.auto-scout-platform{padding-top:12px}.auto-scout-platform .community-nav a{flex:1 1 45%;text-align:center}}
+
+.auto-scout-platform .workflow-grid>div,.auto-scout-platform pre,.auto-scout-platform .connection-code{background:color-mix(in srgb,var(--as-card) 80%,var(--black));border-color:var(--as-line);color:var(--as-text)}.auto-scout-platform .community-stage{background:var(--as-card);border-color:var(--as-line)}.auto-scout-platform .community-stage span,.auto-scout-platform label,.auto-scout-platform small{color:var(--as-muted)}.auto-scout-platform input[type=text],.auto-scout-platform textarea,.auto-scout-platform select{background:var(--as-card);color:var(--as-text);border:1px solid var(--as-line);border-radius:10px;padding:12px;font:inherit}
+
+/* Keep the watching workspace compact while retaining Neptune's shared chrome. */
+.auto-scout-platform:has(.tag-studio) .community-platform-hero{display:none}.auto-scout-platform:has(.tag-studio){padding-top:0}.auto-scout-platform:has(.tag-studio) .community-nav{margin:0 0 12px}.auto-scout-platform:has(.tag-studio) .community-nav a{padding:7px 12px;font-size:13px}.auto-scout-platform .tag-studio{--ink:var(--as-text)}.auto-scout-platform .studio-dock,.auto-scout-platform .options-panel,.auto-scout-platform .scoring-editor{background:var(--as-card);border-color:var(--as-line)}
+@media(min-width:851px){.auto-scout-platform .tag-player{height:clamp(180px,calc(100vh - 490px),61vh)}}
+
+main:has(.auto-scout-platform .tag-studio){padding-top:10px}.auto-scout-platform .tag-studio .studio-transport select{margin:0;min-height:32px;height:32px;padding:4px 8px}.auto-scout-platform .tag-studio .studio-transport{padding:6px 0}
+
+/* Shared Neptune shell: descendants may shrink; long reports stay inside cards. */
+.auto-scout-platform{width:100%;min-width:0;max-width:100%;--as-control:var(--panel2)}
+.auto-scout-platform *, .auto-scout-platform *::before, .auto-scout-platform *::after{box-sizing:border-box}
+.auto-scout-platform :is(section,article,form,fieldset,details,nav),#training-app{min-width:0;max-width:100%}
+.auto-scout-platform :is(input,select,textarea){min-width:0;max-width:100%}
+.auto-scout-platform input[type=checkbox],.auto-scout-platform input[type=radio]{width:auto}
+.auto-scout-platform :is(button,.community-button){max-width:100%;border-radius:4px;background:var(--c1-blue);color:var(--solid-text)}
+.auto-scout-platform :is(button,.community-button):hover{background:var(--c1-blue);filter:brightness(1.12)}
+.auto-scout-platform :is(.community-platform-hero,.connection-panel)>:first-child{margin-top:0}
+.auto-scout-platform :is(.community-platform-hero,section,article,.connection-panel){border-radius:8px}
+.auto-scout-platform .community-nav a{border-radius:4px}
+.auto-scout-platform .community-nav a[aria-current=page]{background:var(--c1-blue);border-color:var(--c1-blue);color:var(--solid-text)}
+.auto-scout-platform :is(input[type=text],textarea,select){background:var(--panel2);border-color:var(--line);border-radius:4px}
+.auto-scout-platform .community-platform-hero{background:var(--panel)}
+.auto-scout-platform .tag-studio{width:100%;min-width:0}
+.auto-scout-platform :is(.studio-heading,.studio-status,.studio-actions){flex-wrap:wrap;min-width:0}
+.auto-scout-platform .options-panel{width:min(560px,calc(100% - 16px))}
+
+
+/* 2026-10-22: Match Neptune's Mission Control design in Community and Auto Scout.
+   Use the active organization's tokens; never impose a separate dark/light palette. */
+.auto-scout-platform .community-platform-hero.neptune-page-hero[data-neptune-hero="server"]{
+  padding:clamp(24px,4vw,48px)!important;
+  margin-bottom:18px!important;
+  min-height:200px!important;
+  border-radius:20px!important;
+  background:radial-gradient(ellipse at 88% 17%,color-mix(in srgb,var(--accent) 9%,transparent),transparent 60%),linear-gradient(125deg,color-mix(in srgb,var(--panel) 22%,transparent),color-mix(in srgb,var(--panel) 14%,transparent))!important;
+}
+.auto-scout-platform .community-platform-hero[data-neptune-hero="server"]>.stage-label{display:none}
+.auto-scout-platform .community-platform-hero.neptune-page-hero h1{
+  max-width:850px;font-size:clamp(2.1rem,4.6vw,4.3rem)!important;
+  line-height:1.04!important;letter-spacing:-.048em!important;
+}
+.auto-scout-platform .community-platform-hero.neptune-page-hero p{max-width:65ch!important;font-size:clamp(.99rem,1.4vw,1.14rem)!important}
+.auto-scout-platform .community-nav{gap:8px;margin-bottom:24px}
+.auto-scout-platform .community-nav a{
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:10px 15px;border:1px solid var(--line);border-radius:8px;
+  background:color-mix(in srgb,var(--panel) 86%,transparent);color:var(--text);
+  transition:background .17s ease,border-color .17s ease;
+}
+.auto-scout-platform .community-nav a:hover{border-color:var(--accent);background:var(--panel2)}
+.auto-scout-platform .community-nav a[aria-current=page]{color:var(--solid-text);background:var(--accent);border-color:var(--accent)}
+.auto-scout-platform>section,.auto-scout-platform>article,
+.auto-scout-platform #training-app>section,.auto-scout-platform .connection-panel{
+  background:color-mix(in srgb,var(--panel) 93%,transparent);
+  border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 12px 32px color-mix(in srgb,var(--shadow) 50%,transparent);
+}
+.auto-scout-platform .workflow-grid>div,.auto-scout-platform .community-stage{
+  border-radius:10px;background:var(--panel2);border-color:var(--line);
+}
+.auto-scout-platform :is(button,.community-button){background:var(--accent);color:var(--solid-text);border-radius:7px}
+.auto-scout-platform :is(button,.community-button):hover{background:var(--accent);filter:brightness(1.1)}
+.auto-scout-platform :is(input[type=text],textarea,select){background:var(--panel2);color:var(--text);border-color:var(--line);border-radius:7px}
+@media(max-width:700px){
+  .auto-scout-platform .community-platform-hero.neptune-page-hero[data-neptune-hero="server"]{min-height:0!important;padding:24px 20px!important}
+  .auto-scout-platform .community-nav a{flex:1 1 calc(50% - 8px);padding:10px 8px}
+}
+@media(prefers-reduced-motion:reduce){.auto-scout-platform .community-nav a{transition:none}}

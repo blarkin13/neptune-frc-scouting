@@ -1,0 +1,23 @@
+/* Robot Labels: zoomable YouTube frame with the box canvas on top. Builds on field-regions/style.css. */
+.robot-labels .rl-frame{position:relative;overflow:hidden;background:#05090d;aspect-ratio:16/9;min-height:200px}
+.robot-labels .rl-zoomer{position:absolute;inset:0;transform-origin:0 0}
+.robot-labels .rl-zoomer .stage{position:absolute;inset:0;min-height:0;aspect-ratio:auto}
+.robot-labels #empty{inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.robot-labels .rl-count{margin-left:auto}
+.robot-labels .rl-red.active{border-color:#ff4d5e;color:#ff4d5e;background:color-mix(in srgb,#ff4d5e 14%,var(--fr-field))}
+.robot-labels .rl-blue.active{border-color:#3d8bff;color:#3d8bff;background:color-mix(in srgb,#3d8bff 14%,var(--fr-field))}
+.robot-labels .rl-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+.robot-labels .rl-stats div{border:1px solid var(--fr-line);border-radius:10px;padding:10px}
+.robot-labels .rl-stats span{display:block;font-size:22px;font-weight:800;color:var(--fr-accent)}
+.robot-labels .rl-secondary{background:transparent}
+.robot-labels .rl-detector button{margin-top:8px}
+.robot-labels .rl-requests{margin-top:10px;display:grid;gap:5px}
+.robot-labels .rl-request{font-size:11px;color:var(--fr-muted);border-left:3px solid var(--fr-line);padding-left:7px}
+.robot-labels .rl-request.claimed{border-color:var(--fr-accent);color:var(--fr-text)}
+.robot-labels .rl-request.done{border-color:#4fd18b}.robot-labels .rl-request.failed{border-color:#ff6b6b}
+.robot-labels .rl-current{margin-top:10px;font-size:11px;color:var(--fr-muted)}
+
+.robot-labels #training-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:1;background:#05090d}
+.robot-labels #training-frame[hidden]{display:none}
+.robot-labels #canvas{z-index:2}
+.robot-labels #frame-source-status{padding:8px 12px;color:var(--fr-muted);font-size:13px}
