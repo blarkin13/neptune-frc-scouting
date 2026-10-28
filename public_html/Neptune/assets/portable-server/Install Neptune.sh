@@ -59,7 +59,9 @@ BREW=""
 PKG_MGR=""
 APACHE_SERVICE=""
 DB_SERVICE=""
-HTTP_PORT=80
+HTTP_PORT="${NEPTUNE_HTTP_PORT:-18080}"
+[[ "$HTTP_PORT" =~ ^[0-9]+$ ]] && (( HTTP_PORT >= 1024 && HTTP_PORT <= 65535 )) || { echo "NEPTUNE_HTTP_PORT must be a TCP port between 1024 and 65535." >&2; exit 1; }
+[[ "$HTTP_PORT" != 8765 ]] || { echo "Port 8765 is reserved for the Neptune real-time relay." >&2; exit 1; }
 
 if [[ "$OS" == "Darwin" ]]; then
   if ! command -v brew >/dev/null 2>&1; then
@@ -96,8 +98,6 @@ if [[ "$OS" == "Darwin" ]]; then
   SECURE_ROOT="$WEB_PARENT/neptune_secure"
   STATE_ROOT="$WEB_PARENT/neptune-portable"
 
-  HTTP_PORT="$(awk '$1=="Listen"{print $2;exit}' "$HTTPD_CONF" 2>/dev/null | sed -E 's/.*://')"
-  [[ "$HTTP_PORT" =~ ^[0-9]+$ ]] || HTTP_PORT=8080
   APACHE_SERVICE="httpd"
 else
   [[ "$EUID" -eq 0 ]] || { echo "Linux installation needs sudo."; exec sudo -E bash "$0" "$@"; }
@@ -120,7 +120,30 @@ else
   APP_ROOT="$WEB_ROOT/Neptune"
   SECURE_ROOT="/var/www/neptune_secure"
   STATE_ROOT="/var/lib/neptune-portable"
-  HTTP_PORT=80
+fi
+
+# Preflight BEFORE cleanup or new private database creation. Preserve unrelated
+# services on the selected listener rather than killing them.
+if php -r '$s=@fsockopen("127.0.0.1",(int)$argv[1],$e,$t,0.5);if($s){fclose($s);exit(0);}exit(1);' "$HTTP_PORT"; then
+  OWNED_LISTENER=0
+  if [[ "$OS" == Darwin ]]; then
+    [[ -f "$HTTPD_CONF" ]] && grep -Fq "# BEGIN NEPTUNE PORTABLE LISTENER:$HTTP_PORT" "$HTTPD_CONF" && OWNED_LISTENER=1
+    if [[ "$OWNED_LISTENER" -eq 1 ]] && command -v lsof >/dev/null 2>&1; then
+      APACHE_PIDS="$(lsof -nP -tiTCP:"$HTTP_PORT" -sTCP:LISTEN 2>/dev/null || true)"
+      for PID in $APACHE_PIDS; do
+        PROC="$(ps -p "$PID" -o comm= 2>/dev/null || true)"
+        [[ "$PROC" == *httpd* ]] || OWNED_LISTENER=0
+      done
+    fi
+  elif [[ "$APACHE_SERVICE" == apache2 ]]; then
+    [[ -f /etc/apache2/ports.conf ]] && grep -Fq "# BEGIN NEPTUNE PORTABLE LISTENER:$HTTP_PORT" /etc/apache2/ports.conf && OWNED_LISTENER=1
+  else
+    [[ -f /etc/httpd/conf.d/neptune-portable.conf ]] && grep -Fq "# BEGIN NEPTUNE PORTABLE LISTENER:$HTTP_PORT" /etc/httpd/conf.d/neptune-portable.conf && OWNED_LISTENER=1
+  fi
+  if [[ "$OWNED_LISTENER" -ne 1 ]]; then
+    echo "Selected Neptune port $HTTP_PORT is occupied by an unrelated service. Set NEPTUNE_HTTP_PORT to an available port and retry." >&2
+    exit 1
+  fi
 fi
 
 # Offer to clean any previous/partial portable install before creating a new
@@ -153,6 +176,13 @@ if [[ "$OLD_INSTALL_FOUND" -eq 1 ]]; then
       ;;
   esac
 fi
+
+# Reinstallation preflight for both macOS and Linux. A previous DESTROY or
+# interrupted installation can leave the Python relay alive after its PID file
+# and script are deleted. Check this before touching any database or credentials.
+. "$SCRIPT_DIR/portable-common.sh"
+neptune_realtime_stop_owned "$STATE_ROOT"
+neptune_realtime_assert_port_free
 
 # Database setup
 #
@@ -354,8 +384,10 @@ cp "$PAYLOAD/sql/neptune_schema.sql" "$STATE_ROOT/sql/neptune_schema.sql"
 cp "$SCRIPT_DIR"/*.sh "$STATE_ROOT/commands/" 2>/dev/null || true
 cp "$SCRIPT_DIR"/*.command "$STATE_ROOT/commands/" 2>/dev/null || true
 cp "$SCRIPT_DIR/portable-common.sh" "$STATE_ROOT/commands/portable-common.sh"
+cp "$SCRIPT_DIR/portable-realtime.sh" "$STATE_ROOT/commands/portable-realtime.sh"
 cp "$IMPORTER" "$STATE_ROOT/portable/import-organization.php"
 cp "$ACCOUNT_PREP" "$STATE_ROOT/portable/prepare-offline-accounts.php"
+cp "$SCRIPT_DIR/portable-tools/restore-user-photos.php" "$STATE_ROOT/portable/restore-user-photos.php"
 chmod +x "$STATE_ROOT/commands/"*.sh "$STATE_ROOT/commands/"*.command "$STATE_ROOT/commands/portable-common.sh" 2>/dev/null || true
 
 if [[ ! -f "$APP_ROOT/index.php" ]]; then
@@ -413,6 +445,7 @@ TZ_NAME="${TZ:-America/Chicago}"
 export NP_DB_NAME="$DB_NAME" NP_DB_USER="$DB_USER" NP_DB_PASS="$DB_PASS" NP_DB_PORT="$DB_PORT"
 export NP_TZ="$TZ_NAME" NP_CLOUD_URL="${CLOUD_URL:-}" NP_ORG="${ORGANIZATION_ID:-0}"
 export NP_SYNC_TOKEN="${SYNC_TOKEN:-}" NP_CREATED="${PACKAGE_CREATED_AT:-}" NP_MFA="$MFA_KEY"
+export NP_REALTIME_SECRET_FILE="$SECURE_ROOT/realtime.secret"
 php -r '
 $cfg=[
  "app"=>[
@@ -424,6 +457,7 @@ $cfg=[
    "platform_owner_auth"=>"strong",
    "mfa_encryption_key"=>getenv("NP_MFA")?:"",
    "portable_mode"=>true,
+   "realtime_secret_file"=>getenv("NP_REALTIME_SECRET_FILE")?:"",
  ],
  "db"=>[
    "host"=>"127.0.0.1","port"=>(int)(getenv("NP_DB_PORT")?:3306),"name"=>getenv("NP_DB_NAME"),
@@ -467,6 +501,10 @@ else
   chmod 755 "$SECURE_ROOT"
 fi
 
+# Provision the local WebSocket relay and a unique offline-only signing secret.
+. "$STATE_ROOT/commands/portable-realtime.sh"
+neptune_realtime_install "$SCRIPT_DIR/portable-tools/robot-recall-realtime.py"
+
 unset NP_DB_PASS NP_SYNC_TOKEN NP_MFA DB_PASS MFA_KEY
 
 CLIENT_CNF="$(mktemp)"
@@ -480,6 +518,12 @@ if [[ -f "$STATE_ROOT/portable/original-organization.json" ]]; then
   echo
   echo "Importing organization snapshot${SNAPSHOT_SIZE:+ ($SNAPSHOT_SIZE)} using streaming import..."
   php -d memory_limit=192M "$STATE_ROOT/portable/import-organization.php" "$STATE_ROOT/portable/original-organization.json" "$SECURE_ROOT/config.php"
+  if [[ -f "$SCRIPT_DIR/portable/user-photos.jsonl" ]]; then
+    echo "Restoring original profile photo bytes..."
+    cp "$SCRIPT_DIR/portable/user-photos.jsonl" "$STATE_ROOT/portable/user-photos.jsonl"
+    chmod 600 "$STATE_ROOT/portable/user-photos.jsonl"
+    php -d memory_limit=256M "$STATE_ROOT/portable/restore-user-photos.php" "$STATE_ROOT/portable/user-photos.jsonl" "$SECURE_ROOT/config.php"
+  fi
 
   echo "Preparing offline credentials for Google-only users..."
   php "$STATE_ROOT/portable/prepare-offline-accounts.php"     "$SECURE_ROOT/config.php"     "$OFFLINE_ACCOUNTS"     "$STATE_ROOT/portable/google-only-users.json"
@@ -501,6 +545,9 @@ if [[ "$OS" == "Darwin" ]]; then
   [[ -x "$APACHE_BIN" ]] || { echo "Homebrew Apache binary was not found: $APACHE_BIN"; exit 1; }
 
   perl -0pi -e 's/^#(LoadModule rewrite_module modules\/mod_rewrite\.so)/$1/m' "$HTTPD_CONF"
+  perl -0pi -e 's/^([ \t]*)#([ \t]*LoadModule[ \t]+proxy_module[ \t]+.*mod_proxy\.so[ \t]*)$/$1$2/m; s/^([ \t]*)#([ \t]*LoadModule[ \t]+proxy_wstunnel_module[ \t]+.*mod_proxy_wstunnel\.so[ \t]*)$/$1$2/m' "$HTTPD_CONF"
+  grep -Eq '^[[:space:]]*LoadModule[[:space:]]+proxy_module' "$HTTPD_CONF" || { echo 'Homebrew Apache is missing mod_proxy.' >&2; exit 1; }
+  grep -Eq '^[[:space:]]*LoadModule[[:space:]]+proxy_wstunnel_module' "$HTTPD_CONF" || { echo 'Homebrew Apache is missing mod_proxy_wstunnel.' >&2; exit 1; }
 
   CONF="$PREFIX/etc/httpd/extra/neptune-portable.conf"
   PHP_MODULE="$PREFIX/opt/php/lib/httpd/modules/libphp.so"
@@ -512,6 +559,9 @@ if [[ "$OS" == "Darwin" ]]; then
       printf '\nLoadModule php_module "%s"\n' "$PHP_MODULE" >> "$HTTPD_CONF"
     fi
     cat > "$CONF" <<EOF
+<VirtualHost *:$HTTP_PORT>
+  ServerName localhost
+  DocumentRoot "$WEB_ROOT"
   Alias "/assets/" "$APP_ROOT/assets/"
   Alias "/images/" "$APP_ROOT/images/"
   Alias "/manifest.webmanifest" "$APP_ROOT/manifest.webmanifest"
@@ -538,6 +588,9 @@ EOF
     perl -0pi -e 's/^#(LoadModule proxy_fcgi_module modules\/mod_proxy_fcgi\.so)/$1/m' "$HTTPD_CONF"
     "$BREW" services restart php
     cat > "$CONF" <<EOF
+<VirtualHost *:$HTTP_PORT>
+  ServerName localhost
+  DocumentRoot "$WEB_ROOT"
   Alias "/assets/" "$APP_ROOT/assets/"
   Alias "/images/" "$APP_ROOT/images/"
   Alias "/manifest.webmanifest" "$APP_ROOT/manifest.webmanifest"
@@ -560,21 +613,70 @@ EOF
 EOF
   fi
 
+  # Browser clients use /rr-realtime on the same origin (including scout tablets).
+  cat >> "$CONF" <<'NEPTUNE_REALTIME_PROXY'
+ProxyPass "/rr-realtime" "ws://127.0.0.1:8765/rr-realtime" retry=0 timeout=60
+ProxyPassReverse "/rr-realtime" "ws://127.0.0.1:8765/rr-realtime"
+ProxyPass "/Neptune/rr-realtime" "ws://127.0.0.1:8765/Neptune/rr-realtime" retry=0 timeout=60
+ProxyPassReverse "/Neptune/rr-realtime" "ws://127.0.0.1:8765/Neptune/rr-realtime"
+NEPTUNE_REALTIME_PROXY
+  printf '</VirtualHost>\n' >> "$CONF"
+  if ! grep -Fq "# BEGIN NEPTUNE PORTABLE LISTENER:$HTTP_PORT" "$HTTPD_CONF"; then
+    printf '\n# BEGIN NEPTUNE PORTABLE LISTENER:%s\nListen %s\n# END NEPTUNE PORTABLE LISTENER:%s\n' "$HTTP_PORT" "$HTTP_PORT" "$HTTP_PORT" >> "$HTTPD_CONF"
+  fi
+
   grep -Fq "Include \"$CONF\"" "$HTTPD_CONF" || printf '\nInclude "%s"\n' "$CONF" >> "$HTTPD_CONF"
+  neptune_realtime_start
 
   echo
   echo "Checking Apache configuration..."
   "$APACHE_BIN" -t -f "$HTTPD_CONF"
 
   echo "Starting Homebrew Apache..."
-  "$BREW" services restart httpd
+  # A previous Mac installation can have a root-owned Homebrew Apache already
+  # listening on 8080. A normal user's brew services restart may fail to
+  # replace or reload it. Do not kill arbitrary listeners on the web port.
+  if ! "$BREW" services restart httpd; then
+    echo "Homebrew service restart was unsuccessful; trying to gracefully reload the existing Apache..."
+    sudo "$APACHE_BIN" -k graceful -f "$HTTPD_CONF" || {
+      echo "Could not reload Homebrew Apache. Inspect the owner of port $HTTP_PORT and retry." >&2
+      echo "Run: sudo lsof -nP -iTCP:$HTTP_PORT -sTCP:LISTEN" >&2
+      exit 1
+    }
+  fi
 
-  # Give launchd/httpd a moment to bind before the HTTP readiness check below.
+  # Confirm that the currently running Apache actually loaded Neptune's
+  # WebSocket proxy; an old root-owned process may still be serving stale
+  # configuration even when brew claims it restarted successfully.
   sleep 2
+  portable_ws_probe() {
+    local headers
+    headers="$(curl -sS --http1.1 --max-time 3 -D - -o /dev/null \
+      -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+      -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+      "http://127.0.0.1:$HTTP_PORT/rr-realtime?room=123456" 2>/dev/null || true)"
+    grep -Eq '^HTTP/[0-9.]+ 101([[:space:]]|$)' <<< "$headers"
+  }
+  if ! portable_ws_probe; then
+    echo "Apache WebSocket proxy is not active; trying a graceful reload..."
+    sudo "$APACHE_BIN" -k graceful -f "$HTTPD_CONF" || {
+      echo "Apache reload failed. Neptune proxy is not ready." >&2
+      exit 1
+    }
+    sleep 2
+    if ! portable_ws_probe; then
+      echo "Apache did not accept the Neptune WebSocket handshake on port $HTTP_PORT." >&2
+      echo "Inspect Apache configuration and port ownership before continuing." >&2
+      exit 1
+    fi
+  fi
 else
   if [[ "$APACHE_SERVICE" == apache2 ]]; then
-    a2enmod rewrite >/dev/null 2>&1 || true
+    a2enmod rewrite proxy proxy_wstunnel >/dev/null
     cat > /etc/apache2/conf-available/neptune-portable.conf <<EOF
+<VirtualHost *:$HTTP_PORT>
+  ServerName localhost
+  DocumentRoot "$WEB_ROOT"
   Alias "/assets/" "$APP_ROOT/assets/"
   Alias "/images/" "$APP_ROOT/images/"
   Alias "/manifest.webmanifest" "$APP_ROOT/manifest.webmanifest"
@@ -592,9 +694,25 @@ else
   DirectoryIndex index.php
 </Directory>
 EOF
-    a2enconf neptune-portable >/dev/null 2>&1 || true
+    if ! grep -Fq "# BEGIN NEPTUNE PORTABLE LISTENER:$HTTP_PORT" /etc/apache2/ports.conf; then
+      printf '\n# BEGIN NEPTUNE PORTABLE LISTENER:%s\nListen %s\n# END NEPTUNE PORTABLE LISTENER:%s\n' "$HTTP_PORT" "$HTTP_PORT" "$HTTP_PORT" >> /etc/apache2/ports.conf
+    fi
+    cat >> /etc/apache2/conf-available/neptune-portable.conf <<'NEPTUNE_REALTIME_PROXY' 
+ProxyPass "/rr-realtime" "ws://127.0.0.1:8765/rr-realtime" retry=0 timeout=60
+ProxyPassReverse "/rr-realtime" "ws://127.0.0.1:8765/rr-realtime"
+ProxyPass "/Neptune/rr-realtime" "ws://127.0.0.1:8765/Neptune/rr-realtime" retry=0 timeout=60
+ProxyPassReverse "/Neptune/rr-realtime" "ws://127.0.0.1:8765/Neptune/rr-realtime"
+NEPTUNE_REALTIME_PROXY
+    printf '</VirtualHost>\n' >> /etc/apache2/conf-available/neptune-portable.conf
+    a2enconf neptune-portable >/dev/null
   else
     cat > /etc/httpd/conf.d/neptune-portable.conf <<EOF
+# BEGIN NEPTUNE PORTABLE LISTENER:$HTTP_PORT
+Listen $HTTP_PORT
+# END NEPTUNE PORTABLE LISTENER:$HTTP_PORT
+<VirtualHost *:$HTTP_PORT>
+  ServerName localhost
+  DocumentRoot "$WEB_ROOT"
   Alias "/assets/" "$APP_ROOT/assets/"
   Alias "/images/" "$APP_ROOT/images/"
   Alias "/manifest.webmanifest" "$APP_ROOT/manifest.webmanifest"
@@ -613,6 +731,16 @@ EOF
 </Directory>
 EOF
   fi
+  if [[ "$APACHE_SERVICE" == httpd ]]; then
+    cat >> /etc/httpd/conf.d/neptune-portable.conf <<'NEPTUNE_REALTIME_PROXY'
+ProxyPass "/rr-realtime" "ws://127.0.0.1:8765/rr-realtime" retry=0 timeout=60
+ProxyPassReverse "/rr-realtime" "ws://127.0.0.1:8765/rr-realtime"
+ProxyPass "/Neptune/rr-realtime" "ws://127.0.0.1:8765/Neptune/rr-realtime" retry=0 timeout=60
+ProxyPassReverse "/Neptune/rr-realtime" "ws://127.0.0.1:8765/Neptune/rr-realtime"
+NEPTUNE_REALTIME_PROXY
+    printf '</VirtualHost>\n' >> /etc/httpd/conf.d/neptune-portable.conf
+  fi
+  neptune_realtime_start
   systemctl restart "$APACHE_SERVICE"
 fi
 

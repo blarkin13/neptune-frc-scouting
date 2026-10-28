@@ -4,6 +4,7 @@ cd "$(dirname "$0")"
 if [[ "$(uname -s)" != "Darwin" && "$EUID" -ne 0 ]]; then exec sudo -E bash "$0" "$@"; fi
 . "./portable-common.sh"
 neptune_load
+neptune_realtime_stop_owned "$STATE_ROOT"
 if [[ "$OS" == "Darwin" ]]; then
   BREW="$(command -v brew || echo /opt/homebrew/bin/brew)"
   "$BREW" services stop httpd >/dev/null || true

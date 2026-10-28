@@ -4,6 +4,7 @@ cd "$(dirname "$0")"
 if [[ "$(uname -s)" != "Darwin" && "$EUID" -ne 0 ]]; then exec sudo -E bash "$0" "$@"; fi
 . "./portable-common.sh"
 neptune_load
+. "$NEPTUNE_STATE/commands/portable-realtime.sh"
 
 if [[ "$OS" == "Darwin" ]]; then
   if ! command -v brew >/dev/null 2>&1; then
@@ -33,9 +34,11 @@ if [[ "$OS" == "Darwin" ]]; then
     fi
   fi
 
+  neptune_realtime_start
   echo "Starting Apache..."
   "$BREW" services restart httpd
 else
+  neptune_realtime_start
   systemctl restart "$APACHE_SERVICE"
   [[ "$DB_SERVICE" == "external" ]] || systemctl start "$DB_SERVICE" 2>/dev/null || true
 fi

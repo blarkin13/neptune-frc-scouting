@@ -1,0 +1,63 @@
+/* Metallic Neptune branding for public statistics pages. */
+.mark{gap:12px;min-width:0;text-decoration:none}
+.mark img{width:58px;height:58px;object-fit:contain;flex:none}
+.mark span{font-size:1.15rem;line-height:1.15;letter-spacing:.065em}
+.mark small{font-size:.55rem;letter-spacing:.14em;margin-top:5px}
+@media(max-width:750px){.mark img{width:48px;height:48px}.mark span{font-size:1rem}}
+
+/* v74: Full metallic Neptune logo in the public statistics navigation. */
+.mast { min-width: 0; flex-wrap: wrap; }
+.mast .mark {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0;
+  flex: 0 0 auto;
+  width: clamp(205px, 22vw, 282px);
+  max-width: 100%;
+  min-width: 0;
+  line-height: 1;
+  text-decoration: none;
+}
+.mast .mark .mark-art {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  flex: none;
+}
+.mast .mark .mark-tagline {
+  display: block;
+  padding-left: 22%;
+  padding-top: 2px;
+  color: #a8c8da;
+  font-size: clamp(.55rem, .72vw, .7rem);
+  font-weight: 800;
+  letter-spacing: .29em;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.mast nav { min-width: 0; }
+/* v74: Team headings must fit narrower viewports without horizontal overflow. */
+.page-intro.team-intro { max-width: 100%; min-width: 0; }
+.page-intro.team-intro h1 {
+  font-size: clamp(2.7rem, 6vw, 5.5rem);
+  letter-spacing: -.055em;
+  line-height: 1.04;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+@media (max-width: 1000px) {
+  .mast { align-items: flex-start; }
+  .mast nav { width: 100%; }
+}
+@media (max-width: 750px) {
+  .mast .mark { width: clamp(185px, 48vw, 245px); }
+  .mast .mark .mark-tagline { font-size: .55rem; }
+  .page-intro.team-intro h1 { font-size: clamp(2.5rem, 9vw, 4.3rem); }
+}
+@media (max-width: 360px) {
+  .mast .mark .mark-tagline { letter-spacing: .19em; }
+}

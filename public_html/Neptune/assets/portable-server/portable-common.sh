@@ -114,3 +114,56 @@ neptune_open_url() {
     echo "$url"
   fi
 }
+
+# Stop only a relay started from Neptune's own portable state directory.
+# A stale PID file is not trusted; verify process command lines instead.
+neptune_realtime_stop_owned() {
+  local state_root="$1" relay_path="$1/realtime/robot-recall-realtime.py"
+  local pid cmd owned=0
+  local pids=""
+  pids="$(pgrep -f "$relay_path" 2>/dev/null || true)"
+  for pid in $pids; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [[ "$pid" != "$$" && "$pid" != "$PPID" ]] || continue
+    cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    # Require the exact installation's relay script and a Python interpreter.
+    if [[ "$cmd" == *"$relay_path"* && "$cmd" == *python* ]]; then
+      echo "Stopping previous Neptune real-time relay (PID $pid)..."
+      if ! kill -TERM "$pid" 2>/dev/null; then
+        echo "Cannot stop Neptune relay PID $pid. Stop it manually and retry; no data was removed." >&2
+        return 1
+      fi
+      owned=1
+    fi
+  done
+  if [[ "$owned" -eq 1 ]]; then
+    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+      local remaining=0
+      for pid in $pids; do
+        cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        if [[ "$cmd" == *"$relay_path"* && "$cmd" == *python* ]]; then remaining=1; fi
+      done
+      [[ "$remaining" -eq 0 ]] && break
+      sleep 0.25
+    done
+    for pid in $pids; do
+      cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+      if [[ "$cmd" == *"$relay_path"* && "$cmd" == *python* ]]; then
+        echo "Neptune relay PID $pid did not stop. Installation cannot continue safely." >&2
+        return 1
+      fi
+    done
+  fi
+  rm -f "$state_root/realtime/relay.pid" 2>/dev/null || true
+}
+
+# The shared Python relay listens on TCP 8765; do not try to use a port owned
+# by an unknown process. PHP is installed before the installer invokes this.
+neptune_realtime_assert_port_free() {
+  if php -r '$s=@fsockopen("127.0.0.1",8765,$e,$t,0.5);if($s){fclose($s);exit(0);}exit(1);'; then
+    echo "Port 8765 is occupied by another process; Neptune will not overwrite the installation." >&2
+    echo "Inspect with: sudo lsof -nP -iTCP:8765 -sTCP:LISTEN (Mac) or sudo ss -ltnp '( sport = :8765 )' (Linux)." >&2
+    return 1
+  fi
+}
+

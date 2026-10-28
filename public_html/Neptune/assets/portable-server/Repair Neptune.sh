@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 . "./portable-common.sh"
 neptune_load
+. "$NEPTUNE_STATE/commands/portable-realtime.sh"
 
 echo "Repairing Neptune portable asset paths..."
 HEADER="$APP_ROOT/partials_header.php"
@@ -58,6 +59,11 @@ if [[ "$OS" == "Darwin" ]]; then
   chmod 600 "$SECURE_ROOT/config.php"
   chmod -N "$SECURE_ROOT/config.php" 2>/dev/null || true
   chmod +a "${APACHE_RUN_USER} allow read" "$SECURE_ROOT/config.php"
+  if [[ -f "$SECURE_ROOT/realtime.secret" ]]; then
+    chmod 600 "$SECURE_ROOT/realtime.secret"
+    chmod -N "$SECURE_ROOT/realtime.secret" 2>/dev/null || true
+    chmod +a "${APACHE_RUN_USER} allow read" "$SECURE_ROOT/realtime.secret"
+  fi
 
   CONF="$PREFIX/etc/httpd/extra/neptune-portable.conf"
   if [[ -f "$CONF" && ! $(grep -F 'Alias "/assets/"' "$CONF" || true) ]]; then
@@ -83,6 +89,7 @@ if [[ "$OS" == "Darwin" ]]; then
     mv "$TMP_CONF" "$CONF"
   fi
 
+  neptune_realtime_start
   echo "Restarting Homebrew Apache..."
   "$BREW" services restart httpd
 else
@@ -96,6 +103,7 @@ else
   chmod 755 "$SECURE_ROOT"
   chown root:"$APACHE_RUN_GROUP" "$SECURE_ROOT/config.php" 2>/dev/null || true
   chmod 640 "$SECURE_ROOT/config.php"
+  neptune_realtime_start
   systemctl restart "$APACHE_SERVICE"
 fi
 

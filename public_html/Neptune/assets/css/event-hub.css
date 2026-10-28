@@ -1,0 +1,94 @@
+/* Event display layouts retain Neptune's shared header, footer and organization theme. */
+.neptune-display-page main.wrap{display:flex;flex-direction:column;justify-content:center;padding-top:18px;padding-bottom:18px}
+.neptune-display-wrap{width:100%;max-width:1180px;margin:auto}
+.display-kicker{color:var(--ocean-accent-2,var(--accent,#66d9ff));font-size:.72rem;line-height:1.4;letter-spacing:.16em;font-weight:850;text-transform:uppercase}
+.display-qr-frame{background:#fff;padding:12px;border-radius:14px;box-sizing:border-box}
+.display-qr-frame canvas{display:block;width:100%;height:auto;image-rendering:pixelated}
+.display-qr-caption{font-size:.75rem;letter-spacing:.16em;font-weight:850;color:var(--ocean-accent-2,var(--accent,#66d9ff));margin:18px 0 0}
+/* Original Wi-Fi sign: credentials on the left, large connection QR on the right. */
+.wifi-sign{display:grid;grid-template-columns:minmax(0,1fr) 320px;align-items:center;gap:clamp(24px,5vw,64px);padding:clamp(24px,4vw,48px);border:1px solid color-mix(in srgb,var(--ocean-accent-2,#18b8ff) 26%,var(--line));border-radius:24px;background:radial-gradient(ellipse at 8% 10%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 65%),color-mix(in srgb,var(--panel) 58%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 24px 70px #0003}
+.wifi-sign h1{font-size:clamp(2.5rem,4.5vw,4.2rem);letter-spacing:-.055em;line-height:1.04;margin:16px 0 12px}
+.wifi-sign h1 em{font-style:normal;background:linear-gradient(100deg,color-mix(in srgb,var(--ocean-accent-2,#18b8ff) 45%,#fff),var(--ocean-accent-2,#18b8ff) 60%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.wifi-lead{font-size:1rem;color:var(--muted);line-height:1.6;max-width:520px;margin:0 0 24px}
+.wifi-details{display:grid;gap:12px}
+.wifi-detail{display:flex;align-items:center;gap:14px;background:color-mix(in srgb,var(--panel2) 62%,transparent);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.wifi-detail>div{min-width:0}
+.wifi-detail-icon,.showcase-icon{display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;background:color-mix(in srgb,var(--accent) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));border-radius:11px;color:var(--accent)}
+.wifi-label{display:block;font-size:.68rem;letter-spacing:.14em;font-weight:800;color:var(--muted)}
+.wifi-detail strong{display:block;margin-top:4px;font-size:clamp(1.1rem,1.7vw,1.6rem);font-weight:800;overflow-wrap:anywhere;white-space:pre-wrap;color:var(--text)}
+.wifi-sign-note{margin:18px 0 0;font-size:.85rem;line-height:1.5;color:var(--muted)}
+.wifi-org-note{font-size:.75rem;line-height:1.5;margin:10px 0 0;color:var(--muted)}
+.wifi-sign-qr{text-align:center;min-width:0}
+.wifi-qr-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;aspect-ratio:1;border:2px dashed var(--line);border-radius:18px;color:var(--muted);background:var(--panel2)}
+.wifi-qr-placeholder i{font-size:5rem;opacity:.45}
+.wifi-editor{margin:16px 0 0;padding:0 20px}
+.wifi-editor summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:16px 0;cursor:pointer;font-weight:750;list-style:none}
+.wifi-editor summary span:after{content:' +';color:var(--accent);margin-left:6px}
+.wifi-editor[open] summary span:after{content:' −'}
+.wifi-editor summary small{font-size:.75rem;font-weight:450;color:var(--muted)}
+.wifi-edit-form{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;padding:2px 0 20px}
+.wifi-edit-form label{display:block;margin-bottom:6px;font-size:.9rem}
+.wifi-edit-form input:not([type=hidden]):not([type=checkbox]),.wifi-edit-form select{width:100%;box-sizing:border-box}
+.wifi-edit-form .wifi-check{display:flex;align-items:center;gap:8px;font-size:.78rem;margin-top:8px}
+.wifi-save{align-self:end;padding-bottom:2px}
+.wifi-clear{border-top:1px solid var(--line);padding:14px 0}
+/* Wi-Fi sign: kicker as a pill bubble, editor as glass. */
+.wifi-sign .display-kicker{display:inline-flex;padding:7px 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--ocean-accent-2,#18b8ff) 32%,var(--line));background:color-mix(in srgb,var(--panel) 55%,transparent)}
+.wifi-access-page .wifi-editor{background:color-mix(in srgb,var(--panel) 62%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.wifi-sign-qr .display-qr-frame{box-shadow:0 0 0 6px color-mix(in srgb,var(--ocean-accent-2,#18b8ff) 18%,transparent),0 18px 50px #0004}
+/* Explore the deep: event display that invites teams to Neptune. Sized for an unattended 1280x720 screen. */
+.deep{width:100%;max-width:1360px;margin:auto;display:flex;flex-direction:column;gap:clamp(14px,2.4vh,26px)}
+.deep-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,300px);gap:clamp(24px,4vw,64px);align-items:center}
+.deep-story{display:flex;flex-direction:column;align-items:flex-start;gap:clamp(12px,2vh,20px);min-width:0}
+.deep h1{margin:0;font-size:clamp(3.2rem,7.2vw,7rem);line-height:.95;letter-spacing:-.055em;color:var(--text);text-shadow:0 10px 40px #0005}
+.deep h1 span{display:inline-block;background:linear-gradient(100deg,color-mix(in srgb,var(--ocean-accent-2) 45%,#fff) 0%,var(--ocean-accent-2) 55%,color-mix(in srgb,var(--accent) 50%,var(--ocean-accent-2)) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
+.deep-lede{margin:0;max-width:760px;font-size:clamp(1rem,1.45vw,1.3rem);line-height:1.55;color:var(--muted)}
+.deep-pills{display:flex;flex-wrap:wrap;gap:8px}
+.deep-join{display:flex;flex-direction:column;align-items:center;gap:12px;padding:22px 20px;border-radius:24px;border:1px solid color-mix(in srgb,var(--ocean-accent-2) 34%,var(--line));text-align:center;box-shadow:0 24px 70px #0004,inset 0 1px 0 color-mix(in srgb,#fff 10%,transparent)}
+.deep-join .display-qr-frame{width:min(100%,236px);box-shadow:0 0 0 6px color-mix(in srgb,var(--ocean-accent-2) 20%,transparent),0 0 46px color-mix(in srgb,var(--ocean-accent-2) 30%,transparent)}
+.deep-site{font-size:1.05rem;letter-spacing:.12em;font-weight:900;color:var(--text)}
+.deep-join p{margin:0;font-size:.86rem;color:var(--muted)}
+.deep-features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.deep-feature{display:flex;align-items:flex-start;gap:13px;padding:16px 18px;border-radius:18px;border:1px solid color-mix(in srgb,var(--ocean-accent-2) 18%,var(--line));transition:transform .2s,border-color .2s}
+.deep-feature:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--ocean-accent-2) 45%,var(--line))}
+.deep-icon{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border-radius:13px;color:var(--ocean-accent-2);background:radial-gradient(circle at 30% 25%,color-mix(in srgb,var(--ocean-accent-2) 30%,transparent),color-mix(in srgb,var(--accent) 14%,var(--panel)));border:1px solid color-mix(in srgb,var(--ocean-accent-2) 38%,var(--line));box-shadow:0 0 18px color-mix(in srgb,var(--ocean-accent-2) 22%,transparent);font-size:1.05rem}
+.deep-feature h3{margin:0 0 5px;font-size:clamp(1rem,1.35vw,1.2rem);line-height:1.15;color:var(--text)}
+.deep-feature p{margin:0;font-size:clamp(.8rem,.95vw,.92rem);line-height:1.45;color:var(--muted)}
+.deep-bottom{display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:.82rem;color:var(--muted)}
+.deep-bottom a{color:var(--ocean-accent-2);font-weight:800}
+html[data-theme="light"] .deep h1{text-shadow:none}
+html[data-theme="light"] .deep h1 span,html[data-theme="light"] .wifi-sign h1 em{background-image:linear-gradient(100deg,color-mix(in srgb,var(--ocean-accent-2) 70%,var(--accent)),var(--ocean-accent-2) 60%)}
+@media(min-width:850px) and (max-height:820px){.neptune-display-page main.wrap{padding-top:10px;padding-bottom:10px}.deep{gap:10px}.deep h1{font-size:clamp(3rem,5.4vw,4.8rem)}.deep-story{gap:10px}.deep-lede{font-size:.95rem;line-height:1.45}.deep-join{padding:12px 16px;gap:7px}.deep-join .display-qr-frame{width:170px;padding:8px}.deep-features{gap:9px}.deep-feature{padding:10px 13px}.deep-feature p{font-size:.78rem;line-height:1.35}.deep-icon{width:34px;height:34px;flex-basis:34px}.deep-bottom{font-size:.76rem}.wifi-sign{padding:26px 34px;grid-template-columns:minmax(0,1fr) 270px}.wifi-sign h1{margin-top:10px;font-size:3rem}.wifi-lead{margin-bottom:16px}.wifi-detail{padding:11px 14px}.wifi-sign-note{margin-top:12px}}
+/* Feature chapters: tabs with an auto-advance progress bar; stacked on narrow screens. */
+.deep-chapters{display:flex;flex-direction:column;gap:10px}
+.deep-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.deep-tab{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;border:1px solid color-mix(in srgb,var(--ocean-accent-2) 22%,var(--line));background:color-mix(in srgb,var(--panel) 50%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--muted);font-size:.86rem;font-weight:800;filter:none}
+.deep-tab:hover{filter:none;color:var(--text);border-color:color-mix(in srgb,var(--ocean-accent-2) 45%,var(--line))}
+.deep-tab i{color:var(--ocean-accent-2)}
+.deep-tab[aria-selected="true"]{color:var(--text);border-color:color-mix(in srgb,var(--ocean-accent-2) 70%,var(--line));background:color-mix(in srgb,var(--ocean-accent-2) 16%,var(--panel));box-shadow:0 0 22px color-mix(in srgb,var(--ocean-accent-2) 25%,transparent)}
+.deep-tab-progress{position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--ocean-accent-2)}
+.deep-chapters.is-running .deep-tab[aria-selected="true"] .deep-tab-progress{animation:deep-progress var(--deep-dwell,9s) linear forwards}
+@keyframes deep-progress{from{width:0}to{width:100%}}
+.deep-panel{display:flex;flex-direction:column;gap:9px}
+.deep-panel-title{margin:0;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;font-weight:850;color:var(--ocean-accent-2)}
+.deep-panel-title i{margin-right:4px}
+.deep-chapters.is-enhanced:not(.is-stacked) .deep-panel:not([hidden]) .deep-feature{animation:deep-rise .5s ease-out both}
+.deep-chapters.is-enhanced:not(.is-stacked) .deep-panel:not([hidden]) .deep-feature:nth-child(2){animation-delay:.05s}
+.deep-chapters.is-enhanced:not(.is-stacked) .deep-panel:not([hidden]) .deep-feature:nth-child(3){animation-delay:.1s}
+.deep-chapters.is-enhanced:not(.is-stacked) .deep-panel:not([hidden]) .deep-feature:nth-child(4){animation-delay:.15s}
+.deep-chapters.is-enhanced:not(.is-stacked) .deep-panel:not([hidden]) .deep-feature:nth-child(5){animation-delay:.2s}
+.deep-chapters.is-enhanced:not(.is-stacked) .deep-panel:not([hidden]) .deep-feature:nth-child(6){animation-delay:.25s}
+@keyframes deep-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.deep-chapters:not(.is-enhanced) .deep-tabs,.deep-chapters.is-stacked .deep-tabs{display:none}
+.deep-chapters:not(.is-enhanced),.deep-chapters.is-stacked{gap:22px}
+.deep-steps{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0;padding:0;list-style:none}
+.deep-steps li{display:flex;align-items:center;gap:7px;font-weight:700;color:var(--muted)}
+.deep-steps li span{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;font-size:.7rem;font-weight:900;color:var(--ocean-accent-2);border:1px solid color-mix(in srgb,var(--ocean-accent-2) 50%,var(--line))}
+.deep-steps li+li::before{content:'';width:14px;height:1px;background:color-mix(in srgb,var(--ocean-accent-2) 45%,var(--line));margin-right:4px}
+@media(min-width:850px) and (max-height:820px){.deep-tab{padding:7px 13px;font-size:.8rem}.deep-chapters{gap:8px}.deep-panel{gap:7px}.deep-panel-title{font-size:.7rem}}
+@media(prefers-reduced-motion:reduce){.deep-chapters .deep-feature{animation:none!important}}
+@media(min-width:1500px) and (min-height:900px){.deep{max-width:1480px}.deep-hero{grid-template-columns:minmax(0,1fr) 380px}.deep-join{padding:26px 24px}.deep-join .display-qr-frame{width:300px}.deep-site{font-size:1.25rem}}
+@media(max-width:980px){.deep-features{grid-template-columns:1fr 1fr}}
+@media(max-width:849px){.deep-hero{grid-template-columns:minmax(0,1fr) 230px;gap:22px}.wifi-sign{grid-template-columns:minmax(0,1fr) 250px;padding:24px;gap:24px}.wifi-detail{padding:12px}.wifi-detail-icon{display:none}}
+@media(max-width:620px){.deep-hero,.wifi-sign{grid-template-columns:minmax(0,1fr)}.deep h1{font-size:clamp(2.4rem,12vw,3.4rem)}.deep h1 span{display:inline}.deep-pills .ocean-pill{white-space:normal}.deep-join{max-width:320px;width:100%;margin:auto}.deep-features{grid-template-columns:1fr}.deep-bottom{flex-direction:column;align-items:flex-start}.ocean-pill{font-size:.72rem}.wifi-sign-copy{text-align:center}.wifi-detail{text-align:left}.wifi-sign-qr{max-width:280px;width:100%;margin:auto}.wifi-editor summary{align-items:flex-start;flex-direction:column}.wifi-edit-form{grid-template-columns:1fr}.wifi-save button{width:100%}}
+@media print{.wifi-access-page .topbar,.wifi-access-page .neptune-site-footer,.wifi-editor,.neptune-ocean{display:none!important}.wifi-sign{background:#fff;color:#111;box-shadow:none;border:1px solid #aaa;backdrop-filter:none}.wifi-sign h1,.wifi-sign h1 em,.wifi-detail strong{color:#111;background:none;-webkit-text-fill-color:#111}.wifi-detail{background:#fff}.wifi-sign p,.wifi-sign .wifi-label{color:#333}}

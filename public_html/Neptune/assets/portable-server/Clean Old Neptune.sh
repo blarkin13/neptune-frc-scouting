@@ -63,6 +63,11 @@ if [[ "$YES" -ne 1 ]]; then
   [[ "$confirm" == "DELETE NEPTUNE" ]] || { echo "Cancelled."; exit 0; }
 fi
 
+# Stop only the local Neptune-owned realtime process. An earlier interrupted
+# install may have lost its PID file; the process command line is verified.
+. "$(dirname "$0")/portable-common.sh"
+neptune_realtime_stop_owned "$STATE_ROOT"
+
 # Stop only a database process whose command line points at Neptune's private
 # datadir. This works even if an interrupted install never wrote the manifest.
 for pidfile in "$STATE_ROOT/database.pid" "$STATE_ROOT/mariadb.pid"; do
@@ -99,8 +104,14 @@ if [[ "$OS" == "Darwin" ]]; then
   if [[ -f "$HTTPD_CONF" && -n "${APACHE_CONF:-}" ]]; then
     CONF_PATH="$APACHE_CONF" perl -0pi -e '$p=$ENV{CONF_PATH};s/^Include "\Q$p\E"\n?//mg' "$HTTPD_CONF" || true
   fi
+  if [[ -f "$HTTPD_CONF" ]]; then
+      perl -0pi -e 's/^# BEGIN NEPTUNE PORTABLE LISTENER:[0-9]+\nListen [0-9]+\n# END NEPTUNE PORTABLE LISTENER:[0-9]+\n?//mg' "$HTTPD_CONF" || true
+  fi
   rm -f "${APACHE_CONF:-}"
 else
+  if [[ -f /etc/apache2/ports.conf ]]; then
+    perl -0pi -e 's/^# BEGIN NEPTUNE PORTABLE LISTENER:[0-9]+\nListen [0-9]+\n# END NEPTUNE PORTABLE LISTENER:[0-9]+\n?//mg' /etc/apache2/ports.conf || true
+  fi
   rm -f /etc/apache2/conf-enabled/neptune-portable.conf /etc/apache2/conf-available/neptune-portable.conf 2>/dev/null || true
   rm -f /etc/httpd/conf.d/neptune-portable.conf 2>/dev/null || true
 fi
@@ -110,8 +121,13 @@ rm -f "$POINTER" "$OFFLINE_ACCOUNTS"
 
 if [[ "$OS" == "Darwin" && -n "${BREW:-}" ]]; then
   "$BREW" services restart httpd >/dev/null 2>&1 || true
+  APACHE_BIN="$PREFIX/opt/httpd/bin/httpd"
+  if [[ -x "$APACHE_BIN" && -f "$HTTPD_CONF" ]]; then
+    "$APACHE_BIN" -t -f "$HTTPD_CONF" >/dev/null 2>&1 && \
+      sudo "$APACHE_BIN" -k graceful -f "$HTTPD_CONF" >/dev/null 2>&1 || true
+  fi
 elif [[ "$OS" != "Darwin" ]]; then
-  systemctl reload apache2 >/dev/null 2>&1 || systemctl reload httpd >/dev/null 2>&1 || true
+  systemctl restart apache2 >/dev/null 2>&1 || systemctl restart httpd >/dev/null 2>&1 || true
 fi
 
 echo

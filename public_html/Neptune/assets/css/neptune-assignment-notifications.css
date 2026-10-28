@@ -1,0 +1,48 @@
+/* Neptune assignment notifications. Respects site-wide dark/light theme tokens. */
+.neptune-alert-bell{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:0 0 46px;min-width:46px;height:46px;margin:0 10px 0 0;border:1px solid var(--line,#354b64);border-radius:12px;background:var(--panel2,#122236);color:var(--text,#f2f8ff);cursor:pointer;z-index:1105;font-size:1.12rem}
+.neptune-alert-bell:hover,.neptune-alert-bell[aria-expanded="true"]{border-color:var(--accent,#48b9ec);background:color-mix(in srgb,var(--accent,#48b9ec) 12%,var(--panel2,#122236))}
+.neptune-alert-bell:focus-visible,.neptune-alert-panel button:focus-visible{outline:2px solid var(--accent,#48b9ec);outline-offset:3px}
+.neptune-alert-bell-fixed{position:fixed;right:78px;top:12px}
+.neptune-alert-count{position:absolute;top:-7px;right:-7px;display:flex;align-items:center;justify-content:center;padding:1px 5px;min-width:18px;height:19px;box-sizing:border-box;background:#cb4158;color:#fff;border:2px solid var(--panel,#0b1929);border-radius:999px;font:800 10px/1 system-ui,sans-serif}
+.neptune-alert-count[hidden],.neptune-alert-panel[hidden],.neptune-alert-browser[hidden]{display:none!important}
+.neptune-alert-panel{position:fixed;top:76px;right:19px;width:min(425px,calc(100vw - 28px));max-height:min(660px,calc(100dvh - 92px));display:flex;flex-direction:column;overflow:hidden;z-index:5005;background:var(--panel,#101e30);color:var(--text,#f6f9ff);border:1px solid var(--line,#38536a);border-radius:16px;box-shadow:0 22px 58px rgba(0,0,0,.40);font-family:inherit}
+.neptune-alert-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 17px 12px;font-size:1rem;font-weight:800;border-bottom:1px solid var(--line,#32465d)}
+.neptune-alert-heading span{display:flex;align-items:center;gap:9px}
+.neptune-alert-heading .fa-bell{color:var(--accent,#54bbef)}
+.neptune-alert-close{border:0;background:transparent;color:var(--muted,#9eb0c4);cursor:pointer;min-width:30px;min-height:30px;border-radius:8px}
+.neptune-alert-toolbar{display:flex;align-items:center;gap:8px;padding:9px 16px;flex-wrap:wrap;border-bottom:1px solid var(--line,#32465d)}
+.neptune-alert-toolbar button{padding:5px 7px;border:0;background:transparent;color:var(--accent,#63c7ed);font-size:.78rem;font-weight:750;cursor:pointer}
+.neptune-alert-toolbar button:disabled{opacity:.4;cursor:default}
+.neptune-alert-items{min-height:75px;max-height:410px;overflow-y:auto;overscroll-behavior:contain}
+.neptune-alert-item{display:grid;grid-template-columns:33px minmax(0,1fr) auto;gap:10px;align-items:start;padding:13px 14px;border-bottom:1px solid var(--line,#32465d)}
+.neptune-alert-item.is-unread{background:color-mix(in srgb,var(--accent,#45bdef) 7%,var(--panel,#101e30))}
+.neptune-alert-item-icon{height:32px;width:32px;border:1px solid var(--line,#334d65);border-radius:9px;background:var(--panel2,#16283d);display:grid;place-items:center;color:var(--accent,#54bbef)}
+.neptune-alert-item-content{min-width:0;overflow-wrap:anywhere}
+.neptune-alert-item-content strong{font-size:.87rem;line-height:1.35;display:block}
+.neptune-alert-item-content p{font-size:.78rem;color:var(--muted,#a9bacb);line-height:1.45;margin:5px 0}
+.neptune-alert-item-content small{font-size:.71rem;color:var(--muted,#a9bacb)}
+.neptune-alert-read{border:1px solid var(--line,#334d65);border-radius:7px;background:var(--panel2,#182a3e);color:var(--text,#fff);font-size:.73rem;font-weight:700;padding:6px;cursor:pointer;white-space:nowrap}
+.neptune-alert-account{display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 15px;color:var(--accent,#54bbef);font-size:.85rem;font-weight:800;text-decoration:none;border-top:1px solid var(--line,#32465d)}
+.neptune-alert-empty{padding:16px;margin:0;font-size:.85rem;color:var(--muted,#9eb3c7)}
+.neptune-alert-toasts{position:fixed;right:16px;bottom:18px;z-index:5020;display:grid;gap:8px;width:min(350px,calc(100vw - 32px));pointer-events:none}
+.neptune-alert-toast{width:100%;pointer-events:auto;text-align:left;background:var(--panel,#112337);color:var(--text,#fff);border:1px solid var(--accent,#44beee);border-left:4px solid var(--accent,#44beee);border-radius:11px;box-shadow:0 12px 30px rgba(0,0,0,.35);padding:13px 15px;font-size:.86rem;font-weight:750;cursor:pointer}
+@media(max-width:760px){.neptune-alert-panel{right:8px;top:69px;max-height:calc(100dvh - 80px)}.neptune-alert-bell{margin-right:9px;min-width:43px;flex-basis:43px;height:43px}.neptune-alert-item{grid-template-columns:30px minmax(0,1fr)}.neptune-alert-read{grid-column:2;justify-self:start}}
+@media(prefers-reduced-motion:reduce){.neptune-alert-toast{transition:none}}
+
+/* V4: in-page My Assignments, avoiding broken cross-route links. */
+.neptune-alert-tasks[hidden],.neptune-alert-items[hidden],.neptune-alert-toolbar[hidden],.neptune-alert-account[hidden]{display:none!important}
+.neptune-alert-account{width:100%;border-left:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:inherit}
+.neptune-alert-tasks{overflow-y:auto;max-height:450px;min-height:90px}
+.neptune-alert-tasks-header{display:flex;gap:12px;align-items:center;padding:12px 14px;position:sticky;top:0;background:var(--panel,#101e30);border-bottom:1px solid var(--line,#32465d);z-index:1}
+.neptune-alert-tasks-header button{padding:7px;background:var(--panel2,#16283d);color:var(--text,#fff);border:1px solid var(--line,#334d65);border-radius:8px;cursor:pointer}
+.neptune-alert-task{padding:13px 16px;border-bottom:1px solid var(--line,#32465d)}
+.neptune-alert-task>strong{display:block;font-size:.92rem}
+.neptune-alert-task>small{display:block;color:var(--muted,#a9bacb);margin:6px 0}
+.neptune-alert-task p{white-space:pre-wrap;font-size:.82rem}
+.neptune-alert-task-form{display:grid;gap:9px;margin-top:10px}
+.neptune-alert-task-form label{display:grid;gap:5px;font-size:.78rem}
+.neptune-alert-task-form textarea,.neptune-alert-task-form input{max-width:100%;width:100%;box-sizing:border-box;background:var(--panel2,#16283d);color:var(--text,#fff);border:1px solid var(--line,#334d65);border-radius:8px;padding:7px}
+.neptune-alert-task-actions{display:flex;gap:9px;flex-wrap:wrap}
+.neptune-alert-task-actions button{padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--line,#334d65);color:var(--text,#fff);background:var(--panel2,#16283d)}
+.neptune-alert-task-actions .neptune-alert-task-done{background:var(--accent,#54bbef);color:#071923;font-weight:800}
+.neptune-alert-task-actions button:disabled{opacity:.5}

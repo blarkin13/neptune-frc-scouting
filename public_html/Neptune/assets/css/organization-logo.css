@@ -1,0 +1,33 @@
+/* Neptune organization artwork: preserve alpha and choose a contrast surface only when needed.
+ * Applied exclusively to organization-logo images, never to team marks or Neptune branding. */
+:where(.topbar-org-logo, .ntu-org-branding-preview, .ntu-modal-brand,
+       .auth-choice-logo, .npa-org-logo, .npa-detail-logo).neptune-org-logo-frame {
+  background: transparent !important;
+  background-image: none !important;
+}
+/* Organization-team and user dialogs use this existing parent for their org mark. */
+.ntu-modal-brand:has(> img.neptune-org-logo-image) {
+  background: transparent !important;
+  background-image: none !important;
+}
+img.neptune-org-logo-image {
+  padding: 0 !important;
+  object-fit: contain !important;
+  display: block;
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  /* Keep the logo crisp but don't change opacity or colors. */
+}
+/* Only an image that would disappear into its surroundings gets an opaque-enough
+ * backdrop. The chosen color is calculated from the image pixels and page theme. */
+:where(.topbar-org-logo, .ntu-org-branding-preview, .ntu-modal-brand,
+       .auth-choice-logo, .npa-org-logo, .npa-detail-logo).neptune-org-logo-frame.neptune-org-logo-contrast-needed,
+.ntu-modal-brand.neptune-org-logo-contrast-needed:has(> img.neptune-org-logo-image),
+img.neptune-org-logo-image.neptune-org-logo-contrast-needed {
+  background: var(--neptune-org-logo-contrast-bg, rgba(255,255,255,.94)) !important;
+}
+/* In the Organization Teams card the <img> is the logo's frame, not the entire title row. */
+.ntu-brand-inline > img.neptune-org-logo-image {
+  border-radius: 12px;
+}

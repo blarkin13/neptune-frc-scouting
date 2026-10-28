@@ -1,0 +1,105 @@
+/* Neptune Mission Control: Community and Admin routes.
+   Extends the native org theme and existing hero compositor; no new palette. */
+
+/* Match the embossed Font Awesome marks on the four primary section heroes. */
+.neptune-page-hero[data-neptune-hero="server"]{
+  position:relative!important;
+  isolation:isolate;
+  overflow:hidden!important;
+  --nd-depth-color:var(--module-accent-readable,var(--module-accent,var(--accent)));
+}
+.neptune-page-hero[data-neptune-hero="server"] .nd-page-mission-mark{
+  position:absolute!important;
+  top:50%;
+  right:clamp(10px,3.6vw,54px);
+  transform:translateY(-50%);
+  z-index:0;
+  display:block;
+  width:auto;
+  height:auto;
+  padding:0;
+  margin:0;
+  color:var(--nd-depth-color)!important;
+  font-size:clamp(5.4rem,13vw,12rem)!important;
+  line-height:1;
+  opacity:.09!important;
+  pointer-events:none!important;
+  user-select:none;
+  filter:drop-shadow(1px 2px 1px color-mix(in srgb,var(--shadow) 18%,transparent));
+}
+.neptune-page-hero[data-neptune-hero="server"]:has(.nd-page-mission-mark){min-height:155px!important}
+.neptune-page-hero[data-neptune-hero="server"] .neptune-hero-kicker,
+.neptune-page-hero[data-neptune-hero="server"] h1,
+.neptune-page-hero[data-neptune-hero="server"] .neptune-hero-pills,
+.neptune-page-hero[data-neptune-hero="server"] > p,
+.neptune-page-hero[data-neptune-hero="server"] > .muted{
+  position:relative;
+  z-index:1;
+}
+
+/* A consistent neutral-glass ocean behind all Admin and Community routes.
+   The compositor already creates this layer for existing heroes; the small
+   companion script fills the gap on non-standard pages. */
+body > .nd-depth-field{
+  position:fixed;inset:0;z-index:0;overflow:hidden;
+  pointer-events:none;user-select:none;contain:paint;
+}
+body:has(> .nd-depth-field) > main.wrap{position:relative;z-index:1}
+body > .nd-depth-field > .nd-depth-rays{
+  position:absolute;inset:-35%;opacity:.4;filter:blur(15px);
+  background:repeating-conic-gradient(from 194deg at 50% -10%,transparent 0deg 10deg,rgba(192,224,241,.07) 11deg 13deg,transparent 14deg 28deg);
+  animation:nd-depth-current 23s ease-in-out infinite alternate;
+}
+body > .nd-depth-field > .nd-depth-bubble{
+  position:absolute;left:var(--nd-x);bottom:-26px;
+  width:var(--nd-size);height:var(--nd-size);
+  border:1px solid rgba(194,225,241,.58);border-radius:50%;opacity:0;
+  background:radial-gradient(circle at 28% 21%,rgba(248,253,255,.32),transparent 55%);
+  box-shadow:inset -1px -2px 4px rgba(104,158,187,.2),0 0 9px rgba(192,228,248,.14);
+  animation:nd-depth-rise var(--nd-time) linear var(--nd-delay) infinite;
+  will-change:transform,opacity;
+}
+html[data-theme="light"] body > .nd-depth-field > .nd-depth-bubble{
+  border:1.5px solid rgba(19,37,55,.92);
+  background:radial-gradient(circle at 28% 21%,rgba(255,255,255,.42),transparent 55%);
+  box-shadow:inset -1px -2px 4px rgba(19,37,55,.23),0 0 0 .4px rgba(19,37,55,.3);
+  --nd-alpha:.68!important;
+}
+@keyframes nd-depth-rise{
+  0%{opacity:0;transform:translate3d(0,0,0) scale(.65)}
+  12%,82%{opacity:var(--nd-alpha)}
+  100%{opacity:0;transform:translate3d(var(--nd-drift),-125vh,0) scale(1.08)}
+}
+@keyframes nd-depth-current{from{transform:translateX(-2%)}to{transform:translateX(2%)}}
+
+/* Keep developer operations legible in all theme presets. */
+.neptune-page-hero[data-neptune-hero="server"] .neptune-hero-pill{
+  background:color-mix(in srgb,var(--panel) 82%,transparent)!important;
+  border-color:color-mix(in srgb,var(--nd-depth-color) 28%,var(--line))!important;
+}
+@media(max-width:700px){
+  .neptune-page-hero[data-neptune-hero="server"] .nd-page-mission-mark{
+    font-size:clamp(5rem,23vw,7rem)!important;
+    right:-12px;opacity:.055!important;
+  }
+  body > .nd-depth-field > .nd-depth-rays{opacity:.2}
+}
+@media(prefers-reduced-motion:reduce){
+  body > .nd-depth-field > .nd-depth-bubble{display:none!important;animation:none!important}
+  body > .nd-depth-field > .nd-depth-rays{animation:none!important}
+}
+
+/* Light theme: the wider Command Center ocean uses the same dark bubble rim.
+   Greater specificity than page-level inline styles; dark themes unchanged. */
+html[data-theme="light"] body .nd-ocean .nd-ocean__bubble{
+  border:1.5px solid rgba(19,37,55,.92);
+  box-shadow:inset -1px -2px 5px rgba(19,37,55,.23),0 0 0 .4px rgba(19,37,55,.3);
+  --alpha:.68!important;
+}
+
+/* PATCH: Light theme shared server-composited depth bubbles; live hero preserved. */
+html[data-theme="light"] body > .nd-depth-field > .nd-depth-bubble {
+  border:1.5px solid rgba(19,37,55,.92)!important;
+  box-shadow:inset -1px -2px 4px rgba(19,37,55,.23),0 0 0 .4px rgba(19,37,55,.3)!important;
+  --nd-alpha:.68!important;
+}
