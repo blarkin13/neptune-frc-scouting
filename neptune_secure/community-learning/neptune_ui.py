@@ -582,7 +582,9 @@ def console_values(job,worker,self_id=None):
     def color(message):
         low=message.lower()
         return '#fa8c8c' if re.search('fail|error|could not|refused|timed out',low) else WARN if re.search('warn|skipp|retry|missing',low) else GOOD if re.search('finish|saved|adopted|done|complete|kept|passed',low) else '#8cc7f7'
-    return {'helper':'waiting for its helper' if not worker else (worker.get('name') or 'Computer')+(' (this computer)' if worker.get('id')==self_id else '')+(' · '+gpu['name'].replace('NVIDIA GeForce ','') if gpu.get('name') else ''),
+    # The newest end-of-pass line from the detector trainer: losses and the check scores (mAP50, P, R).
+    score=next((re.sub(r'^.*?(?=pass \d+/\d+)','',message) for _,message in reversed(log) if re.search(r'pass \d+/\d+ · .*(mAP50|box )',message)),'')
+    return {'score':score,'helper':'waiting for its helper' if not worker else (worker.get('name') or 'Computer')+(' (this computer)' if worker.get('id')==self_id else '')+(' · '+gpu['name'].replace('NVIDIA GeForce ','') if gpu.get('name') else ''),
             'step':(step or job.get('title') or '')+(' · '+match.group(1) if match else ''),'sys':sys_line or 'no live readings from this helper yet',
             'stage':(stage,stage_text or now or '—'),
             'overall':(overall,' · '.join(x for x in [_clock(elapsed)+' elapsed' if elapsed else '',eta or ('estimating' if overall is not None else '')] if x)),
@@ -591,13 +593,19 @@ def console_values(job,worker,self_id=None):
 
 
 def console(page,job,worker,*,self_id=None,on_cancel=None,find=None):
-    """One running job as the website's console. Built once; find(dash) -> (job, worker) lets a refresh update
-    its text and bars in place (LIVE) instead of rebuilding the card."""
-    mono='Menlo'
+    """One running job as the website's console, in its own card."""
     label=job.get('label') or job.get('title') or 'Training'
     outer,card=page_card(page,'● '+label,key='run:'+label)
-    cancel_buttons(outer.head,job,on_cancel)
-    helper=tk.StringVar();tk.Label(outer.head,textvariable=helper,font=(mono,10),fg=MUTED,bg=PANEL).pack(side='right')
+    console_into(card,outer.head,job,worker,self_id=self_id,on_cancel=on_cancel,find=find)
+
+
+def console_into(card,head,job,worker,*,self_id=None,on_cancel=None,find=None,show_helper=True):
+    """The console's rows inside `card` (cancel controls and helper name in `head`). Built once; find(dash) -> (job, worker)
+    lets a refresh update its text and bars in place (LIVE) instead of rebuilding the card."""
+    mono='Menlo'
+    if head is not None:cancel_buttons(head,job,on_cancel)
+    helper=tk.StringVar()
+    if head is not None and show_helper:tk.Label(head,textvariable=helper,font=(mono,10),fg=MUTED,bg=PANEL).pack(side='right')
     step,sysline,nxt=tk.StringVar(),tk.StringVar(),tk.StringVar()
     tk.Label(card,textvariable=step,font=(mono,12,'bold'),fg=TEXT,bg=PANEL,anchor='w').pack(fill='x',pady=(0,3))
     tk.Label(card,textvariable=sysline,font=(mono,10),fg=ACCENT,bg=PANEL,anchor='w').pack(fill='x',pady=(0,3))
@@ -610,6 +618,7 @@ def console(page,job,worker,*,self_id=None,on_cancel=None,find=None):
         tk.Label(row,textvariable=pct,font=(mono,11,'bold'),fg=TEXT,bg=PANEL).pack(side='left')
         tk.Label(row,textvariable=detail,font=(mono,11),fg=MUTED,bg=PANEL,anchor='w').pack(side='left',padx=(10,0))
         bars[name]=(meter,pct,detail)
+    score=tk.StringVar();score_label=tk.Label(card,textvariable=score,font=(mono,11,'bold'),fg=GOOD,bg=PANEL,anchor='w',justify='left')
     next_label=tk.Label(card,textvariable=nxt,font=(mono,10),fg=MUTED,bg=PANEL,anchor='w')
     logs=[tk.Label(card,font=(mono,10),fg=MUTED,bg=PANEL,anchor='w',justify='left') for _ in range(6)]
     def show(job,worker):
@@ -617,6 +626,9 @@ def console(page,job,worker,*,self_id=None,on_cancel=None,find=None):
         helper.set(v['helper']);step.set(v['step']);sysline.set(v['sys']);nxt.set(v['next'])
         for name,(meter,pct,detail) in bars.items():
             p,text=v[name];meter.set(None if p is None else min(100,p)/100);pct.set('  —' if p is None else '%3d%%'%round(p));detail.set(text)
+        score.set(('latest pass → '+v['score']) if v['score'] else '')
+        if v['score'] and not score_label.winfo_ismapped():score_label.pack(fill='x',pady=(2,3),before=next_label if next_label.winfo_ismapped() else (logs[0] if logs[0].winfo_ismapped() else None))
+        elif not v['score'] and score_label.winfo_ismapped():score_label.pack_forget()
         if v['next'] and not next_label.winfo_ismapped():next_label.pack(fill='x',pady=(0,3),before=logs[0] if logs[0].winfo_ismapped() else None)
         elif not v['next'] and next_label.winfo_ismapped():next_label.pack_forget()
         for i,widget in enumerate(logs):
@@ -728,7 +740,7 @@ def update_line(w):
     return ('Up to date · '+latest) if latest else 'Up to date',GOOD,None
 
 
-def render_computers(page,dash,*,self_id=None,on_update=None,on_remove=None):
+def render_computers(page,dash,*,self_id=None,on_update=None,on_remove=None,on_cancel=None):
     """Every connected computer with its live readings; this one first. on_update(computer_id, change) requests, cancels or sets auto-update."""
     computers=sorted(dash.get('computers') or [],key=lambda c:c.get('id')!=self_id)
     if not computers:_,card=page_card(page,None);_label(card,'No computer readouts yet.',10,MUTED)
@@ -752,7 +764,21 @@ def render_computers(page,dash,*,self_id=None,on_update=None,on_remove=None):
         cells=[_meter(grid,name,None,'—') for name in ('CPU','GPU','RAM','GPU memory')]
         for i,cell in enumerate(cells):
             grid.columnconfigure(i,weight=1,uniform='m');cell.grid(row=0,column=i,sticky='ew',padx=(0,14) if i<3 else 0)
-        job_line=tk.Label(card,font=('Arial',9),fg=MUTED,bg=PANEL,anchor='w',justify='left');job_line.pack(fill='x',pady=(0,3))
+        job_line=tk.Label(card,font=('Arial',9),fg=MUTED,bg=PANEL,anchor='w',justify='left')
+        # A computer running a job shows the full console (step, readings, bars, latest pass scores, log) and Cancel.
+        def running(dash,cid=w.get('id')):
+            return next((q for q in dash.get('queue') or [] if q.get('state')=='running' and cid and (q.get('computer_id') or q.get('target'))==cid),None)
+        job=running(dash)
+        if job:
+            box=tk.Frame(card,bg=PANEL);box.pack(fill='x',pady=(6,0))
+            tk.Frame(box,bg=LINE,height=1).pack(fill='x',pady=(0,8))
+            title=tk.Frame(box,bg=PANEL);title.pack(fill='x',pady=(0,4))
+            tk.Label(title,text='● '+(job.get('label') or job.get('title') or 'Training'),font=('Menlo',11,'bold'),fg=ACCENT,bg=PANEL).pack(side='left')
+            def find(dash,cid=w.get('id')):
+                j=running(dash,cid);c=next((x for x in dash.get('computers') or [] if x.get('id')==cid),None)
+                return (j,c) if j else None
+            console_into(box,title,job,w,self_id=self_id,on_cancel=on_cancel,find=find,show_helper=False)
+        else:job_line.pack(fill='x',pady=(0,3))
         def show(c,cells=cells,job_line=job_line):
             stats=c.get('stats') or {};gpu=stats.get('gpu') or {}
             def memory(used,total):return '—' if used is None else '%.1f / %.1f GB'%(used/1024,total/1024) if total else '%.1f GB'%(used/1024)

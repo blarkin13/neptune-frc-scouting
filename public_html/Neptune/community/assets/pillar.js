@@ -121,7 +121,7 @@
   const u=c.update||{};
   const upd=!u.remote?`<p class="training-note">${u.behind?`Update ${esc(u.latest)} available · update this helper once by hand to allow remote updates.`:'Remote updates arrive with the next helper update.'}</p>`
    :`<p class="training-note tt-update">${u.requested?`<span class="tt-badge ok">${esc(u.message||'Update requested · installs when the helper is idle, then reopens')}</span> <button type="button" class="button-secondary tt-cancel" data-update="cancel" data-computer="${esc(c.id)}">Cancel update</button>`:u.behind?`<span class="tt-badge warn">Update ${esc(u.latest)} available</span> <button type="button" class="button-secondary" data-update="request" data-computer="${esc(c.id)}">Update</button>`:`Up to date${u.latest?' · '+esc(u.latest):''}`}
-    <label class="tt-awake"><input type="checkbox" data-auto-update="${esc(c.id)}"${u.auto?' checked':''}> Update automatically</label></p>`;
+    <label class="tt-auto-update"><input type="checkbox" role="switch" data-auto-update="${esc(c.id)}"${u.auto?' checked':''}><span class="tt-auto-update-track" aria-hidden="true"></span><span>Update automatically</span></label></p>`;
   return `<div class="tt-computer"><div class="tt-job-head"><strong>${esc(c.name)}</strong> <button type="button" class="button-secondary tt-cancel" data-rename="${esc(c.id)}" data-name="${esc(c.name)}" aria-label="Rename ${esc(c.name)}">Rename</button> ${badge}</div><p class="training-note">${facts||'—'}</p>${now}${waiting}<div class="training-actions">${start}${stop}${!c.online&&!c.job?` <button type="button" class="button-secondary" data-remove="${esc(c.id)}" data-name="${esc(c.name)}">Remove</button>`:''}</div>${upd}${awake}</div>`;
  }
  document.addEventListener('click',async e=>{

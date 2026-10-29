@@ -24,7 +24,6 @@ body:has(.nd-ocean) main,body:has(.nd-ocean) .container {position:relative;z-ind
 body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12px 40px color-mix(in srgb,var(--nd-sea) 9%,transparent)}
 @media(max-width:640px){.nd-ocean__rays{opacity:.32}.nd-ocean__bubble:nth-child(n+16){display:none}}
 @media(prefers-reduced-motion:reduce){.nd-ocean__rays,.nd-ocean__bubble{animation:none!important}.nd-ocean__bubble{display:none!important}}
-.auto-scout-section{margin-top:36px;padding-top:25px;border-top:1px solid var(--line,#2f4560)}.auto-scout-section>.neptune-hub-header{margin-bottom:24px}
 </style>
 <div class="nd-ocean" aria-hidden="true"><div class="nd-ocean__wash"></div><div class="nd-ocean__rays"></div><div class="nd-ocean__particles" id="ndBubbleField"></div></div>
 <script>
@@ -124,7 +123,5 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
       <i class="fa-solid fa-arrow-right neptune-hub-arrow"></i>
     </a>
   </div>
-<?php if(($u['role']??'')==='owner'&&(int)$u['organization_id']===(int)($config['app']['platform_organization_id']??1)): ?>
- <section class="auto-scout-section"><div class="neptune-hub-grid"><a class="neptune-hub-card accent-trident" href="<?=e(base_url('autoscout/index.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-robot"></i></span><span class="neptune-hub-badge access-all">Platform owner</span></div><span class="neptune-hub-card-kicker">Platform owner · Auto Scout</span><h3>Auto Scout</h3><p>Robot tags and score estimates from match video: examples, field context, robot labels, training and testing.</p><div class="neptune-hub-meta"><span>Auto Scout</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a></div></section><?php endif ?>
 </section>
 <?php include __DIR__ . '/partials_footer.php'; ?>

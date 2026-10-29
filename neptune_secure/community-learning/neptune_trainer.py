@@ -509,7 +509,7 @@ def main():
             ui.render_overview(page,view['dash'],view['models'],self_id=self_id,busy=busy['value'],open_page=open_page,open_url=webbrowser.open,on_cancel=cancel_run)
         elif key in ('robots','field'):ui.render_model(page,'robot' if key=='robots' else 'field',view['models'].get('robot' if key=='robots' else 'field'),open_url=webbrowser.open,on_cancel=cancel_run)
         elif key=='actions':ui.render_actions(page,view['models'].get('actions'))
-        elif key=='computers':ui.render_computers(page,view['dash'],self_id=self_id,on_update=change_update,on_remove=remove_computer)
+        elif key=='computers':ui.render_computers(page,view['dash'],self_id=self_id,on_update=change_update,on_remove=remove_computer,on_cancel=cancel_run)
         else:page.add(activity_box)
     target=tk.StringVar(value='Any free helper')
     def targets():

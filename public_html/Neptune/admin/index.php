@@ -139,13 +139,6 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
     </div>
   </section>
 
-  <section class="neptune-hub-section" id="community-scouting">
-    <div class="neptune-hub-section-head"><div><span class="neptune-hub-section-kicker" style="color:var(--module-trident)">Shared robot evidence</span><h2>Community Scouting</h2><p>Watch and tag matches, connect training computers, and use evaluated models.</p></div></div>
-    <div class="neptune-hub-grid">
-      <a class="neptune-hub-card accent-trident" href="<?=e(base_url('community/?view=catalog'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-tags"></i></span><span class="neptune-hub-badge">Public</span></div><span class="neptune-hub-card-kicker">Contribute observations</span><h3>Watch &amp; Tag</h3><p>Choose a match, see prior contributions for each robot, and add human tags or scoring estimates.</p><div class="neptune-hub-meta"><span>Match history</span><span>19 tags</span><span>Scoring</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
-      <?php if($isPlatformOwner):?><a class="neptune-hub-card accent-system" href="<?=e(base_url('autoscout/train.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-brain"></i></span><span class="neptune-hub-badge access-owner">Platform owner</span></div><span class="neptune-hub-card-kicker">Train and evaluate</span><h3>Train &amp; Test</h3><p>Download the Mac, Windows or Linux trainer, connect your computer, start training and check the result.</p><div class="neptune-hub-meta"><span>Training computers</span><span>Models</span><span>Reports</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a><?php endif;?>
-    </div>
-  </section>
   <?php if($isAdmin):?>
   <section class="neptune-hub-section" id="system">
     <div class="neptune-hub-section-head"><div><span class="neptune-hub-section-kicker" style="color:var(--module-system)">System</span><h2>Maintenance</h2><p>Manage updates, view server health, and maintain platform operations.</p></div></div>

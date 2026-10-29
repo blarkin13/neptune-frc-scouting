@@ -212,5 +212,5 @@ sudo apt update &amp;&amp; sudo apt install neptune-training-helper</pre><p clas
 </div>
 <script type="application/json" id="training-initial"><?=json_encode($panel,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR)?></script>
 <script src="../community/assets/training-control.js?v=remove-computers-1" defer></script>
-<script src="/community/assets/pillar.js?v=23" defer></script>
+<script src="/community/assets/pillar.js?v=24-auto-update-toggle" defer></script>
 <?php community_page_end(); ?>
