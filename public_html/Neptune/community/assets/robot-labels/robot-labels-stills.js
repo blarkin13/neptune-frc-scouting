@@ -23,7 +23,7 @@
  function setColor(c){color=c;$('red').classList.toggle('active',c==='red');$('blue').classList.toggle('active',c==='blue');$('red').setAttribute('aria-pressed',c==='red');$('blue').setAttribute('aria-pressed',c==='blue')}
  function place(){zoomer.style.transform=`translate(${pan[0]}px,${pan[1]}px) scale(${zoom})`;draw()}
  function fit(){zoom=1;pan=[0,0];place()}
- function draw(){const r=stage.getBoundingClientRect();cv.width=Math.round(r.width/zoom*devicePixelRatio);cv.height=Math.round(r.height/zoom*devicePixelRatio);
+ function draw(){saveState();const r=stage.getBoundingClientRect();cv.width=Math.round(r.width/zoom*devicePixelRatio);cv.height=Math.round(r.height/zoom*devicePixelRatio);
   const W=cv.width,H=cv.height,lw=Math.max(1.5,2*devicePixelRatio/zoom);ctx.clearRect(0,0,W,H);$('boxcount').textContent=boxes.length;
   if(playing||!exact)return; // boxes belong to the paused frame; hide them while the video moves
   boxes.forEach((b,i)=>{ctx.setLineDash(b.source==='detector'?[6*devicePixelRatio/zoom,4*devicePixelRatio/zoom]:[]);ctx.lineWidth=i===sel?lw*2:lw;ctx.strokeStyle=b.alliance==='red'?'#ff4d5e':'#3d8bff';
@@ -33,7 +33,9 @@
  function point(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]}
  function hit(p){const tol=.006/zoom;if(sel>=0){const k=corners(boxes[sel]).findIndex(c=>Math.abs(c[0]-p[0])<tol*1.5&&Math.abs(c[1]-p[1])<tol*2.7);if(k>=0)return{i:sel,corner:k}}
   for(let i=boxes.length-1;i>=0;i--){const b=boxes[i];if(p[0]>=b.x-tol&&p[0]<=b.x+b.w+tol&&p[1]>=b.y-tol&&p[1]<=b.y+b.h+tol)return{i}}return null}
- cv.addEventListener('mousedown',e=>{if(!video||idx<0||!exact||playing||busy)return;if(space||e.button===1){drag={pan:[e.clientX,e.clientY,...pan]};return}
+ // Undo (U): a snapshot of this frame's boxes is taken before each change.
+ const hist=[],remember=()=>{hist.push(JSON.stringify(boxes));if(hist.length>100)hist.shift()},undo=()=>{if(!hist.length)return;boxes=JSON.parse(hist.pop());sel=-1;dirty=true;draw()};
+ cv.addEventListener('mousedown',e=>{if(!video||idx<0||!exact||playing||busy)return;if(space||e.button===1){drag={pan:[e.clientX,e.clientY,...pan]};return}remember();
   v.pause();const p=point(e),h=hit(p);
   if(h&&h.corner!==undefined)drag={resize:h.i,corner:h.corner};else if(h){sel=h.i;drag={move:h.i,from:p,orig:{...boxes[h.i]}}}else{sel=-1;drag={make:p}}draw()});
  window.addEventListener('mousemove',e=>{if(!drag)return;if(drag.pan){pan=[drag.pan[2]+e.clientX-drag.pan[0],drag.pan[3]+e.clientY-drag.pan[1]];return place()}
@@ -44,7 +46,7 @@
   else if(drag.resize!==undefined){const b=boxes[drag.resize],opp=corners(b)[(drag.corner+2)%4];
    Object.assign(b,{x:Math.min(p[0],opp[0]),y:Math.min(p[1],opp[1]),w:Math.abs(p[0]-opp[0]),h:Math.abs(p[1]-opp[1]),source:'person'});
    const l=p[0]<opp[0],t=p[1]<opp[1];drag.corner=l&&t?0:!l&&t?1:!l&&!t?2:3;dirty=true;draw()}});
- window.addEventListener('mouseup',()=>{if(drag&&drag.make&&drag.now){const[a,b]=[drag.make,drag.now],w=Math.abs(b[0]-a[0]),h=Math.abs(b[1]-a[1]);
+ window.addEventListener('mouseup',()=>{if(drag&&!drag.pan)setTimeout(()=>{if(hist.at(-1)===JSON.stringify(boxes))hist.pop()});if(drag&&drag.make&&drag.now){const[a,b]=[drag.make,drag.now],w=Math.abs(b[0]-a[0]),h=Math.abs(b[1]-a[1]);
   if(w>.002&&h>.003){boxes.push({alliance:color,x:Math.min(a[0],b[0]),y:Math.min(a[1],b[1]),w,h,source:'person'});sel=boxes.length-1;dirty=true}}drag=null;draw()});
  frame.addEventListener('wheel',e=>{if(!video)return;e.preventDefault();const r=frame.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,z=Math.min(10,Math.max(1,zoom*Math.exp(-e.deltaY*.0015)));
   pan=[mx-(mx-pan[0])*z/zoom,my-(my-pan[1])*z/zoom];zoom=z;if(zoom===1)pan=[0,0];place()},{passive:false});
@@ -52,11 +54,15 @@
   const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d}
  async function save(extra){if(testOnly){dirty=false;say('UI test only — labels are not saved.');return;}if(!extra.skipped&&!extra.delete&&(!exact||playing))throw Error('Load the clear source still before saving labels.');const t=times[idx];await api('',{source_still:true,frame_sha256:exact?.sha256||'',video_id:video,match_key:matchKey,t_ms:t,boxes:boxes.map(b=>({alliance:b.alliance,x:b.x,y:b.y,w:b.w,h:b.h})),...extra});
   if(extra.delete)delete saved[t];else saved[t]={boxes:boxes.map(b=>({...b})),complete:!!extra.complete,skipped:!!extra.skipped};dirty=false;counts()}
- function counts(){const done=Object.values(saved).filter(f=>f.complete).length;$('donecount').textContent=done;$('framecount').textContent=times.length?`frame ${idx+1} of ${times.length}`:''}
+ function counts(){const done=Object.values(saved).filter(f=>f.complete).length;$('donecount').textContent=done;$('framecount').textContent=times.length?`frame ${idx+1} of ${times.length}`:'';frameList();saveState()}
+ // Frame picker: every frame with its state, so any frame can be reopened directly.
+ const frameState=t=>{const s=saved[t];return s?(s.skipped?'Skipped':s.complete?'Labeled':'Draft'):imageIndex[t]?'Prepared':'Unlabeled'};
+ function frameList(){const p=$('framepick');if(!p)return;p.hidden=!times.length;p.replaceChildren(...times.map((t,i)=>new Option(`${i+1} · ${stamp(t/1000)} · ${frameState(t)}`,i,false,i===idx)))}
+ function saveState(){const e=$('savestate');if(!e)return;const s=idx>=0&&saved[times[idx]];e.textContent=idx<0?'':dirty?'Edited · not saved yet':s?'Saved':'Not saved';e.dataset.state=dirty?'dirty':s?'saved':'none'}
  async function open(i){if(busy||i<0||i>=times.length)return;busy=true;try{
   if(idx>=0&&dirty)await save({complete:!!(saved[times[idx]]?.complete&&saved[times[idx]]?.frame_sha256)});
   exact=null;still.hidden=true;const yt=$('ytplayer');if(yt)yt.style.visibility='hidden';$('complete').disabled=true;cv.style.pointerEvents='auto';sourceStatus.textContent='Loading clear source still…';$('framebadge').textContent=(matchKey||video)+' · LOADING STILL';
-  idx=i;const t=times[i];$('clock').textContent=stamp(t/1000);v.pause();sel=-1;
+  idx=i;hist.length=0;const t=times[i];$('clock').textContent=stamp(t/1000);v.pause();sel=-1;
   const s=saved[t];if(s){boxes=s.boxes.map(b=>({...b,source:'person'}));say(s.skipped?'Skipped. Box the bumpers and press Enter to use it after all.':s.complete?'Complete — edit and press Enter to update.':'Saved draft.')}
   else{const d=await api(`?prefill=${video}&t_ms=${t}`);boxes=d.boxes;say(boxes.length?'Dashed boxes are the detector\'s guesses — check every bumper.':'No detector guesses here — box each bumper.')}
   dirty=false;playing=false;$('play').textContent='Play';draw();counts();
@@ -70,10 +76,12 @@
   draw();
  }catch(e){say(e.message)}finally{busy=false}}
  const settled=t=>saved[t]&&(saved[t].complete||saved[t].skipped);
- async function complete(){if(idx<0||busy)return;try{await save({complete:true});const n=times.findIndex((t,i)=>i>idx&&!settled(t));open(n>=0?n:idx)}catch(e){say(e.message)}}
+ async function complete(){if(idx<0||busy)return;try{const recheck=settled(times[idx]);await save({complete:true});
+  // Rechecking a finished frame steps to the very next frame; a new label jumps to the next unfinished one.
+  const n=recheck?idx+1:times.findIndex((t,i)=>i>idx&&!settled(t));open(n>=0&&n<times.length?n:idx)}catch(e){say(e.message)}}
  async function skip(){if(idx<0)return;try{boxes=[];await save({skipped:true});open(Math.min(times.length-1,idx+1))}catch(e){say(e.message)}}
  $('red').onclick=()=>setColor('red');$('blue').onclick=()=>setColor('blue');$('complete').onclick=complete;$('skip').onclick=skip;
- $('prevframe').onclick=()=>open(idx-1);$('nextframe').onclick=()=>open(idx+1);
+ $('prevframe').onclick=()=>open(idx-1);if($('framepick'))$('framepick').onchange=e=>{e.target.blur();open(+e.target.value)};$('nextframe').onclick=()=>open(idx+1);
  // Play is for looking around; the frame list decides what gets labelled, so pausing returns to it.
  $('play').onclick=async()=>{if(!v||busy)return;if(!playing){
   try{if(dirty)await save({complete:false});exact=null;still.hidden=true;const yt=$('ytplayer');if(yt)yt.style.visibility='visible';playing=true;cv.style.pointerEvents='none';$('complete').disabled=true;draw();v.currentTime=times[idx]/1000;v.play().catch(()=>{});sourceStatus.textContent='Watching context on YouTube. Pause to return to the clear labeling still.';}catch(e){say(e.message)}
@@ -81,8 +89,9 @@
  window.addEventListener('keydown',e=>{if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))return;
   if(e.code==='Space'){space=true;e.preventDefault()}if(e.key==='1')setColor('red');if(e.key==='2')setColor('blue');if(e.key==='0')fit();
   if(!exact||playing||busy)return;
-  if((e.key==='Delete'||e.key==='Backspace')&&sel>=0){boxes.splice(sel,1);sel=-1;dirty=true;draw();e.preventDefault()}
-  if((e.key==='x'||e.key==='X')&&sel>=0){boxes[sel].alliance=boxes[sel].alliance==='red'?'blue':'red';boxes[sel].source='person';dirty=true;draw()}
+  if((e.key==='Delete'||e.key==='Backspace')&&sel>=0){remember();boxes.splice(sel,1);sel=-1;dirty=true;draw();e.preventDefault()}
+  if((e.key==='x'||e.key==='X')&&sel>=0){remember();boxes[sel].alliance=boxes[sel].alliance==='red'?'blue':'red';boxes[sel].source='person';dirty=true;draw()}
+  if(e.key==='u'||e.key==='U'){e.preventDefault();undo()}
   if(e.key==='Enter'){e.preventDefault();complete()}if(e.key==='ArrowRight')open(idx+1);if(e.key==='ArrowLeft')open(idx-1)});
  window.addEventListener('keyup',e=>{if(e.code==='Space')space=false});
  let autosave=null;setInterval(()=>{if(dirty&&exact&&!playing&&idx>=0&&!busy&&!drag){clearTimeout(autosave);autosave=setTimeout(()=>{if(dirty)save({complete:!!(saved[times[idx]]?.complete&&saved[times[idx]]?.frame_sha256)}).then(()=>say('Draft saved.')).catch(e=>say(e.message))},1500)}},1000);

@@ -89,22 +89,23 @@ final class RobotDetectorJobs {
  }
  private function supportsFieldReference(string $computer):bool{
   $v=(string)($this->status($computer)['version']??'');
-  // Field runs need helpers that skip frame-edge corners, score each corner on its own, retrain at the checked
+  // Field runs need helpers that accept polygon boundaries and separate confirmed/inferred corners; retrain at the checked
   // picture size and keep the held-out match out of training.
-  if(preg_match('/^engine (\d+\.\d+\.\d+)/D',$v,$m))return version_compare($m[1],'2.7.36','>=');
-  if(preg_match('/^3\./',$v))return version_compare($v,'3.2.51','>=');
-  if(preg_match('/^6\.5\./',$v))return version_compare($v,'6.5.22','>=');
-  if(preg_match('/^6\.6\./',$v))return version_compare($v,'6.6.13','>=');
+  if(preg_match('/^engine (\d+\.\d+\.\d+)/D',$v,$m))return version_compare($m[1],'2.7.65','>=');
+  if(preg_match('/^3\./',$v))return version_compare($v,'3.2.80','>=');
+  if(preg_match('/^6\.5\./',$v))return version_compare($v,'6.5.51','>=');
+  if(preg_match('/^6\.6\./',$v))return version_compare($v,'6.6.42','>=');
   return false;
  }
  private function supportsRobotValidation(string $computer):bool{
   $v=(string)($this->status($computer)['version']??'');
   // Robot runs need helpers that keep the held-out match out of YOLO's validation set and score it after
-  // the same nested-box cleanup tracking uses, so every candidate and the detector in use are checked alike.
-  if(preg_match('/^engine (\d+\.\d+\.\d+)/D',$v,$m))return version_compare($m[1],'2.7.44','>=');
-  if(preg_match('/^3\./',$v))return version_compare($v,'3.2.59','>=');
-  if(preg_match('/^6\.5\./',$v))return version_compare($v,'6.5.30','>=');
-  if(preg_match('/^6\.6\./',$v))return version_compare($v,'6.6.21','>=');
+  // the same nested-box cleanup tracking uses, so every candidate and the detector in use are checked alike,
+  // and that train the YOLO11 Small detector (an older helper would keep fine-tuning Nano).
+  if(preg_match('/^engine (\d+\.\d+\.\d+)/D',$v,$m))return version_compare($m[1],'2.7.63','>=');
+  if(preg_match('/^3\./',$v))return version_compare($v,'3.2.78','>=');
+  if(preg_match('/^6\.5\./',$v))return version_compare($v,'6.5.49','>=');
+  if(preg_match('/^6\.6\./',$v))return version_compare($v,'6.6.40','>=');
   return false;
  }
  private function supportsHardFrames(string $computer):bool{

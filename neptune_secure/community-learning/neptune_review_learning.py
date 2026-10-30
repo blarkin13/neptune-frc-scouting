@@ -153,18 +153,34 @@ def pairs(doc):
                 if x is not None:result.append({'x':x,'y':int(a['team']==b['team']),'match_key':doc['match_key'],'source':doc['source_sha256']})
     return result[:1200]
 
-def fit(rows):
+def fit(rows,l2=1.,steps=30):
+    """Class-balanced logistic head, fitted by Newton steps on standardized features.
+
+    Features differ in scale by ~100x; the old fixed-step gradient descent stopped with every
+    same-robot probability below .87, so the .9 link threshold never fired. The result is folded
+    back to raw-feature weights, so stored models keep the same five weights and a bias."""
     if not rows or len({r['y'] for r in rows})<2:return None
-    weights=[0.]*5;bias=0.;counts=collections.Counter(r['y'] for r in rows)
-    for _ in range(150):
-        gw=[0.]*5;gb=0.
-        for r in rows:
-            z=max(-30,min(30,bias+sum(w*x for w,x in zip(weights,r['x']))));e=(1/(1+math.exp(-z))-r['y'])/counts[r['y']]/2
-            gb+=e
-            for j,x in enumerate(r['x']):gw[j]+=e*x
-        bias-=.15*gb
-        for j in range(5):weights[j]-=.15*(gw[j]+.01*weights[j])
-    return {'weights':weights,'bias':bias}
+    n=5;mu=[sum(r['x'][j] for r in rows)/len(rows) for j in range(n)]
+    sd=[max(1e-6,math.sqrt(sum((r['x'][j]-mu[j])**2 for r in rows)/len(rows))) for j in range(n)]
+    X=[[1.]+[(r['x'][j]-mu[j])/sd[j] for j in range(n)] for r in rows];counts=collections.Counter(r['y'] for r in rows)
+    W=[len(rows)/2/counts[r['y']] for r in rows];beta=[0.]*(n+1)
+    for _ in range(steps):
+        g=[0.]*(n+1);H=[[0.]*(n+1) for _ in range(n+1)]
+        for x,r,w in zip(X,rows,W):
+            q=1/(1+math.exp(-max(-30,min(30,sum(u*v for u,v in zip(beta,x))))));e=w*(q-r['y']);c=w*q*(1-q)
+            for i in range(n+1):
+                g[i]+=e*x[i]
+                for j in range(n+1):H[i][j]+=c*x[i]*x[j]
+        for i in range(1,n+1):g[i]+=l2*beta[i];H[i][i]+=l2
+        A=[H[i]+[g[i]] for i in range(n+1)]
+        for i in range(n+1):
+            k=max(range(i,n+1),key=lambda r:abs(A[r][i]));A[i],A[k]=A[k],A[i]
+            for r in range(n+1):
+                if r!=i:f=A[r][i]/A[i][i];A[r]=[u-f*v for u,v in zip(A[r],A[i])]
+        d=[A[i][n+1]/A[i][i] for i in range(n+1)];beta=[u-v for u,v in zip(beta,d)]
+        if max(map(abs,d))<1e-7:break
+    weights=[beta[j+1]/sd[j] for j in range(n)]
+    return {'weights':weights,'bias':beta[0]-sum(beta[j+1]*mu[j]/sd[j] for j in range(n))}
 
 def probability(model,x):
     return 1/(1+math.exp(-max(-30,min(30,model['bias']+sum(w*v for w,v in zip(model['weights'],x))))))
@@ -192,7 +208,11 @@ def train_association(root=None):
         report.update(status='candidate',reason='Independent identity-point benchmark still required before activation.',validation={'folds':folds,'tp':tp,'fp':fp,'fn':fn,'tn':tn,'precision':precision,'recall':recall},eligible_for_identity_benchmark=folds>=3 and tp>=30 and fp==0 and recall>=.5)
         model=fit(rows)
     candidate={**report,'model':model,'training_revision':digest([(d['source_sha256'],d['revision']) for d in docs if not d.get('evaluation_only')])}
-    atomic(root/'association-candidate.json',candidate);return report
+    atomic(root/'association-candidate.json',candidate)
+    if report.get('eligible_for_identity_benchmark'):
+        try:report['identity_check']=identity_check(root,activate=True)
+        except (OSError,ValueError) as error:report['identity_check']={'passed':False,'error':str(error)}
+    return report
 
 def enrich(points,video):
     """Recover signatures for reviews created before descriptors existed; no images kept."""
@@ -211,15 +231,69 @@ def enrich(points,video):
         for p in near:
             x,y,bw,bh=p['box'];p['appearance']=descriptor(image,[x*w,y*h,bw*w,bh*h])
 
+def valid_model(m):
+    return isinstance(m,dict) and len(m.get('weights',[]))==5 and all(type(v) in (int,float) and math.isfinite(v) and abs(v)<100 for v in m['weights']+[m.get('bias')])
+
+
+def report(root=None):
+    """What this helper tells Neptune after training: the candidate's status, and the model itself only once it passed
+    the independent identity check here (so Neptune can share it with every helper)."""
+    root=Path(root) if root is not None else home()
+    def read(name):
+        try:return json.loads((root/name).read_text())
+        except (OSError,ValueError):return {}
+    candidate,active=read('association-candidate.json'),read('association-active.json')
+    passed=active.get('version')==VERSION and (active.get('independent_identity_validation') or {}).get('passed') is True and valid_model(active.get('model'))
+    source=active if passed else candidate
+    out={'version':VERSION,'status':'active' if passed else candidate.get('status','needs_reviewed_matches'),'reason':'' if passed else candidate.get('reason',''),
+         'pairs':source.get('pairs',0),'matches':source.get('matches',[]),'validation':source.get('validation') or {},
+         'identity_validation':active.get('independent_identity_validation') if passed else read('association-identity-validation.json')}
+    return {'report':out,'model':active['model'] if passed else None}
+
+
+def share(connection,root=None):
+    """Send this helper's identity-model status to Neptune; returns the reply, or None when Neptune can't be reached."""
+    from neptune_robot_jobs import api
+    try:return api(connection,'tracking_put',report(root),timeout=30)
+    except Exception:return None
+
+
+def save_shared(doc,root=None):
+    """Keep the organization's shared identity model (downloaded from Neptune) beside this helper's own."""
+    root=Path(root) if root is not None else home()
+    if doc.get('version')!=VERSION or not valid_model(doc.get('model')):raise ValueError('Invalid shared identity model')
+    root.mkdir(parents=True,exist_ok=True);atomic(root/'association-shared.json',{k:doc[k] for k in ('version','model','sha256','trained_by','at','matches') if k in doc})
+
+
+def shared_association(root=None):
+    root=Path(root) if root is not None else home()
+    try:d=json.loads((root/'association-shared.json').read_text())
+    except (OSError,ValueError):return None
+    return d['model'] if d.get('version')==VERSION and valid_model(d.get('model')) else None
+
+
+def sync_shared(connection,root=None):
+    """Fetch the shared identity model if Neptune has a newer one than this helper."""
+    from neptune_robot_jobs import api
+    root=Path(root) if root is not None else home()
+    try:have=json.loads((root/'association-shared.json').read_text()).get('sha256')
+    except (OSError,ValueError):have=None
+    reply=api(connection,'tracking_current',{'have':have} if have else {},timeout=30)
+    if reply.get('model'):save_shared(reply,root)
+    return reply
+
+
 def active_association(root=None):
+    """This helper's own model when it passed the independent check here and matches its reviews; otherwise the
+    organization's shared model (trained and checked on the reviewing helper); otherwise None."""
     root=Path(root) if root is not None else home();p=root/'association-active.json'
-    if not p.is_file():return None
+    if not p.is_file():return shared_association(root)
     d=json.loads(p.read_text());m=d.get('model')
-    if d.get('version')!=VERSION or d.get('independent_identity_validation',{}).get('passed') is not True:return None
-    if not isinstance(m,dict) or len(m.get('weights',[]))!=5 or not all(type(v) in (int,float) and math.isfinite(v) and abs(v)<100 for v in m['weights']+[m.get('bias')]):raise ValueError('Invalid learned association model')
+    if d.get('version')!=VERSION or d.get('independent_identity_validation',{}).get('passed') is not True:return shared_association(root)
+    if not valid_model(m):raise ValueError('Invalid learned association model')
     docs=[json.loads(p.read_text()) for p in sorted((root/'reviews').glob('*.json'))]
     current=digest([(v['source_sha256'],v['revision']) for v in docs if not v.get('evaluation_only')])
-    if d.get('training_revision')!=current:return None
+    if d.get('training_revision')!=current:return shared_association(root)
     return m
 
 def evaluate_association(audit,root=None,activate=False):
@@ -258,6 +332,43 @@ def evaluate_association(audit,root=None,activate=False):
         if not passed:raise ValueError('Candidate failed independent identity validation; previous model kept')
         atomic(root/'association-active.json',{**candidate,'independent_identity_validation':report,'active':True})
     return report
+
+def identity_check(root=None,reviews=None,activate=False):
+    """Match-held-out identity check on full saved reviews; no hand-built audit file.
+
+    Each reviewed match is scored by a head trained without that match or its video bytes.
+    Inputs are the tracker's own detections and bumper reads; the human corrections are only
+    the answer key. Same bar as evaluate_association: two or more matches and videos, precision
+    .98 or better, 150 or more correct names, and no fewer correct or more wrong than without it."""
+    from neptune_identity import reconcile,apply_corrections
+    root=Path(root) if root is not None else home();reviews=Path(reviews) if reviews is not None else root.parent/'identity-reviews'
+    candidate=json.loads((root/'association-candidate.json').read_text())
+    if not candidate.get('model') or not candidate.get('eligible_for_identity_benchmark'):raise ValueError('Candidate has not passed separate-match pair validation')
+    docs=[json.loads(p.read_text()) for p in sorted((root/'reviews').glob('*.json'))]
+    rows=[r for d in docs if d.get('version')==VERSION for r in pairs(d)]
+    counts={k:collections.Counter() for k in ('baseline','candidate')};per={}
+    for path in sorted(reviews.glob('*/identity-review.json')):
+        review=json.loads(path.read_text());match,source=review.get('match_key',''),review.get('source_sha256','')
+        if reserved(match,source) or not review.get('corrections'):continue
+        roster_check(review['roster'])
+        # Boxes the reviewer drew are not tracker output, so they are not scored.
+        truth={p['point_id']:p['team'] for p in apply_corrections(review,review['corrections'])['points'] if p['identity_status']=='corrected' and p.get('team') is not None and not p.get('manual_proposal')}
+        head=fit([r for r in rows if r['match_key']!=match and r['source']!=source])
+        if not truth or head is None:continue
+        # Strip every review-time answer; reconcile sees only detections, tracker IDs and bumper reads.
+        raw=[{k:v for k,v in p.items() if k not in ('team','identity_status','reason','candidate_teams','identity_evidence','point_id','review_track')} for p in review['points']]
+        per[match]={}
+        for name,model in (('baseline',None),('candidate',head)):
+            out={p['point_id']:p['team'] for p in reconcile(raw,review['roster'],source,association=model)['points']}
+            c=collections.Counter('correct' if out.get(k)==t else 'unknown' if out.get(k) is None else 'wrong' for k,t in truth.items())
+            counts[name].update(c);per[match][name]=dict(c)
+    c,b=counts['candidate'],counts['baseline'];precision=c['correct']/max(1,c['correct']+c['wrong'])
+    passed=len(per)>=2 and precision>=.98 and c['correct']>=150 and c['correct']>=b['correct'] and c['wrong']<=b['wrong']
+    result={'passed':passed,'evidence_type':'match_held_out_identity_check','points':sum(c.values()),'matches':sorted(per),'precision':precision,
+            'baseline':dict(b),'candidate':dict(c),'by_match':per,'training_revision':candidate.get('training_revision')}
+    atomic(root/'association-identity-validation.json',result)
+    if activate and passed:atomic(root/'association-active.json',{**candidate,'independent_identity_validation':result,'active':True})
+    return result
 
 def _import_document(value,root=None):
     """Explicit portable transfer between helpers, bound to identical video bytes."""

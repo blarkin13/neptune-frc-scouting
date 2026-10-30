@@ -67,9 +67,12 @@ ICON_COLORS = ('text','accent','muted','ink')
 _icon_cache = {}
 
 
+ICON_ALIAS={'tracking':'review'}
+
+
 def icon(name,color='text'):
     """An 18-px icon from the shipped strip (columns: ICONS, rows: ICON_COLORS); None if it can't load."""
-    key=(name,color)
+    name=ICON_ALIAS.get(name,name);key=(name,color)
     if key in _icon_cache:return _icon_cache[key]
     try:
         if 'strip' not in _icon_cache:_icon_cache['strip']=tk.PhotoImage(file=str(HERE/'neptune-icons.png'))
@@ -445,7 +448,7 @@ def _meter(parent,label,fraction,text):
 
 class Shell:
     """Sidebar of pages beside a header and a scrolling page of cards, the same layout as the Mac app."""
-    PAGES=[('overview','Overview'),('robots','Robots'),('field','Field'),('actions','Actions'),('computers','Computers'),('activity','Activity')]
+    PAGES=[('overview','Overview'),('robots','Robots'),('tracking','Tracking'),('field','Field'),('actions','Actions'),('computers','Computers'),('activity','Activity')]
     def __init__(self,root,*,logo=None,on_page=lambda key:None):
         self.on_page=on_page;self.nav={}
         side=tk.Frame(root,bg=SIDEBAR,width=210,padx=12,pady=16);side.pack(side='left',fill='y');side.pack_propagate(False)
@@ -465,7 +468,7 @@ class Shell:
         def section(title):tk.Label(side,text=title.upper(),font=('Arial',8,'bold'),fg=MUTED,bg=SIDEBAR,anchor='w').pack(fill='x',pady=(14,4))
         for i,(key,title) in enumerate(self.PAGES):
             if i==1:section('Models')
-            if i==4:section('Helpers')
+            if i==5:section('Helpers')
             item=tk.Label(side,text='  '+title,image=icon(key),compound='left',font=('Arial',11),fg=TEXT,bg=SIDEBAR,anchor='w',padx=10,pady=6,cursor='hand2')
             item.pack(fill='x',pady=1);item.bind('<Button-1>',lambda event,k=key:self.on_page(k));self.nav[key]=item
         section('Tools')
@@ -728,6 +731,34 @@ def render_actions(page,a,*,connected=True):
     _,card=page_card(page,'Improve this model',key='improve-actions')
     _label(card,'Tag scoring, climbing and defense in matches from events not tagged yet; more variety helps more than more of one event.',10,MUTED)
     _label(card,'Train on Neptune picks the matches and the computer, then Test & release checks the new model before it’s used.',10,MUTED)
+
+
+def render_tracking(page,t,*,connected=True,on_review=None):
+    """Robot tracking: the organization's shared identity model (trained where tracking is reviewed, used by every
+    helper), the reviewed matches it learns from, and what it needs next."""
+    if t is None:
+        _,card=page_card(page,None);_label(card,'Loading tracking status…' if connected else 'Connect this computer to Neptune to see tracking.',10,MUTED);return
+    report,shared,reviews=t.get('report') or {},t.get('shared'),t.get('reviews') or []
+    v=report.get('validation') or {}
+    check=('%d%% precise · %d%% found'%(100*v['precision'],100*v.get('recall',0))) if isinstance(v.get('precision'),(int,float)) and (v.get('tp',0)+v.get('fp',0)) else ('no confident links yet' if v.get('folds') else '—')
+    tiles(page,[('Identity model','Shared · in use' if shared else 'Not in use yet',('Trained on %s · %s'%(shared['trained_by'],_when(shared.get('at')))) if shared else 'Tracking names robots from bumper reads alone',None,None),
+                ('Reviewed matches',str(len(reviews)),'Saved on Neptune · %d used in the last training'%len(report.get('matches') or []),None,None),
+                ('Latest check',check,('on matches it did not learn from · %s'%report['computer']) if report.get('computer') else 'Runs after each saved review',WARN if report and not shared else None,None)])
+    _,card=page_card(page,'What it needs next',key='tracking-next')
+    if shared:_label(card,'Every helper uses this model. Keep reviewing crowded stretches in new matches; a better model replaces it once it passes the same check.',10,MUTED)
+    elif report.get('status')=='needs_reviewed_matches' or not report:_label(card,'Review at least three matches with Review tracking… (crowded stretches: collisions, robots crossing or hidden). The helper you review on trains the model; once it passes, it is shared with every helper.',10,MUTED)
+    else:
+        if v.get('folds') and not v.get('tp'):_label(card,'The model trained from your reviews does not yet link any robot confidently across a gap on matches it did not learn from, so it is not used.',10,WARN)
+        _label(card,(report.get('reason') or 'It is used once it passes the independent identity check.')+' Review crowded stretches in more matches to give it more to learn from.',10,MUTED)
+    if on_review:
+        row=tk.Frame(card,bg=PANEL);row.pack(fill='x',pady=(6,0));Button(row,'Review tracking…',on_review,icon_name='review',small=True).pack(side='left')
+    _,card=page_card(page,'Reviewed matches · %d'%len(reviews),key='tracking-reviews')
+    if not reviews:_label(card,'No tracking reviews saved yet.',10,MUTED)
+    for r in reviews[:12]:
+        row=tk.Frame(card,bg=PANEL);row.pack(fill='x')
+        tk.Label(row,text=r.get('match_key',''),font=('Arial',10,'bold'),fg=TEXT,bg=PANEL,width=22,anchor='w').pack(side='left')
+        tk.Label(row,text='saved '+_when(r.get('updated_at')),font=('Arial',10),fg=MUTED,bg=PANEL,anchor='w').pack(side='left')
+        if r.get('match_key') in (report.get('matches') or []):tk.Label(row,text='used in training',font=('Arial',9),fg=GOOD,bg=PANEL).pack(side='right')
 
 
 def update_line(w):

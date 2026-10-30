@@ -6,6 +6,7 @@ untrusted checkpoint URL. Imported scouting totals never become robot boxes.
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 
@@ -23,7 +24,8 @@ def prepare(manifest, output):
         match, video, split = row.get('match_key'), row.get('source_sha256'), row.get('split')
         if match in HELD_OUT_MATCHES or video in HELD_OUT_SOURCES:
             raise ValueError('Reserved evaluation video cannot train or calibrate the detector.')
-        if not isinstance(match, str) or not match.startswith('2026') or not isinstance(video, str) or len(video) != 64:
+        # Bumpers look alike every season, so labelled matches from other years train the same detector.
+        if not isinstance(match, str) or not re.match(r'\d{4}[a-z]', match) or not isinstance(video, str) or len(video) != 64:
             raise ValueError('Every frame needs its match and source-video fingerprint.')
         if split not in totals or row.get('reviewed') is not True or row.get('all_visible_bumpers_labeled') is not True:
             raise ValueError('Review all visible bumpers, including empty frames, before detector training.')

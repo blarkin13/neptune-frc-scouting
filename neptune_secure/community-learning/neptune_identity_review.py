@@ -73,6 +73,10 @@ class ReviewServer(ThreadingHTTPServer):
                 except Exception as error:result['cloud']={'status':'pending','reason':str(error)[:200]}
             elif self.cloud:result['cloud']={'status':'no_corrections'}
             else:result['cloud']={'status':'local_only'}
+            # Tell Neptune how the identity model stands (and share it once it passes) so every helper can use it.
+            if self.cloud and getattr(self.cloud,'connection',None):
+                from neptune_review_learning import share
+                result['shared']=share(self.cloud.connection) is not None
             return result
         except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:return {'status':'not_synced','reason':str(error)[:200]}
     def server_close(self):

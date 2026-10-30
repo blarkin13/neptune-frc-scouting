@@ -5,6 +5,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/community-analysis-install.php'
 require_once dirname(__DIR__,3).'/neptune_secure/community-training-control.php';
 require_once dirname(__DIR__,3).'/neptune_secure/community-learning.php';
 require_once dirname(__DIR__,3).'/neptune_secure/community-training-cancel.php';
+require_once dirname(__DIR__,3).'/neptune_secure/tracking-identity.php';
 require_once dirname(__DIR__,3).'/neptune_secure/robot-detector-jobs.php';
 require_once dirname(__DIR__,3).'/neptune_secure/autoscout-train-overview.php';
 require_once dirname(__DIR__,3).'/neptune_secure/external-bumper-training.php';
@@ -38,7 +39,9 @@ try {
   // A helper's model pages: the owner's Train page overview, trimmed. Queue starts a detector run like the Train page.
   'models'=>(function()use($pdo,$computer){
    $owner=(int)$computer['user_id'];$season=(int)gmdate('Y');$game=(string)(community_learning_games()[(string)$season]['game_key']??'');
-   return ['season'=>$season]+autoscout_helper_models(autoscout_train_overview($pdo,(new CommunityTrainingControl($pdo))->panel($season,$owner),(int)$computer['organization_id'],$owner,$game));
+   $control=new CommunityTrainingControl($pdo);$names=array_column($control->computers($owner),'name','id');
+   return ['season'=>$season]+autoscout_helper_models(autoscout_train_overview($pdo,$control->panel($season,$owner),(int)$computer['organization_id'],$owner,$game))
+    +['tracking'=>(new TrackingIdentityShare(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->summary($pdo,(int)$computer['organization_id'],$names)];
   })(),
   'queue_training'=>(function()use($pdo,$computer,$jobs,$p){
    $kind=(string)($p['kind']??'');if(!in_array($kind,['train','train_field'],true))throw new CommunityAnalysisError(422,'Choose a detector.');
@@ -72,6 +75,9 @@ try {
    $q=$pdo->prepare('DELETE FROM community_training_computers WHERE id=? AND user_id=?');$q->execute([$id,(int)$computer['user_id']]);$jobs->forget($id);
    return ['ok'=>true];
   })(),
+  // Shared robot-identity model: the reviewing helper reports after training; every helper downloads the model in use.
+  'tracking_put'=>(new TrackingIdentityShare(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put($computer,$p),
+  'tracking_current'=>(new TrackingIdentityShare(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->current(isset($p['have'])?(string)$p['have']:null),
   'claim'=>['request'=>$jobs->claim($computer)],
   'training_supplement_index'=>['packages'=>(new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->index()],
   'training_supplements'=>(function()use($computer,$p){$store=new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']);if(isset($p['id']))return ['datasets'=>[$store->get((string)$p['id'],(string)($p['sha256']??''))]];foreach($store->index() as $item)if($item['id']==='6962-workshop-v1')return ['datasets'=>[$store->get($item['id'],$item['sha256'])]];return ['datasets'=>[]];})(),

@@ -11,6 +11,13 @@ def validate(d):
         ps=r.get('points',[])
         if r.get('kind') not in KINDS or r.get('camera_view') not in {'wide','closeup-left','closeup-right','other'} or r.get('alliance') not in {'red','blue','neutral'} or r.get('reviewed') is not True:raise ValueError('Invalid region metadata')
         if not 3<=len(ps)<=100 or any(not isinstance(p,list) or len(p)!=2 or any(type(x) not in (int,float) or not math.isfinite(x) or not 0<=x<=1 for x in p) for p in ps):raise ValueError('Invalid normalized polygon')
+        for key in ('corner_indices', 'inferred_corner_indices'):
+            if key in r:
+                indices = r[key]
+                if r['kind'] not in {'field_boundary', 'field_calibration'} or not isinstance(indices, list) or any(type(i) is not int or not 0 <= i < len(ps) for i in indices) or len(set(indices)) != len(indices):
+                    raise ValueError('Invalid corner vertex indices')
+        if set(r.get('corner_indices', [])) & set(r.get('inferred_corner_indices', [])):
+            raise ValueError('A corner cannot be both confirmed and inferred')
         ts=[r.get(k) for k in ('start_ms','reference_ms','end_ms')]
         if any(type(t) not in (int,float) or not math.isfinite(t) for t in ts) or not 0<=ts[0]<=ts[1]<=ts[2]:raise ValueError('Invalid time interval')
         if not isinstance(r.get('game_key'),str) or not r['game_key']:raise ValueError('Missing game key')

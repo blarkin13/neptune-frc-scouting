@@ -76,17 +76,17 @@
   const c=d.current,rep=c?.report||{};
   fill('field','current',c?`<dl><dt>Adopted</dt><dd>${when(c.adopted_at)}</dd><dt>Held-out match</dt><dd>${esc(rep.holdout_match||'—')}</dd><dt>Targets & corners</dt><dd>${placed(rep.new)}</dd><dt>Learned from</dt><dd>${rep.trained_on?.length??rep.matches??'—'} matches</dd></dl>`:d.baseline?`<p>The helper’s built-in ${esc(d.game_key)} field detector is in use. No retrained replacement has passed the held-out check yet.</p>`:`<p>No field detector is available for ${esc(d.game_key)} yet.</p>`);
   rollback('field',d.history);
-  const m=Object.entries(d.matches),ready=m.filter(([,v])=>v.targets&&v.corners);
-  fill('field','data',`<dl><dt>Marked matches</dt><dd>${m.length}</dd><dt>With targets + corners</dt><dd>${ready.length}</dd><dt>Events</dt><dd>${d.events.length?d.events.map(esc).join(', '):'—'}</dd></dl>`);
+  const m=Object.entries(d.matches),ready=m.filter(([,v])=>v.targets&&v.boundary);
+  fill('field','data',`<dl><dt>Marked matches</dt><dd>${m.length}</dd><dt>With targets + boundary</dt><dd>${ready.length}</dd><dt>Events</dt><dd>${d.events.length?d.events.map(esc).join(', '):'—'}</dd></dl>`);
   fill('field','next',next([
-   [ready.length>=2,`Mark scoring targets and the field corners on at least 2 ${esc(d.game_key)} matches (${ready.length} so far). Mark corners where the field ends; a corner outside the picture is left out of training.`],
+   [ready.length>=2,`Mark scoring targets and a visible field boundary on at least 2 ${esc(d.game_key)} matches (${ready.length} so far). Boundary polygons may have more than four vertices. Physical corners are optional and must be marked separately.`],
    ...(d.holdout?[[true,`Next run is checked on <strong>${esc(d.holdout)}</strong>, a match the detector in use never learned from.`]]:[]),
    // One marked match covers its whole event (the camera is fixed); unmarked events get no guessed zones.
    [true,`Mark one match at each event you scout; its marks apply to every match at that event. Events marked so far: ${d.events.length}.`],
    [true,'Scouting at an event with no marked match runs without scoring-zone hints; the field detector’s guesses are not used.'],
    [true,'Training the field detector is optional; scouting uses your marks, not the detector.'],
   ]));
-  trainButton('field',busy||ready.length<2,busy?'A field detector run is already queued or running.':ready.length<2?'Needs scoring targets and corners on 2 matches of this game first.':'Uses your saved marks and the current field detector. Runtime depends on the helper. Only a better held-out result replaces it.');
+  trainButton('field',busy||ready.length<2,busy?'A field detector run is already queued or running.':ready.length<2?'Needs scoring targets and a visible boundary on 2 matches of this game first.':'Uses your saved marks and the current field detector. Runtime depends on the helper. Only a better held-out result replaces it.');
   fill('field','runs',runs(d.runs,r=>`${placed(r.new)} vs ${r.current?placed(r.current):'none'}`));
   return !c||ready.length<2;
  }

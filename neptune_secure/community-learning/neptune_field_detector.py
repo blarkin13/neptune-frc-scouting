@@ -69,18 +69,49 @@ def ordered_quad(points):
 
 
 def boundary_corners(doc):
-    """Four field corners for the wide view: a marked calibration, else a four-point field boundary."""
+    """Calibration requires four physical corners, never a clipped boundary outline."""
     for kind in ('field_calibration', 'field_boundary'):
         for r in doc['regions']:
-            if r['kind'] == kind and r['camera_view'] == 'wide' and len(r['points']) == 4:
-                return r['points'] if kind == 'field_calibration' else ordered_quad(r['points'])
+            if r['kind'] != kind or r['camera_view'] != 'wide':
+                continue
+            points = r.get('points', [])
+            if kind == 'field_boundary' and 'corner_indices' in r:
+                indices = r['corner_indices']
+                if len(indices) != 4 or r.get('inferred_corner_indices'):
+                    continue
+                points = [points[i] for i in indices]
+            if len(points) == 4:
+                return points if kind == 'field_calibration' else ordered_quad(points)
     return None
 
 
 def visible_corners(doc):
-    """The marked corners that are real field corners in the picture. A corner marked on the frame edge means the
-    field runs out of view there; that point is not a corner, so it is never a label and never scored."""
-    return [p for p in boundary_corners(doc) or [] if EDGE_MARGIN < p[0] < 1-EDGE_MARGIN and EDGE_MARGIN < p[1] < 1-EDGE_MARGIN]
+    """Only explicit physical corners are detector truth. Inferred points are not labels.
+
+    Legacy four-point outlines keep their calibration meaning. Other boundary
+    polygons, including hexagons, need explicit corner_indices; their turns may
+    simply follow a crop, overlay or obstruction.
+    """
+    for kind in ('field_calibration', 'field_boundary'):
+        for r in doc['regions']:
+            if r['kind'] != kind or r['camera_view'] != 'wide':
+                continue
+            points = r.get('points', [])
+            indices = r.get('corner_indices', list(range(4)) if len(points) == 4 else [])
+            inferred = set(r.get('inferred_corner_indices', []))
+            corners = [points[i] for i in indices if i not in inferred]
+            corners = [p for p in corners if all(EDGE_MARGIN < x < 1-EDGE_MARGIN for x in p)]
+            if corners:
+                return corners
+    return []
+
+
+def training_geometry(doc):
+    """Targets plus a visible boundary polygon are usable, even without calibration."""
+    regions = doc.get('regions', [])
+    return (any(r.get('kind') == 'scoring_target' and r.get('camera_view') == 'wide' for r in regions)
+            and any(r.get('kind') in ('field_boundary', 'field_calibration')
+                    and r.get('camera_view') == 'wide' and len(r.get('points', [])) >= 3 for r in regions))
 
 
 def box_of(points):

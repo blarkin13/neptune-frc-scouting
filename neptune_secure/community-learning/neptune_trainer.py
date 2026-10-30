@@ -206,7 +206,18 @@ def watch_jobs(config,hardware,execute,progress,closing,pause,busy=lambda value:
     form=telemetry.form_factor()
     if not getattr(telemetry,'reporter',None):telemetry.reporter=telemetry.Reporter(lambda payload:robot_jobs.api(config,'computer_poll',payload,timeout=20),
                        lambda:{'busy':awake.busy,'awake':awake.active,'message':last_message[0][:600],'version':helper_version() or engine_version(),'platform':'%s · %s'%(platform.system().replace('Darwin','Mac'),hardware.get('name','CPU')),'form':form},
-                       lambda reply:(awake.set_mode((reply.get('settings') or {}).get('keep_awake','jobs')),telemetry.replied(reply)),closing).start()
+                       lambda reply:(awake.set_mode((reply.get('settings') or {}).get('keep_awake','jobs')),telemetry.replied(reply),identity_tick()),closing).start()
+    identity_due=[0.]
+    def identity_tick():
+        # Every helper uses the organization's shared robot-identity model, trained where tracking is reviewed:
+        # fetch it after a successful check-in, at most every ten minutes.
+        if time.monotonic()<identity_due[0]:return
+        identity_due[0]=time.monotonic()+600
+        def fetch():
+            from neptune_review_learning import sync_shared
+            try:sync_shared(config)
+            except Exception:pass
+        threading.Thread(target=fetch,daemon=True).start()
     def housekeeping(force=False):
         # Startup, after every job, and hourly while idle: remove only re-downloadable media.
         nonlocal last_cleanup
@@ -509,6 +520,7 @@ def main():
             ui.render_overview(page,view['dash'],view['models'],self_id=self_id,busy=busy['value'],open_page=open_page,open_url=webbrowser.open,on_cancel=cancel_run)
         elif key in ('robots','field'):ui.render_model(page,'robot' if key=='robots' else 'field',view['models'].get('robot' if key=='robots' else 'field'),open_url=webbrowser.open,on_cancel=cancel_run)
         elif key=='actions':ui.render_actions(page,view['models'].get('actions'))
+        elif key=='tracking':ui.render_tracking(page,view['models'].get('tracking'),on_review=review_tracking)
         elif key=='computers':ui.render_computers(page,view['dash'],self_id=self_id,on_update=change_update,on_remove=remove_computer,on_cancel=cancel_run)
         else:page.add(activity_box)
     target=tk.StringVar(value='Any free helper')
@@ -594,7 +606,7 @@ def main():
                 root.destroy();return
             if kind=='models':
                 if isinstance(message,dict):view['models']=message
-                if view['page'] in ('overview','robots','field','actions'):render()
+                if view['page'] in ('overview','robots','field','actions','tracking'):render()
                 continue
             if kind=='queued':top_status.set('Run queued' if message is None else 'Couldn’t start the run: '+message);continue
             if kind=='run_cancelled':top_status.set('Run stopped or cancelled · updating…' if message is None else 'Couldn’t cancel the run: '+message);continue

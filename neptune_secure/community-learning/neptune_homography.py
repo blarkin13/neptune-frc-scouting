@@ -37,7 +37,7 @@ def trajectories(facts,game_key,root=None):
   # A four-point field boundary is the same field outline; order its corners from the image.
   from neptune_field_detector import ordered_quad
   for r in d['regions']:
-   if r['kind']=='field_boundary' and r['camera_view']=='wide' and len(r['points'])==4:
+   if r['kind']=='field_boundary' and r['camera_view']=='wide' and len(r['points'])==4 and r.get('corner_indices',list(range(4)))==list(range(4)) and not r.get('inferred_corner_indices'):
     try:calibrations.append((r,calibrate(ordered_quad(r['points']))))
     except ValueError:pass
  out=[]

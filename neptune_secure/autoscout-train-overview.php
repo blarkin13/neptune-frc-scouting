@@ -15,6 +15,22 @@ function autoscout_trained_on(?array $current,array $shipped):array {
  return $r['trained_on']??array_values(array_diff($r['matches']??[],[$r['holdout_match']??'']));
 }
 
+/** Polygon outlines are training context, not implicit physical-corner labels. */
+function autoscout_field_geometry(array $regions):array {
+ $targets=0;$boundary=false;$confirmed=0;$inferred=0;$calibration=false;
+ foreach($regions as $r){
+  if(($r['camera_view']??'')!=='wide')continue;
+  if(($r['kind']??'')==='scoring_target'){$targets++;continue;}
+  if(!in_array($r['kind']??'', ['field_boundary','field_calibration'],true))continue;
+  $points=$r['points']??[];$n=count($points);if($n>=3)$boundary=true;
+  $indices=$r['corner_indices']??($n===4?range(0,3):[]);$guessed=$r['inferred_corner_indices']??[];
+  $inferred+=count($guessed);
+  foreach($indices as $i){$p=$points[$i]??null;if(in_array($i,$guessed,true)||!is_array($p)||count($p)!==2)continue;if($p[0]>.01&&$p[0]<.99&&$p[1]>.01&&$p[1]<.99)$confirmed++;}
+  if(($r['kind']==='field_calibration'&&$n===4)||($r['kind']==='field_boundary'&&count($indices)===4&&!$guessed))$calibration=true;
+ }
+ return ['targets'=>$targets,'boundary'=>$boundary,'corners'=>$confirmed>0,'confirmed_corners'=>$confirmed,'inferred_corners'=>$inferred,'calibration'=>$calibration];
+}
+
 /** One status read for the Train page: helpers, what is running and waiting, and each trainable part's model and data. */
 /** My computers: each connected computer, what it is doing now and its keep-awake setting. */
 function autoscout_computers(PDO $pdo,RobotDetectorJobs $jobs,array $computers,array $requests):array {
@@ -52,7 +68,7 @@ function autoscout_train_overview(PDO $pdo,array $panel,int $org,int $user,strin
  foreach($videos as $vid=>$v){$find->execute(['%'.$vid.'%']);$robotRows[]=['video_id'=>$vid,'match_key'=>$v['match_key'],'match_id'=>($id=$find->fetchColumn())?(int)$id:null,'frames'=>count(array_filter($v['frames'],fn($fr)=>!empty($fr['complete'])))];}
  usort($robotRows,fn($a,$b)=>[$a['frames'],$a['match_key']]<=>[$b['frames'],$b['match_key']]);
  $robotMatches=[];foreach($videos as $v){$n=count(array_filter($v['frames'],fn($fr)=>!empty($fr['complete'])));if($n&&$v['match_key'])$robotMatches[$v['match_key']]=($robotMatches[$v['match_key']]??0)+$n;}
- // Scoring areas: this game's matches with scoring targets and the four field corners marked.
+ // Training accepts targets plus any visible boundary polygon; calibration is separate.
  $fieldMatches=[];$fieldVideo=[];
  foreach(array_merge(glob($secure.'/field-regions/seed-documents/*.json')?:[],glob($secure.'/field-regions/'.$user.'/*.json')?:[]) as $f){
   if(filesize($f)>2097152)continue;$d=json_decode((string)file_get_contents($f),true);if(!is_array($d))continue;$kinds=array_column(array_filter($d['regions']??[],fn($r)=>($r['game_key']??'')===$game),'kind');if(!$kinds)continue;
@@ -61,8 +77,8 @@ function autoscout_train_overview(PDO $pdo,array $panel,int $org,int $user,strin
   if($key===''&&preg_match('/^[A-Za-z0-9_-]{11}$/D',$vid)){$q=$pdo->prepare('SELECT match_key FROM community_matches WHERE source_url LIKE ? LIMIT 1');$q->execute(['%'.$vid.'%']);$key=(string)($q->fetchColumn()?:'');}
   if($key==='')$key=$vid?:basename($f,'.json');
   if($vid!=='')$fieldVideo[$vid]=$key;
-  $regions=array_filter($d['regions']??[],fn($r)=>($r['game_key']??'')===$game);$hasCorners=false;foreach($regions as $r)if(in_array($r['kind']??'', ['field_calibration','field_boundary'],true)&&($r['camera_view']??'')==='wide'&&count($r['points']??[])===4)$hasCorners=true;
-  $fieldMatches[$key]=['targets'=>count(array_keys($kinds,'scoring_target')),'corners'=>$hasCorners];
+  $regions=array_filter($d['regions']??[],fn($r)=>($r['game_key']??'')===$game);
+  $fieldMatches[$key]=autoscout_field_geometry($regions);
  }
  $event=fn($k)=>preg_match('/^(\d{4}[a-z0-9]+)_/',(string)$k,$m)?$m[1]:'';
  $robot=$jobs->current('skip-weights')['detector'];$field=$jobs->currentField('skip-weights',$game)['detector'];
@@ -73,12 +89,13 @@ function autoscout_train_overview(PDO $pdo,array $panel,int $org,int $user,strin
  foreach(array_reverse($panel['jobs']) as $j)if(in_array($j['state'],$active,true))$queue[]=['job'=>$j['id'],'part'=>str_starts_with($j['state'],'test_')||str_starts_with($j['state'],'evaluation_')?'test':'actions','state'=>str_ends_with($j['state'],'_queued')||$j['state']==='queued'?'waiting':'running','title'=>str_starts_with($j['state'],'test_')?'Test a match':(str_starts_with($j['state'],'evaluation_')?'Independent evaluation':'Train action models & scoring'),'message'=>$j['message']??'','since'=>$j['created_at']];
  // Say which pillar each job belongs to and what it is learning from (the same matches the helper picks).
  $usable=array_keys(array_filter($robotMatches,fn($n)=>$n>=8));sort($usable);
- $marked=array_keys(array_filter($fieldMatches,fn($v)=>$v['targets']&&$v['corners']));sort($marked);
+ $marked=array_keys(array_filter($fieldMatches,fn($v)=>$v['targets']&&$v['boundary']));sort($marked);
  $engine=$secure.'/community-learning';$name=fn($k)=>$fieldVideo[$k]??$k;   // older field reports name the video
  $shippedRobot=json_decode((string)@file_get_contents($engine.'/robot-detector/manifest.json'),true)['trained_on']??[];
  $shippedField=json_decode((string)@file_get_contents($engine.'/field-detector/trained_on.json'),true)[$game]??[];
  $heldRobot=autoscout_holdout($usable,$robot['report']['holdout_match']??null,autoscout_trained_on($robot,$shippedRobot));
- $heldField=autoscout_holdout($marked,$name($field['report']['holdout_match']??''),array_map($name,autoscout_trained_on($field,$shippedField)));
+ $cornerMarked=array_keys(array_filter($fieldMatches,fn($v)=>$v['targets']&&$v['corners']));
+ $heldField=autoscout_holdout($cornerMarked,$name($field['report']['holdout_match']??''),array_map($name,autoscout_trained_on($field,$shippedField)));
  $about=['robot'=>['1 · Robots — robot detector',sprintf('Learning from %d labelled frames in %d matches%s',array_sum(array_intersect_key($robotMatches,array_flip($usable))),count($usable),$heldRobot?' · checking on '.$heldRobot.' (held out, same every run)':'')],
   'field'=>['2 · Field — field detector',sprintf('Learning from %d marked matches%s',count($marked),$heldField?' · checking on '.$heldField.' (held out, same every run)':'')],
   'actions'=>['3 · Actions — action & scoring models',sprintf('Learning from %d tagged matches (%d tags, %d imported actions)',$panel['counts']['matches']??0,$panel['counts']['tags']??0,$panel['counts']['external']??0)],
@@ -110,7 +127,7 @@ function autoscout_helper_models(array $o):array {
  $current=fn($c)=>$c?['adopted_at'=>$c['adopted_at']??null,'holdout'=>$c['report']['holdout_match']??null,'new'=>$c['report']['new']??null]:null;
  $robot=$o['robot']??[];$field=$o['field']??[];$actions=$o['actions']??[];
  $usable=array_filter($robot['matches']??[],fn($n)=>$n>=($robot['min_frames']??8));
- $marked=array_filter($field['matches']??[],fn($m)=>!empty($m['targets'])&&!empty($m['corners']));
+ $marked=array_filter($field['matches']??[],fn($m)=>!empty($m['targets'])&&!empty($m['boundary']));
  return [
   'robot'=>['current'=>$current($robot['current']??null),'holdout'=>$robot['holdout']??null,'matches'=>count($usable),'frames'=>array_sum($usable),'events'=>$robot['events']??[],'ready'=>count($usable)>=2,'runs'=>$runs($robot['runs']??[])],
   'field'=>['current'=>$current($field['current']??null),'baseline'=>!empty($field['baseline']),'game_key'=>$field['game_key']??null,'holdout'=>$field['holdout']??null,'marked'=>count($marked),'events'=>$field['events']??[],'ready'=>count($marked)>=2,'runs'=>$runs($field['runs']??[])],

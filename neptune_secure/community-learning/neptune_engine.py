@@ -2,7 +2,7 @@
 import hashlib
 from pathlib import Path
 
-VERSION = '2.7.62-run-details'
+VERSION = '2.7.65-polygon-boundaries'
 FILES = ('neptune_hard_frames.py', 'neptune_field_training.py', 'neptune_image_folder.py', 'image-folder-labeler.html', 'neptune_external_bumpers.py', 'neptune_trainer.py', 'neptune_ui.py', 'neptune_cache.py', 'neptune_page_worker.py', 'neptune_action_labels.py', 'neptune_training.py', 'neptune_scoring_model.py', 'neptune_clock.py',
          'neptune_events.py', 'neptune_tracking.py', 'neptune_yolo.py', 'neptune_identity.py', 'neptune_persistent_identity.py', 'neptune_constant_identity.py', 'neptune_identity_review.py', 'neptune_review_learning.py', 'neptune_review_cloud.py', 'neptune_box_follow.py', 'neptune_temporal.py', 'neptune_detector_training.py', 'requirements-yolo.txt', 'neptune_facts.py',
          'neptune_ocr.py', 'neptune_video_labels.py', 'neptune_games.py', 'season_rules.json',
