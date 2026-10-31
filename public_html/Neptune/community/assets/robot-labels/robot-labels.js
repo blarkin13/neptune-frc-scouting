@@ -8,7 +8,7 @@
  const say=t=>$('status').textContent=t;
  // Detector requests (prepare frames / train) run on the connected helper; this shows their state.
  async function detectorStatus(){try{const r=await fetch('robot-labels.php?detector_status=1');const d=await r.json();
-  const names={prepare:'Prepare frames',train:'Train robot detector'};
+  const names={prepare:'Prepare frames',train:'Train robot detector',test_robot:'Test match'};
   $('requests').innerHTML='';for(const q of d.requests||[]){const row=document.createElement('div');row.className='rl-request '+q.state;
    row.textContent=`${names[q.kind]||q.kind}${q.match_key?' · '+q.match_key.replace(/^\d{4}[a-z0-9]+_/,''):''} — ${q.state==='queued'?'waiting for a helper':q.state==='claimed'?'running':q.state}${q.message?': '+q.message:''}`;$('requests').append(row)}
   const c=d.current;const rep=c&&c.report;$('current').textContent=c?`Current detector adopted ${new Date(c.adopted_at*1000).toLocaleDateString()}${rep&&rep.new?` · held-out ${rep.holdout_match||''}: found ${Math.round(rep.new.recall*100)}%, right ${Math.round(rep.new.precision*100)}%`:''}`:'Using the detector shipped with the helper.'}catch(e){}}

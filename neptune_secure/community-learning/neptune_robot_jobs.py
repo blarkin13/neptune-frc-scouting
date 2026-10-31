@@ -663,6 +663,79 @@ def send_review(config, req, report, render):
         return {'status': 'failed', 'error': str(error)[:200]}
 
 
+def test_robot(config, req, progress):
+    """Run the current robot detector, tracker, bumper OCR, constant identity, and top-down homography on a match,
+    then render and upload the review video to Neptune for viewing and optional YouTube upload."""
+    import neptune_games as games
+    import neptune_training as training
+    import neptune_review_video as rv
+    from neptune_facts import analyze_video
+    from neptune_field_regions import sync as sync_regions, sync_events, event_key, match_key_of
+    try:
+        sync_detector(config)
+        sync_field_detector(config)
+    except Exception:
+        pass
+    work = HOME/'robot-detector-work'/req['id']; shutil.rmtree(work, ignore_errors=True); work.mkdir(parents=True, exist_ok=True)
+    match_key = req['match_key']
+    title = req.get('title') or match_key
+    progress('Downloading '+match_key)
+    video = match_video(req['video_id'], work)
+    sha = hashlib.sha256(Path(video).read_bytes()).hexdigest()
+    dur = duration_s(video)
+    game = games.select(match_key)
+    roster = req.get('roster') if isinstance(req.get('roster'), dict) else None
+    site_key = hashlib.sha256(config['site'].rstrip('/').encode()).hexdigest()[:24]
+    cache_dir = HOME/'cache'/site_key/'localizations'/sha/game['fingerprint']
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    facts_file = cache_dir/'facts.json'
+
+    class Stage(list):
+        def __setitem__(self, key, value):
+            super().__setitem__(key, value); progress(str(value))
+
+    facts = None
+    if facts_file.is_file():
+        try:
+            cand = json.loads(facts_file.read_text())
+            if cand.get('source', {}).get('sha256') == sha:
+                facts = cand
+        except Exception:
+            facts = None
+    match_rec = {'key': match_key, 'title': title, 'roster': roster or {'red': [], 'blue': []},
+                 'source_url': 'https://www.youtube.com/watch?v='+req['video_id']}
+    if facts is None:
+        progress('Reading scoreboard and bumper numbers in '+match_key)
+        facts = analyze_video(video, match_rec, cache_dir, Stage(['Reading match video']), duration=dur, source_sha256=sha)
+        training.write(facts_file, facts)
+    else:
+        facts = training.refresh_cached_facts(facts_file, facts, match_rec, game, sha, video=video, progress=progress)
+    progress('Tracking robots, reading bumpers, and resolving constant identity')
+    facts = training.ensure_tracking(video, facts, game, cache_dir, progress)
+    training.write(facts_file, facts)
+    progress('Mapping top-down field homography')
+    try:
+        sync_regions(config, video, facts)
+        sync_events(config, [event_key(match_key_of(facts) or match_key)])
+    except Exception:
+        pass
+    progress('Rendering original view with boxes, bumper OCR, and top-down homography')
+    out = HOME/'review-videos'/('robot-test-'+req['id']+'.mp4'); out.parent.mkdir(parents=True, exist_ok=True)
+    _, summary = rv.robot_test_video(out, video, facts, game['game_key'], title)
+    if out.stat().st_size > 45*1024*1024:
+        out.unlink(missing_ok=True)
+        raise ValueError('Rendered match test video exceeds the 45 MB upload limit.')
+    yt_title, yt_desc = rv.describe_robot_test(title, match_key, summary, VERSION)
+    progress('Sending match test video to Neptune')
+    reply = api(config, 'robot_test_put', {
+        'request_id': req['id'], 'lease': req['lease'],
+        'title': yt_title, 'description': yt_desc, 'summary': summary,
+        'video_b64': base64.b64encode(out.read_bytes()).decode()
+    }, timeout=900)
+    out.unlink(missing_ok=True)
+    return {'match_key': match_key, 'summary': summary, 'test': reply.get('test')}
+
+
 # ---------- polling ----------
 
 def run_pending(config, progress, busy=lambda value: None):
@@ -684,9 +757,12 @@ def run_pending(config, progress, busy=lambda value: None):
             if reply.get('cancelled'):
                 raise InterruptedError('Cancelled on Neptune')
     try:
-        result = prepare(config, req, report) if req['kind'] == 'prepare' else train_field(config, req, report) if req['kind'] == 'train_field' else train(config, req, report)
+        result = prepare(config, req, report) if req['kind'] == 'prepare' else \
+                 test_robot(config, req, report) if req['kind'] == 'test_robot' else \
+                 train_field(config, req, report) if req['kind'] == 'train_field' else train(config, req, report)
         fmt = lambda p: 'none found' if not p or not p['found'] else '%d/%d within %.1f%%' % (p['found'], p['expected'], p['mean_error']*100)
         message = ('Prepared %d frames' % result['frames']) if req['kind'] == 'prepare' else \
+            ('Tested %s: %d OCR verified, %d constant ID' % (result['match_key'], result['summary']['verified_points'], result['summary']['constant_points'])) if req['kind'] == 'test_robot' else \
             (('Adopted: targets/corners %s vs %s' if result['adopted'] else 'Kept the current field detector: new %s vs %s') % (fmt(result['new']), fmt(result['current']))) if req['kind'] == 'train_field' else \
             ('Adopted: held-out F1 %.2f vs %s' % (result['new']['f1'], '%.2f' % result['current']['f1'] if result['current'] else 'none')) if result['adopted'] else \
             ('Kept the current detector: new held-out F1 %.2f vs %.2f' % (result['new']['f1'], result['current']['f1']))

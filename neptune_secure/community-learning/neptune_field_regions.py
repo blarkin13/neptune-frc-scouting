@@ -2,7 +2,7 @@
 import bisect,hashlib,json,math,re
 from pathlib import Path
 VERSION='source-bound-field-context-v1'
-KINDS={'scoring_target','scoring_zone','feeding_zone','collection_zone','field_boundary','field_calibration'}
+KINDS={'scoring_target','scoring_zone','feeding_zone','collection_zone','field_boundary','field_calibration','field_reference'}
 
 def validate(d):
     if d.get('contract')!='neptune-field-regions-v1' or d.get('schema_version')!=1 or d.get('coordinate_system')!='normalized_full_video_frame' or d.get('time_basis')!='video_elapsed_ms':raise ValueError('Unsupported field-region contract')
@@ -10,7 +10,11 @@ def validate(d):
     for r in d['regions']:
         ps=r.get('points',[])
         if r.get('kind') not in KINDS or r.get('camera_view') not in {'wide','closeup-left','closeup-right','other'} or r.get('alliance') not in {'red','blue','neutral'} or r.get('reviewed') is not True:raise ValueError('Invalid region metadata')
-        if not 3<=len(ps)<=100 or any(not isinstance(p,list) or len(p)!=2 or any(type(x) not in (int,float) or not math.isfinite(x) or not 0<=x<=1 for x in p) for p in ps):raise ValueError('Invalid normalized polygon')
+        if r.get('kind')=='field_reference':
+            # A point or a two-point line on the field, named after a game-pack field reference.
+            if not 1<=len(ps)<=2 or not isinstance(r.get('reference'),str) or not re.fullmatch(r'[a-z0-9_]{1,64}',r['reference']):raise ValueError('Invalid field reference')
+        elif not 3<=len(ps)<=100:raise ValueError('Invalid normalized polygon')
+        if any(not isinstance(p,list) or len(p)!=2 or any(type(x) not in (int,float) or not math.isfinite(x) or not 0<=x<=1 for x in p) for p in ps):raise ValueError('Invalid normalized polygon')
         for key in ('corner_indices', 'inferred_corner_indices'):
             if key in r:
                 indices = r[key]
@@ -152,7 +156,7 @@ def context(p,d,facts):
     foot=[box[0]+box[2]/2,box[1]+box[3]]
     alliance=(facts.get('bumpers',{}).get('identities',{}).get(str(p['team'])) or {}).get('alliance')
     applicable=[r for r in d['regions'] if active(r,p['t'],camera,facts) and r['alliance'] in ('neutral',alliance)]
-    zones=[{'id':r['id'],'kind':r['kind'],'label':r.get('label',''),'alliance':r['alliance']} for r in applicable if r['kind']!='scoring_target' and inside(foot,r['points'])]
+    zones=[{'id':r['id'],'kind':r['kind'],'label':r.get('label',''),'alliance':r['alliance']} for r in applicable if r['kind'] not in ('scoring_target','field_reference') and inside(foot,r['points'])]
     targets=[]
     for r in applicable:
         if r['kind']!='scoring_target':continue

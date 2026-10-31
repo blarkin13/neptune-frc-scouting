@@ -130,7 +130,7 @@
    if(b.dataset.update==='all'){const ids=[...document.querySelectorAll('[data-update="request"]')].map(x=>x.dataset.computer);if(!ids.length){alert('Every computer that can update remotely is up to date.');return}
     if(!confirm(`Update ${ids.length} computer${ids.length>1?'s':''}? Each helper downloads the newest version, installs it once it has no job running, then reopens.`))return;b.disabled=true;for(const id of ids)await send({action:'computer_settings',computer:id,update:'request'})}
    else if(b.dataset.update){b.disabled=true;await send({action:'computer_settings',computer:b.dataset.computer,update:b.dataset.update})}
-   else if(b.dataset.start){b.disabled=true;await send({action:'queue_detector',kind:b.dataset.start,computer:b.dataset.computer})}
+   else if(b.dataset.start){b.disabled=true;await send({action:'queue_detector',kind:b.dataset.start,computer:b.dataset.computer,match_only:document.getElementById('match-video-only')?.checked?'1':''})}
    else if(b.dataset.remove){if(!confirm(`Remove ${b.dataset.name} from your computers? It would need to connect again to come back.`))return;await send({action:'delete_computer',computer:b.dataset.remove})}
    else if(b.dataset.cancelJob){if(!confirm('Cancel this run now? Use this when the helper is closed or stuck. Saved video work and human tags are kept.'))return;await send({action:'cancel',job:b.dataset.cancelJob})}
    else if(b.dataset.stopJob){if(!confirm('Stop this run after the current match? Progress is saved and it can be continued later.'))return;await send({action:'stop',job:b.dataset.stopJob})}
@@ -270,7 +270,7 @@
   // A dot on each pillar in the Auto Scout menu that needs something.
   for(const a of $$('.community-nav [data-pillar]')){a.querySelector('.tt-flag')?.remove();if(needs[a.dataset.pillar]){const f=document.createElement('span');f.className='tt-flag';f.title='Needs attention';a.append(f)}}
  }
- for(const b of $$('[data-train]'))b.addEventListener('click',async()=>{if(b.dataset.train==='actions'){document.getElementById('use-helper')?.click();return}b.disabled=true;try{await send({action:'queue_detector',kind:b.dataset.train==='field'?'train_field':'train'});await refresh()}catch(e){alert(e.message);b.disabled=false}});
+ for(const b of $$('[data-train]'))b.addEventListener('click',async()=>{if(b.dataset.train==='actions'){document.getElementById('use-helper')?.click();return}b.disabled=true;try{await send({action:'queue_detector',kind:b.dataset.train==='field'?'train_field':'train',match_only:document.getElementById('match-video-only')?.checked?'1':''});await refresh()}catch(e){alert(e.message);b.disabled=false}});
  document.addEventListener('click',async e=>{const b=e.target.closest('[data-cancel]');if(!b)return;if(!confirm('Cancel this run? The helper stops at its next progress report.'))return;b.disabled=true;try{await send({action:'cancel_detector',request:b.dataset.cancel});await refresh()}catch(err){alert(err.message);b.disabled=false}});
  for(const b of $$('[data-rollback]'))b.addEventListener('click',async()=>{if(!confirm('Go back to the previous model? The current one is set aside, and helpers switch within an hour.'))return;try{await send({action:'rollback_detector',which:b.dataset.rollback});await refresh()}catch(e){alert(e.message)}});
  refresh();let tick=0;setInterval(()=>{tick++;if(!document.hidden&&(window.__neptuneFast||tick%2===0))refresh()},5000);   // every 5 s while something runs, 10 s otherwise

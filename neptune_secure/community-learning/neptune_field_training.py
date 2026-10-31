@@ -20,7 +20,7 @@ def document_at(doc,t):
         chosen[view]=valid[0]
     kept=[r for r in regions if active(r) and (r.get('camera_view') not in chosen or r.get('shot_id','legacy')==chosen[r['camera_view']])]
     result=dict(doc,regions=kept)
-    if not fd.training_geometry(result):return None
+    if not fd.boundary_corners(result) or not any(r['kind']=='scoring_target' and r['camera_view']=='wide' for r in kept):return None
     calibrations=[r for r in kept if r['kind']=='field_calibration' and r['camera_view']=='wide']
     if len(calibrations)>1:return None
     return result
@@ -52,7 +52,7 @@ def samples(doc,frames,reference_frame):
     for _,(t,image) in sorted(rows.items()):
         truth=document_at(doc,t)
         if truth:out.append((t,image,truth))
-    if not out:raise ValueError('No frames fall within a complete saved target/boundary interval; labels have been preserved.')
+    if not out:raise ValueError('No frames fall within a complete saved target/corner interval; labels have been preserved.')
     return out
 
 

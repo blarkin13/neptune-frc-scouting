@@ -206,7 +206,7 @@ def watch_jobs(config,hardware,execute,progress,closing,pause,busy=lambda value:
     form=telemetry.form_factor()
     if not getattr(telemetry,'reporter',None):telemetry.reporter=telemetry.Reporter(lambda payload:robot_jobs.api(config,'computer_poll',payload,timeout=20),
                        lambda:{'busy':awake.busy,'awake':awake.active,'message':last_message[0][:600],'version':helper_version() or engine_version(),'platform':'%s · %s'%(platform.system().replace('Darwin','Mac'),hardware.get('name','CPU')),'form':form},
-                       lambda reply:(awake.set_mode((reply.get('settings') or {}).get('keep_awake','jobs')),telemetry.replied(reply),identity_tick()),closing).start()
+                       lambda reply:(awake.set_mode((reply.get('settings') or {}).get('keep_awake') or awake.mode),telemetry.replied(reply),identity_tick()),closing).start()
     identity_due=[0.]
     def identity_tick():
         # Every helper uses the organization's shared robot-identity model, trained where tracking is reviewed:

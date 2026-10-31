@@ -34,18 +34,35 @@ final class RobotDetectorJobs {
 
  /** Queue a request from the website. Re-queuing the same open request returns the existing one. */
  public function queue(string $kind,array $p,int $user):array{
-  if(!in_array($kind,['prepare','train','train_field'],true))throw new InvalidArgumentException('Unknown request');
+  if(!in_array($kind,['prepare','train','train_field','test_robot'],true))throw new InvalidArgumentException('Unknown request');
   $body=['kind'=>$kind];if($kind==='train_field')$body['game_key']=self::game((string)($p['game_key']??''));
   if(in_array($kind,['train','train_field'],true)&&preg_match('/^[A-Za-z0-9_-]{1,100}$/D',(string)($p['holdout']??'')))$body['holdout']=$p['holdout'];   // chosen by autoscout_holdout()
+  if($kind==='train'&&!empty($p['match_only']))$body['match_video_only']=true;   // owner test: no workshop or folder photos
   if(preg_match('/^[a-f0-9]{32}$/D',(string)($p['computer']??'')))$body['target']=$p['computer'];   // only this helper may claim it
   if($kind==='prepare'){$body['source_stills']=true;$body['video_id']=self::video((string)($p['video_id']??''));$body['match_key']=(string)($p['match_key']??'');if(!preg_match('/^\d{4}[A-Za-z0-9_-]{1,95}$/D',$body['match_key']))throw new InvalidArgumentException('Invalid match');
    $times=$p['times_ms']??[];   // hard frames picked from tracking reviews
    if(!is_array($times)||count($times)>60)throw new InvalidArgumentException('Invalid frame times');
    foreach($times as $t)if(!is_int($t)||$t<0||$t>1800000)throw new InvalidArgumentException('Invalid frame times');
    if($times){$times=array_values(array_unique($times));sort($times);$body['times_ms']=$times;}}
-  foreach($this->requests() as $r)if(in_array($r['state'],['queued','claimed'],true)&&$r['kind']===$kind&&($r['video_id']??null)===($body['video_id']??null)&&($r['game_key']??null)===($body['game_key']??null))return $r;
+  if($kind==='test_robot'){$body['video_id']=self::video((string)($p['video_id']??''));$body['match_key']=(string)($p['match_key']??'');if(!preg_match('/^\d{4}[A-Za-z0-9_-]{1,95}$/D',$body['match_key']))throw new InvalidArgumentException('Invalid match');
+   if(!empty($p['match_id']))$body['match_id']=(int)$p['match_id'];
+   $body['title']=mb_substr(trim((string)($p['title']??$body['match_key']))?:$body['match_key'],0,200);
+   if(is_array($p['roster']??null))$body['roster']=$p['roster'];}
+  foreach($this->requests() as $r)if(in_array($r['state'],['queued','claimed'],true)&&$r['kind']===$kind&&($r['video_id']??null)===($body['video_id']??null)&&($r['game_key']??null)===($body['game_key']??null)){
+   if($r['state']==='queued'&&($r['target']??null)!==($body['target']??null)){
+    if(empty($body['target']))unset($r['target']);else $r['target']=$body['target'];
+    $r['message']=empty($body['target'])?'Waiting for a connected helper':'Waiting for the chosen computer';
+    self::write($this->dir('requests').'/'.$r['id'].'.json',$r);
+   }
+   return $r;
+  }
   $r=$body+['id'=>bin2hex(random_bytes(12)),'state'=>'queued','created_at'=>time(),'created_by'=>$user,'message'=>empty($body['target'])?'Waiting for a connected helper':'Waiting for the chosen computer'];
   self::write($this->dir('requests').'/'.$r['id'].'.json',$r);return $r;
+ }
+ /** A match-video-only run this helper is doing gets no workshop or folder photos. */
+ public function matchVideoOnly(array $computer):bool{
+  foreach($this->requests() as $r)if($r['state']==='claimed'&&$r['kind']==='train'&&($r['computer_id']??null)===$computer['id']&&!empty($r['match_video_only']))return true;
+  return false;
  }
  public function requests():array{
   $out=[];foreach(glob($this->root.'/requests/*.json')?:[] as $f){$r=json_decode((string)file_get_contents($f),true);if(is_array($r))$out[]=$r;}
@@ -62,7 +79,7 @@ final class RobotDetectorJobs {
    if(!empty($r['source_stills'])&&!$this->supportsSourceStills((string)$computer['id']))continue;
    if($r['kind']==='train'&&is_file(dirname($this->root,2).'/external-bumper-training/'.basename($this->root).'/6962-workshop-v1.json')&&!$this->supportsWorkshop((string)$computer['id']))continue;
    if($r['kind']==='train_field'&&!$this->supportsFieldReference((string)$computer['id']))continue;
-   if($r['kind']==='train'&&!$this->supportsRobotValidation((string)$computer['id']))continue;
+   if(in_array($r['kind'],['train','test_robot'],true)&&!$this->supportsRobotValidation((string)$computer['id']))continue;
    if(!empty($r['times_ms'])&&!$this->supportsHardFrames((string)$computer['id']))continue;
    if(!empty($r['target'])&&$r['target']!==$computer['id'])continue;   // sent to another computer
    $r=array_replace($r,['state'=>'claimed','claimed_at'=>time(),'heartbeat_at'=>time(),'computer_id'=>$computer['id'],'lease'=>bin2hex(random_bytes(16)),'message'=>($r['state']==='claimed'?'Restarted on the helper':'Started on a helper')]);
@@ -89,12 +106,12 @@ final class RobotDetectorJobs {
  }
  private function supportsFieldReference(string $computer):bool{
   $v=(string)($this->status($computer)['version']??'');
-  // Field runs need helpers that accept polygon boundaries and separate confirmed/inferred corners; retrain at the checked
+  // Field runs need helpers that skip frame-edge corners, score each corner on its own, retrain at the checked
   // picture size and keep the held-out match out of training.
-  if(preg_match('/^engine (\d+\.\d+\.\d+)/D',$v,$m))return version_compare($m[1],'2.7.65','>=');
-  if(preg_match('/^3\./',$v))return version_compare($v,'3.2.80','>=');
-  if(preg_match('/^6\.5\./',$v))return version_compare($v,'6.5.51','>=');
-  if(preg_match('/^6\.6\./',$v))return version_compare($v,'6.6.42','>=');
+  if(preg_match('/^engine (\d+\.\d+\.\d+)/D',$v,$m))return version_compare($m[1],'2.7.36','>=');
+  if(preg_match('/^3\./',$v))return version_compare($v,'3.2.51','>=');
+  if(preg_match('/^6\.5\./',$v))return version_compare($v,'6.5.22','>=');
+  if(preg_match('/^6\.6\./',$v))return version_compare($v,'6.6.13','>=');
   return false;
  }
  private function supportsRobotValidation(string $computer):bool{
@@ -178,6 +195,55 @@ final class RobotDetectorJobs {
   }else $review['status']='youtube_not_connected';
   $r['review']=$review;self::write($this->root.'/requests/'.$r['id'].'.json',$r);
   return ['review'=>$review];
+ }
+ /** A robot-detection match test video (1 · Robots page): saved locally on Neptune first so the owner can watch it
+  *  and edit the pre-filled title/description before optionally uploading to YouTube. */
+ public function putRobotTest(array $computer,array $p):array{
+  $r=$this->owned($computer,$p);if($r['state']==='cancelled')throw new InvalidArgumentException('This run was cancelled');
+  if(($r['kind']??'')!=='test_robot')throw new InvalidArgumentException('Only a robot match test can save a robot test video');
+  $raw=base64_decode((string)($p['video_b64']??''),true);if($raw===false||strlen($raw)<1000||strlen($raw)>48*1024*1024)throw new InvalidArgumentException('Invalid robot test video');
+  $dir=$this->dir('robot-tests');$file=$dir.'/'.$r['id'].'.mp4';file_put_contents($file,$raw,LOCK_EX);chmod($file,0600);
+  $old=glob($dir.'/*.mp4')?:[];usort($old,fn($a,$b)=>filemtime($b)<=>filemtime($a));foreach(array_slice($old,10) as $f)unlink($f);
+  $title=mb_substr(trim((string)($p['title']??('Robot detection test - '.($r['match_key']??'')))),0,100);
+  $desc=mb_substr((string)($p['description']??''),0,4900);
+  $rec=['id'=>$r['id'],'video_id'=>$r['video_id']??null,'match_key'=>$r['match_key']??null,'match_id'=>$r['match_id']??null,
+   'match_title'=>$r['title']??($r['match_key']??''),'title'=>$title,'description'=>$desc,
+   'summary'=>is_array($p['summary']??null)?$p['summary']:[],'status'=>'saved','saved_at'=>time(),'computer_id'=>$computer['id']];
+  self::write($dir.'/'.$r['id'].'.json',$rec);
+  $r['review']=$rec;self::write($this->root.'/requests/'.$r['id'].'.json',$r);
+  return ['test'=>$rec];
+ }
+ public function robotTests():array{
+  $out=[];foreach(glob($this->root.'/robot-tests/*.json')?:[] as $f){
+   $d=json_decode((string)file_get_contents($f),true);
+   if(is_array($d)&&!empty($d['id'])){$d['has_video']=is_file($this->root.'/robot-tests/'.$d['id'].'.mp4');$out[]=$d;}
+  }
+  usort($out,fn($a,$b)=>($b['saved_at']??0)<=>($a['saved_at']??0));return array_slice($out,0,10);
+ }
+ public function robotTest(string $id):?array{
+  if(!preg_match('/^[a-f0-9]{24}$/D',$id))throw new InvalidArgumentException('Invalid test');
+  $f=$this->root.'/robot-tests/'.$id.'.json';if(!is_file($f))return null;
+  $d=json_decode((string)file_get_contents($f),true);if(!is_array($d))return null;
+  $d['has_video']=is_file($this->root.'/robot-tests/'.$id.'.mp4');return $d;
+ }
+ public function robotTestVideoPath(string $id):?string{
+  if(!preg_match('/^[a-f0-9]{24}$/D',$id))throw new InvalidArgumentException('Invalid test');
+  $f=$this->root.'/robot-tests/'.$id.'.mp4';return is_file($f)?$f:null;
+ }
+ public function uploadRobotTestToYouTube(string $id,string $title,string $desc,YouTubeUploader $youtube):array{
+  $rec=$this->robotTest($id);if(!$rec)throw new InvalidArgumentException('Robot test not found.');
+  $mp4=$this->robotTestVideoPath($id);if(!$mp4)throw new InvalidArgumentException('The video file for this test is no longer on the server.');
+  $title=mb_substr(trim($title)?:($rec['title']??'Robot detection test'),0,100);
+  $desc=mb_substr($desc,0,4900);
+  $rec['title']=$title;$rec['description']=$desc;
+  if(!$youtube->status()['connected'])throw new InvalidArgumentException('Connect YouTube first on /autoscout/youtube.php.');
+  set_time_limit(900);
+  $up=$youtube->upload($mp4,$title,$desc);
+  $rec=array_replace($rec,$up,['status'=>'uploaded','uploaded_at'=>time(),'error'=>null]);
+  self::write($this->dir('robot-tests').'/'.$id.'.json',$rec);
+  $reqFile=$this->root.'/requests/'.$id.'.json';
+  if(is_file($reqFile)){$r=json_decode((string)file_get_contents($reqFile),true);if(is_array($r)){$r['review']=$rec;self::write($reqFile,$r);}}
+  return $rec;
  }
  /** Per-computer settings set on Neptune (My computers): keep awake 'jobs' (default), 'always' or 'off'. */
  private static function cid(string $id):string{if(!preg_match('/^[a-f0-9]{32}$/D',$id))throw new InvalidArgumentException('Invalid computer');return $id;}

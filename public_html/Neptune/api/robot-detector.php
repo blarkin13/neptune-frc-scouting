@@ -28,8 +28,8 @@ try {
    $control=new CommunityTrainingControl($pdo);$owner=(int)$computer['user_id'];
    $computers=autoscout_computers($pdo,$jobs,$control->computers($owner),$jobs->requests());
    $queue=[];foreach($jobs->requests() as $request)if(in_array($request['state']??'', ['queued','claimed'],true))
-    $queue[]=['request'=>$request['id'],'title'=>match($request['kind']??''){'train'=>'Train robot detector','train_field'=>'Train field detector','prepare'=>'Prepare frames',default=>'Training'},'state'=>$request['state']==='claimed'?'running':'waiting','message'=>$request['message']??'','target'=>$request['target']??null,'computer_id'=>$request['computer_id']??null,
-     'label'=>match($request['kind']??''){'train_field'=>'2 · Field — field detector','prepare'=>'1 · Robots — prepare frames',default=>'1 · Robots — robot detector'},'started'=>$request['claimed_at']??null];
+    $queue[]=['request'=>$request['id'],'title'=>match($request['kind']??''){'train'=>'Train robot detector','train_field'=>'Train field detector','prepare'=>'Prepare frames','test_robot'=>'Test robot detection',default=>'Training'},'state'=>$request['state']==='claimed'?'running':'waiting','message'=>$request['message']??'','target'=>$request['target']??null,'computer_id'=>$request['computer_id']??null,
+     'label'=>match($request['kind']??''){'train_field'=>'2 · Field — field detector','prepare'=>'1 · Robots — prepare frames','test_robot'=>'1 · Robots — test match',default=>'1 · Robots — robot detector'},'started'=>$request['claimed_at']??null];
    $q=$pdo->prepare("SELECT id,state,message,control_json,created_at,started_at FROM community_learning_jobs WHERE season=? AND state IN ('remote_queued','remote_running','queued','running','test_queued','test_running','evaluation_queued','evaluation_running') ORDER BY created_at DESC LIMIT 20");$q->execute([(int)gmdate('Y')]);
    foreach($q as $row){$control=json_decode((string)($row['control_json']??''),true)?:[];$state=(string)$row['state'];$queue[]=['job'=>$row['id'],'title'=>str_starts_with($state,'test_')?'Test a match':(str_starts_with($state,'evaluation_')?'Independent evaluation':'Train action models & scoring'),'state'=>str_ends_with($state,'queued')?'waiting':'running','message'=>$row['message']??'','target'=>$control['computer_id']??null,
      'label'=>str_starts_with($state,'test_')||str_starts_with($state,'evaluation_')?'Test & release':'3 · Actions — action & scoring models','started'=>(int)($row['started_at']??0)?:(isset($row['created_at'])?(int)$row['created_at']:null)];}
@@ -79,7 +79,7 @@ try {
   'tracking_put'=>(new TrackingIdentityShare(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put($computer,$p),
   'tracking_current'=>(new TrackingIdentityShare(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->current(isset($p['have'])?(string)$p['have']:null),
   'claim'=>['request'=>$jobs->claim($computer)],
-  'training_supplement_index'=>['packages'=>(new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->index()],
+  'training_supplement_index'=>['packages'=>$jobs->matchVideoOnly($computer)?[]:(new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->index()],
   'training_supplements'=>(function()use($computer,$p){$store=new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']);if(isset($p['id']))return ['datasets'=>[$store->get((string)$p['id'],(string)($p['sha256']??''))]];foreach($store->index() as $item)if($item['id']==='6962-workshop-v1')return ['datasets'=>[$store->get($item['id'],$item['sha256'])]];return ['datasets'=>[]];})(),
   'progress'=>$jobs->progress($computer,$p),
   'finish'=>$jobs->finish($computer,$p),
@@ -93,6 +93,7 @@ try {
   'selfcheck_put'=>$jobs->putSelfcheck($computer,$p),
   'score_put'=>(new ScoreMoments(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put($p),
   'review_put'=>$jobs->putReview($computer,$p,new YouTubeUploader(dirname(__DIR__,3).'/neptune_secure')),
+  'robot_test_put'=>$jobs->putRobotTest($computer,$p),
   'current_field'=>$jobs->currentField(isset($p['have'])?(string)$p['have']:null,isset($p['game_key'])?(string)$p['game_key']:null),
   'adopt_field'=>$jobs->adoptField($computer,$p),
   default=>throw new CommunityAnalysisError(422,'Unknown action.'),

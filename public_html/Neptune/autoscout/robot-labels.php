@@ -7,6 +7,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/community-analysis-install.php'
 require_once dirname(__DIR__,3).'/neptune_secure/community-video-tags.php';
 require_once dirname(__DIR__,3).'/neptune_secure/robot-detector-jobs.php';
 require_once dirname(__DIR__,3).'/neptune_secure/robot-label-frames.php';
+require_once dirname(__DIR__,3).'/neptune_secure/youtube-uploader.php';
 $u=require_role(['owner','admin']);
 if((int)$u['organization_id']!==(int)($config['app']['platform_organization_id']??1))access_denied('Auto Scout is for admins of the owner organization.');
 
@@ -56,8 +57,32 @@ if($_SERVER['REQUEST_METHOD']==='GET'&&isset($_GET['frame_image'])){
  if(!$image)robot_reply(404,['error'=>'Prepare source frames for this match first.']);
  header('Content-Type: image/jpeg');header('X-Content-Type-Options: nosniff');echo $image['bytes'];exit;
 }
+if($_SERVER['REQUEST_METHOD']==='GET'&&isset($_GET['robot_test_video'])){
+ try{$mp4=$robotJobs->robotTestVideoPath((string)$_GET['robot_test_video']);}catch(InvalidArgumentException){robot_reply(422,['error'=>'Invalid test']);}
+ if(!$mp4)robot_reply(404,['error'=>'Test video not found.']);
+ $size=filesize($mp4);$start=0;$end=$size-1;$status=200;
+ if(!empty($_SERVER['HTTP_RANGE'])&&preg_match('/^bytes=(\d+)-(\d*)$/D',(string)$_SERVER['HTTP_RANGE'],$m)){
+  $start=(int)$m[1];$end=$m[2]!==''?min($size-1,(int)$m[2]):$size-1;$status=206;
+  if($start>$end||$start>=$size){http_response_code(416);header("Content-Range: bytes */$size");exit;}
+ }
+ http_response_code($status);header('Content-Type: video/mp4');header('Accept-Ranges: bytes');header('X-Content-Type-Options: nosniff');
+ header('Content-Length: '.($end-$start+1));if($status===206)header("Content-Range: bytes $start-$end/$size");
+ $fh=fopen($mp4,'rb');if($fh){fseek($fh,$start);$left=$end-$start+1;while($left>0&&!feof($fh)){$chunk=fread($fh,min(65536,$left));if($chunk===false||$chunk==='')break;echo $chunk;$left-=strlen($chunk);}fclose($fh);}
+ exit;
+}
 if($_SERVER['REQUEST_METHOD']==='GET'&&isset($_GET['detector_status'])){
- $cur=$robotJobs->current('skip-weights');robot_reply(200,['requests'=>array_map(fn($r)=>array_diff_key($r,['lease'=>1]),array_slice($robotJobs->requests(),0,8)),'current'=>$cur['detector']]);
+ $cur=$robotJobs->current('skip-weights');$yt=(new YouTubeUploader(dirname(__DIR__,3).'/neptune_secure'))->status();
+ $computers=[];
+ try{
+  $cq=$pdo->prepare('SELECT id,name,expires_at,revoked,last_seen FROM community_training_computers WHERE user_id=? AND revoked=0 ORDER BY last_seen DESC,created_at DESC');
+  $cq->execute([(int)$u['id']]);
+  foreach($cq->fetchAll(PDO::FETCH_ASSOC) as $c){
+   $cid=(string)$c['id'];$st=$robotJobs->status($cid)?:[];
+   $online=((int)$c['expires_at']>time())&&((int)$c['last_seen']>time()-75||((int)($st['at']??0)>time()-75));
+   $computers[]=['id'=>$cid,'name'=>(string)($c['name']?:'Computer'),'online'=>$online,'busy'=>!empty($st['busy']),'version'=>(string)($st['version']??'')];
+  }
+ }catch(Throwable $e){}
+ robot_reply(200,['requests'=>array_map(fn($r)=>array_diff_key($r,['lease'=>1]),array_slice($robotJobs->requests(),0,12)),'current'=>$cur['detector'],'robot_tests'=>$robotJobs->robotTests(),'youtube'=>$yt,'computers'=>$computers]);
 }
 if($_SERVER['REQUEST_METHOD']==='GET'&&isset($_GET['labels'])){$v=robot_video((string)$_GET['labels']);robot_reply(200,robot_doc($store,$v));}
 if($_SERVER['REQUEST_METHOD']==='GET'&&isset($_GET['prefill'])){$v=robot_video((string)$_GET['prefill']);robot_reply(200,robot_prefill($pdo,(int)$u['organization_id'],$v,max(0,(int)($_GET['t_ms']??0))));}
@@ -72,7 +97,23 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    foreach($rows as $row){if(!is_int($row['t_ms']??null))throw new RuntimeException('Invalid timestamp');$labelFrames->put($v,$row['t_ms'],(string)($row['image_b64']??''),(string)($row['source_sha256']??''));}
    robot_reply(200,['ok'=>true,'frames'=>count($rows)]);
   }
-
+  if(($p['action']??'')==='queue_test_robot'){
+   $mid=(int)($p['match_id']??0);if($mid<=0)throw new RuntimeException('Choose a match to test first.');
+   $comp=trim((string)($p['computer']??''));
+   if($comp!==''){
+    $cq=$pdo->prepare('SELECT id FROM community_training_computers WHERE id=? AND user_id=? AND revoked=0');
+    $cq->execute([$comp,(int)$u['id']]);
+    if(!$cq->fetchColumn())throw new RuntimeException('Choose one of your connected helper computers.');
+   }
+   $q=$pdo->prepare('SELECT id,match_key,title,roster_json,source_url FROM community_matches WHERE id=?');$q->execute([$mid]);$m=$q->fetch(PDO::FETCH_ASSOC);
+   if(!$m||!($vid=CommunityVideoTags::videoId((string)$m['source_url'])))throw new RuntimeException('This match does not have a linked YouTube video.');
+   $roster=json_decode((string)($m['roster_json']??''),true);
+   robot_reply(200,['request'=>$robotJobs->queue('test_robot',['match_id'=>(int)$m['id'],'match_key'=>(string)$m['match_key'],'title'=>(string)($m['title']?:$m['match_key']),'video_id'=>$vid,'roster'=>is_array($roster)?$roster:null,'computer'=>$comp],(int)$u['id'])]);
+  }
+  if(($p['action']??'')==='upload_robot_test_youtube'){
+   $rec=$robotJobs->uploadRobotTestToYouTube((string)($p['request_id']??''),(string)($p['title']??''),(string)($p['description']??''),new YouTubeUploader(dirname(__DIR__,3).'/neptune_secure'));
+   robot_reply(200,['ok'=>true,'test'=>$rec]);
+  }
   if(in_array($p['action']??'',['queue_prepare','queue_train'],true))robot_reply(200,['request'=>$robotJobs->queue($p['action']==='queue_prepare'?'prepare':'train',$p,(int)$u['id'])]);
   $v=robot_video((string)($p['video_id']??''));$tms=$p['t_ms']??null;
   if(!is_int($tms)||$tms<0||$tms>36000000)throw new RuntimeException('Invalid video time');
@@ -146,8 +187,177 @@ pillar_summary('robot','Finds every robot’s bumpers in a frame, in wide and cl
 <div class="rl-stats"><div><span id="boxcount">0</span><small>boxes in this frame</small></div><div><span id="donecount">0</span><small>frames complete in this match</small></div></div>
 <button id="complete" class="primary save">All bumpers boxed ↵</button><button id="skip" class="save rl-secondary">Skip frame (replay, graphic, blurry)</button>
 <div id="status" role="status" aria-live="polite">Choose a match.</div>
-<div class="note rl-detector"><b>Robot detector</b><p>Prepare frames: your updated helper supplies clear source images and bumper guesses. When preparation finishes, refresh this page to label without YouTube captions. Play is only for watching context.</p><button id="prepare" class="save rl-secondary"<?=$selected?'':' disabled'?>>Prepare frames for this match</button><div id="requests" class="rl-requests"></div><div id="current" class="rl-current"></div></div><div class="note"><b>What makes good labels</b><p>Every bumper you can see, red or blue, even partly hidden or far away. Box just the bumper, not the whole robot. Skip frames that aren't live match footage.</p></div></aside></div></div>
-<script src="../community/assets/match-picker/match-picker.js?v=1"></script><script src="../community/assets/field-regions/youtube-source.js?v=5-captions-toggle"></script><script src="../community/assets/robot-labels/<?= $sourceMode?'robot-labels-stills.js?v=7-undo':'robot-labels.js?v=3-undo' ?>"></script>
+<div class="note rl-detector"><b>Robot detector</b><p>Prepare frames: your updated helper supplies clear source images and bumper guesses. When preparation finishes, refresh this page to label without YouTube captions. Play is only for watching context.</p><button id="prepare" class="save rl-secondary"<?=$selected?'':' disabled'?>>Prepare frames for this match</button><div id="requests" class="rl-requests"></div><div id="current" class="rl-current"></div></div><div class="note"><b>What makes good labels</b><p>Every bumper you can see, red or blue, even partly hidden or far away. Box just the bumper, not the whole robot. Skip frames that aren't live match footage.</p></div></aside></div>
+
+<section class="tt-card rl-test-card" id="robot-test-section">
+ <span class="stage-label">TEST CONSTANT ROBOT DETECTION</span>
+ <h2>Test a match</h2>
+ <p>Runs the current robot detector, tracker, bumper OCR, and constant identity on the match video—drawing colored bounding boxes and bumper reads on the original view (green = OCR verified, cyan = constant/inferred identity, amber = unresolved) alongside a top-down homography field view.</p>
+ <div class="rl-test-bar">
+  <div class="match-picker-v2" id="robot-test-picker" data-match-picker data-endpoint="robot-labels.php" data-select-only="1" data-selected="<?=e($selected['match_key']??'')?>"></div>
+  <label class="rl-test-helper"><span>Helper</span><select id="robot-test-computer"><option value="">First available helper</option></select></label>
+  <button type="button" id="robot-test-btn" class="primary save" disabled>Test</button>
+ </div>
+ <p id="robot-test-status" class="training-note" role="status" aria-live="polite">Choose a match above and press Test.</p>
+ <div id="robot-test-viewer" class="rl-test-viewer" hidden>
+  <div class="rl-test-head">
+   <label>Saved match tests <select id="robot-test-select"></select></label>
+   <span id="robot-test-summary" class="training-note"></span>
+  </div>
+  <div class="rl-test-grid">
+   <div class="rl-test-player-wrap">
+    <video id="robot-test-video" class="rl-test-video" controls preload="metadata" playsinline></video>
+   </div>
+   <div class="rl-test-yt">
+    <h3>Upload to YouTube</h3>
+    <p class="training-note">Review and edit the pre-filled title and description before uploading to YouTube.</p>
+    <label class="rl-test-field"><span>Title</span><input type="text" id="robot-test-title" maxlength="100"></label>
+    <label class="rl-test-field"><span>Description</span><textarea id="robot-test-desc" rows="7" maxlength="4900"></textarea></label>
+    <div class="rl-test-yt-actions">
+     <button type="button" id="robot-test-upload" class="primary save">Upload to YouTube</button>
+     <span id="robot-test-yt-status" class="training-note" role="status"></span>
+    </div>
+   </div>
+  </div>
+ </div>
+</section>
+</div>
+<script src="../community/assets/match-picker/match-picker.js?v=2-multi"></script><script src="../community/assets/field-regions/youtube-source.js?v=5-captions-toggle"></script><script src="../community/assets/robot-labels/<?= $sourceMode?'robot-labels-stills.js?v=8-test':'robot-labels.js?v=4-test' ?>"></script>
+<style>
+.rl-test-card{margin-top:20px;padding:18px;border:1px solid #1e2b3c;border-radius:12px;background:#0b121c}
+.rl-test-card h2{margin:4px 0 8px}
+.rl-test-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin:12px 0}
+.rl-test-bar .match-picker-v2{flex:1 1 520px}
+.rl-test-helper{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#9aa7b8;font-weight:600;min-width:210px}
+.rl-test-helper select{background:#070d15;color:#eaf2ff;border:1px solid #28384f;border-radius:6px;padding:8px 10px;font:13px/1.4 system-ui,sans-serif}
+.rl-test-bar #robot-test-btn{width:auto;min-width:120px;margin:0;padding:10px 20px}
+.rl-test-viewer{margin-top:14px;padding-top:14px;border-top:1px solid #1e2b3c}
+.rl-test-head{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.rl-test-head select{margin-left:8px;max-width:360px}
+.rl-test-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,1fr);gap:18px;align-items:start}
+@media(max-width:960px){.rl-test-grid{grid-template-columns:1fr}}
+.rl-test-video{width:100%;max-height:640px;background:#000;border-radius:8px;border:1px solid #1e2b3c;display:block}
+.rl-test-yt{background:#0f1826;border:1px solid #1e2b3c;border-radius:10px;padding:14px}
+.rl-test-yt h3{margin:0 0 6px;font-size:16px}
+.rl-test-field{display:block;margin:10px 0}
+.rl-test-field span{display:block;font-size:12px;color:#9aa7b8;margin-bottom:4px;font-weight:600}
+.rl-test-field input,.rl-test-field textarea{width:100%;box-sizing:border-box;background:#070d15;color:#eaf2ff;border:1px solid #28384f;border-radius:6px;padding:8px 10px;font:13px/1.45 system-ui,sans-serif}
+.rl-test-field textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.rl-test-yt-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+.rl-test-yt-actions button{width:auto;margin:0;padding:9px 16px}
+</style>
+<script>
+(()=>{
+ const app=document.getElementById('robot-labels-app'),picker=document.getElementById('robot-test-picker'),
+       compSel=document.getElementById('robot-test-computer'),
+       btn=document.getElementById('robot-test-btn'),status=document.getElementById('robot-test-status'),
+       viewer=document.getElementById('robot-test-viewer'),sel=document.getElementById('robot-test-select'),
+       vid=document.getElementById('robot-test-video'),sum=document.getElementById('robot-test-summary'),
+       titleIn=document.getElementById('robot-test-title'),descIn=document.getElementById('robot-test-desc'),
+       upBtn=document.getElementById('robot-test-upload'),ytStatus=document.getElementById('robot-test-yt-status');
+ if(!app||!picker||!btn)return;
+ const endpoint=location.pathname.endsWith('robot-labels-preview.php')?'robot-labels-preview.php':'robot-labels.php';
+ let tests=[],computers=[],currentId='',edited=false,ytConnected=false;
+ picker.addEventListener('matchselect',e=>{
+  const d=e.detail||{};
+  btn.disabled=!d.id;
+  if(d.id)status.textContent=`Ready to test ${d.title||d.match_key} with the current robot detector, bumper OCR, and homography map.`;
+ });
+ titleIn.addEventListener('input',()=>{edited=true});
+ descIn.addEventListener('input',()=>{edited=true});
+ function renderTest(id,forceFields){
+  const t=tests.find(x=>x.id===id)||tests[0];
+  if(!t){viewer.hidden=true;return;}
+  viewer.hidden=false;
+  const changed=currentId!==t.id;
+  currentId=t.id;
+  sel.value=t.id;
+  if(changed){
+   vid.src=t.has_video?`${endpoint}?robot_test_video=${encodeURIComponent(t.id)}`:'';
+  }
+  if(changed||forceFields||!edited){
+   titleIn.value=t.title||`Robot detection test - ${t.match_key||''}`;
+   descIn.value=t.description||'';
+   edited=false;
+  }
+  const s=t.summary||{};
+  const parts=[
+   s.verified_points!=null?`OCR verified: ${s.verified_points}`:'',
+   s.constant_points!=null?`Constant ID: ${s.constant_points}`:'',
+   s.inferred_points!=null?`Inferred: ${s.inferred_points}`:'',
+   s.unknown_points!=null?`Unresolved: ${s.unknown_points}`:'',
+   s.homography_status?`Top-down map: ${s.homography_status}`:''
+  ].filter(Boolean);
+  sum.textContent=parts.join(' · ');
+  if(t.youtube_id){
+   ytStatus.innerHTML=`Uploaded: <a href="https://youtu.be/${encodeURIComponent(t.youtube_id)}" target="_blank" rel="noopener">▶ Watch on YouTube</a>${t.privacy==='private'?' <small>(private)</small>':' <small>(unlisted)</small>'}`;
+   upBtn.textContent='Upload again to YouTube';
+  }else if(!ytConnected){
+   ytStatus.innerHTML='<a href="/autoscout/youtube.php">Connect YouTube</a> to upload this test video.';
+   upBtn.textContent='Upload to YouTube';
+  }else{
+   ytStatus.textContent='Ready to upload to YouTube as unlisted.';
+   upBtn.textContent='Upload to YouTube';
+  }
+  upBtn.disabled=!t.has_video;
+ }
+ async function refreshTests(){
+  try{
+   const r=await fetch(endpoint+'?detector_status=1');if(!r.ok)return;
+   const d=await r.json();
+   ytConnected=!!(d.youtube&&d.youtube.connected);
+   if(compSel&&Array.isArray(d.computers)){
+    computers=d.computers;
+    const prevComp=compSel.value;
+    compSel.replaceChildren(
+     new Option('First available helper',''),
+     ...computers.map(c=>new Option(`${c.name} (${c.online?(c.busy?'online · busy':'online · idle'):'offline'})`,c.id))
+    );
+    if(prevComp&&computers.some(c=>c.id===prevComp))compSel.value=prevComp;
+   }
+   const active=(d.requests||[]).find(q=>q.kind==='test_robot'&&['queued','claimed'].includes(q.state));
+   if(active){
+    const targetName=active.target&&(computers.find(c=>c.id===active.target)?.name||'chosen helper');
+    status.textContent=`Test match (${active.match_key||''}): ${active.state==='queued'?(targetName?`waiting for ${targetName}`:'waiting for a connected helper'):(active.message||'running on helper')}`;
+   }
+   const list=d.robot_tests||[];
+   const prevNewest=tests[0]?.id;
+   tests=list;
+   if(!list.length){viewer.hidden=true;return;}
+   sel.replaceChildren(...list.map(t=>{
+    const dstr=t.saved_at?new Date(t.saved_at*1000).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+    return new Option(`${t.match_title||t.match_key||t.id} (${dstr})${t.youtube_id?' · YouTube ✓':''}`,t.id);
+   }));
+   if(prevNewest&&list[0].id!==prevNewest){currentId='';edited=false;status.textContent=`Finished testing ${list[0].match_title||list[0].match_key}. Watch the video below or upload to YouTube.`;}
+   renderTest(currentId&&list.some(x=>x.id===currentId)?currentId:list[0].id,false);
+  }catch(e){}
+ }
+ sel.addEventListener('change',()=>{edited=false;renderTest(sel.value,true)});
+ btn.addEventListener('click',async()=>{
+  const mid=Number(picker.dataset.matchId||0);if(!mid)return;
+  const comp=compSel?compSel.value:'';
+  btn.disabled=true;status.textContent='Queuing robot detection match test for your helper…';
+  try{
+   const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-Robot-Labels-CSRF':app.dataset.csrf},body:JSON.stringify({action:'queue_test_robot',match_id:mid,computer:comp})});
+   const d=await r.json();if(!r.ok)throw Error(d.error||'Could not queue match test');
+   const who=comp?(computers.find(c=>c.id===comp)?.name||'your chosen helper'):'the first available helper';
+   status.textContent=`Match test queued (${d.request?.match_key||''}) for ${who}. It will track robots, read bumpers, map top-down homography, and send the video here.`;
+   await refreshTests();
+  }catch(e){status.textContent=e.message}finally{btn.disabled=!Number(picker.dataset.matchId||0)}
+ });
+ upBtn.addEventListener('click',async()=>{
+  if(!currentId)return;
+  upBtn.disabled=true;ytStatus.textContent='Uploading video to YouTube…';
+  try{
+   const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-Robot-Labels-CSRF':app.dataset.csrf},body:JSON.stringify({action:'upload_robot_test_youtube',request_id:currentId,title:titleIn.value,description:descIn.value})});
+   const d=await r.json();if(!r.ok)throw Error(d.error||'YouTube upload failed');
+   const idx=tests.findIndex(x=>x.id===currentId);if(idx>=0&&d.test)tests[idx]=d.test;
+   edited=false;renderTest(currentId,true);
+  }catch(e){ytStatus.textContent=e.message;upBtn.disabled=false}
+ });
+ refreshTests();setInterval(refreshTests,10000);
+})();
+</script>
 <style>.workspace:fullscreen{background:#05090d;overflow:auto;padding:10px;grid-template-columns:1fr;gap:6px;align-content:start}.workspace:fullscreen .viewer>.toolbar,.workspace:fullscreen .viewer>.tips,.workspace:fullscreen aside .step,.workspace:fullscreen aside .hint,.workspace:fullscreen aside .note,.workspace:fullscreen aside .rl-stats small{display:none}.workspace:fullscreen .rl-frame{width:min(100%,calc((100vh - 130px)*16/9));margin:0 auto}.workspace:fullscreen aside{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:0;border:0;background:none}.workspace:fullscreen aside .shape-picker{display:flex;gap:8px;margin:0}.workspace:fullscreen aside button{width:auto;margin:0;padding:8px 16px}.workspace:fullscreen aside .rl-stats{display:flex;gap:8px;margin:0}.workspace:fullscreen aside .rl-stats div{padding:4px 10px}.workspace:fullscreen aside .rl-stats span{font-size:16px}.workspace:fullscreen aside #boxcount::after{content:' boxes';font-size:12px;font-weight:400;color:#9aa7b8}.workspace:fullscreen aside #donecount::after{content:' done';font-size:12px;font-weight:400;color:#9aa7b8}.workspace:fullscreen aside #status{margin:0;font-size:13px}.workspace:fullscreen .viewer{overflow:visible;border:0;background:none;border-radius:0}.workspace:fullscreen .rl-frame{width:min(100%,calc((100vh - 150px)*16/9))}.workspace:fullscreen .transport{padding:8px 0 0;justify-content:center;gap:8px}.workspace:fullscreen .transport .rl-count{margin-left:0}.workspace:fullscreen #framepick{font-size:13px;padding:6px 8px;max-width:220px;margin-left:0}.workspace:fullscreen #frame-source-status{display:none}.workspace:fullscreen aside button{white-space:nowrap}.workspace:fullscreen aside #status{max-width:420px;font-size:12px}</style><style>.workspace:-webkit-full-screen{background:#05090d;overflow:auto;padding:10px;grid-template-columns:1fr;gap:6px;align-content:start}.workspace:-webkit-full-screen .viewer>.toolbar,.workspace:-webkit-full-screen .viewer>.tips,.workspace:-webkit-full-screen aside .step,.workspace:-webkit-full-screen aside .hint,.workspace:-webkit-full-screen aside .note,.workspace:-webkit-full-screen aside .rl-stats small{display:none}.workspace:-webkit-full-screen .rl-frame{width:min(100%,calc((100vh - 130px)*16/9));margin:0 auto}.workspace:-webkit-full-screen aside{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:0;border:0;background:none}.workspace:-webkit-full-screen aside .shape-picker{display:flex;gap:8px;margin:0}.workspace:-webkit-full-screen aside button{width:auto;margin:0;padding:8px 16px}.workspace:-webkit-full-screen aside .rl-stats{display:flex;gap:8px;margin:0}.workspace:-webkit-full-screen aside .rl-stats div{padding:4px 10px}.workspace:-webkit-full-screen aside .rl-stats span{font-size:16px}.workspace:-webkit-full-screen aside #boxcount::after{content:' boxes';font-size:12px;font-weight:400;color:#9aa7b8}.workspace:-webkit-full-screen aside #donecount::after{content:' done';font-size:12px;font-weight:400;color:#9aa7b8}.workspace:-webkit-full-screen aside #status{margin:0;font-size:13px}.workspace:-webkit-full-screen .viewer{overflow:visible;border:0;background:none;border-radius:0}.workspace:-webkit-full-screen .rl-frame{width:min(100%,calc((100vh - 150px)*16/9))}.workspace:-webkit-full-screen .transport{padding:8px 0 0;justify-content:center;gap:8px}.workspace:-webkit-full-screen .transport .rl-count{margin-left:0}.workspace:-webkit-full-screen #framepick{font-size:13px;padding:6px 8px;max-width:220px;margin-left:0}.workspace:-webkit-full-screen #frame-source-status{display:none}.workspace:-webkit-full-screen aside button{white-space:nowrap}.workspace:-webkit-full-screen aside #status{max-width:420px;font-size:12px}</style>
 <style>#framepick{max-width:260px}#savestate{font-size:12px;color:#9aa7b8}#savestate[data-state=dirty]{color:#ffb84d;font-weight:700}#savestate[data-state=saved]{color:#4fd18b}</style>
 <style>.stage.mono video,.stage.mono img,.stage.mono iframe,.stage.mono #ytplayer{filter:grayscale(1)}</style>

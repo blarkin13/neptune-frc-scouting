@@ -32,12 +32,19 @@ PLANS = {
         ('Fit action and scoring models', ('Fitting',)),
         ('Check on held-out matches and save', ('Evaluating', 'Recovering', 'Finished')),
     ]),
+    'test_robot': ('Test robot detection & tracking', [
+        ('Download the match video', ('Downloading', 'Reading')),
+        ('Track robots and read bumper numbers', ('Tracking', 'Refreshing', 'Reusing')),
+        ('Map top-down field homography', ('Mapping',)),
+        ('Render annotated & top-down video', ('Rendering', 'Making')),
+        ('Save test video to Neptune', ('Sending',)),
+    ]),
 }
 
 
 # Rough share of a job's time each step takes, for the % complete (measured on the owner's Mac, Oct 2026).
 WEIGHTS = {'prepare': [.15, .8, .05], 'train': [.02, .08, .82, .03, .03, .02], 'train_field': [.02, .1, .8, .03, .03, .02],
-           'actions': [.02, .9, .06, .02]}
+           'actions': [.02, .9, .06, .02], 'test_robot': [.10, .60, .05, .20, .05]}
 
 
 def within(message, current):

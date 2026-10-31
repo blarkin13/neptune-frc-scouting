@@ -75,6 +75,14 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
 @media(max-width:700px){.neptune-hub .neptune-hub-header.nd-mission-header{padding:24px 20px;min-height:0;border-radius:16px}.neptune-hub .nd-mission-mark{font-size:7rem;right:-12px;opacity:.06}.neptune-hub .nd-mission-header h1{font-size:clamp(2.1rem,9vw,3.1rem)!important}}
 @media(prefers-reduced-motion:reduce){.neptune-hub .neptune-hub-card{transition:none}.neptune-hub .neptune-hub-card:hover{transform:none}}
 </style>
+
+
+  <div class="underwater-backdrop"></div>
+  <div class="underwater-lens"></div>
+  <div class="parallax-beams"></div>
+<div class="parallax-particles"></div>
+
+
 <section class="module-page neptune-hub command-page">
   <header class="module-page-header neptune-hub-header nd-mission-header" style="--nd-accent:var(--accent,#47c6e5)">
     <div class="nd-mission-content">
@@ -110,7 +118,10 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
       <a class="neptune-hub-card accent-ops" href="<?=e(base_url('admin/pit-games.php'))?>"><div class="neptune-hub-card-top"><span class="neptune-hub-icon"><i class="fa-solid fa-dice"></i></span><span class="neptune-hub-badge access-strategy"><i class="fa-solid fa-shield-halved"></i> Strategy+</span></div><span class="neptune-hub-card-kicker">Interactive pit activities</span><h3>Pit Games</h3><p>Launch Robot Recall, reaction challenges, and hands-free FRC card-magic tricks for the pit monitor.</p><div class="neptune-hub-meta"><span>Memory</span><span>Reaction</span><span>Card Magic</span><span>Auto Cycle</span></div><i class="fa-solid fa-arrow-right neptune-hub-arrow"></i></a>
     </div>
   </section>
-
+  <div class="underwater-backdrop"></div>
+  <div class="underwater-lens"></div>
+  <div class="parallax-beams"></div>
+<div class="parallax-particles"></div>
   <section class="neptune-hub-section" id="beta-lab">
     <div class="neptune-hub-section-head"><div><span class="neptune-hub-section-kicker" style="color:#a855f7">BETA LAB</span><h2>Experimental Tools</h2><p>Test new Neptune workflows without replacing the current competition tools.</p></div></div>
     <div class="neptune-hub-grid">

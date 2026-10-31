@@ -68,7 +68,7 @@ try {
   elseif($action==='queue_detector'){$kind=(string)($_POST['kind']??'');if(!in_array($kind,['train','train_field'],true))throw new CommunityAnalysisError(422,'Choose a detector.');
    // Optional: send it to one of your computers (My computers); otherwise the first free helper takes it.
    if($computer!==''&&!in_array($computer,array_column(array_filter($control->computers($uid),fn($c)=>!$c['revoked']),'id'),true))throw new CommunityAnalysisError(422,'Choose one of your connected computers.');
-   $reply=['request'=>(new RobotDetectorJobs(dirname(__DIR__,3).'/neptune_secure',(int)$u['organization_id']))->queue($kind,['computer'=>$computer,'game_key'=>(string)($games[(string)$season]['game_key']??''),'holdout'=>autoscout_train_overview($pdo,$control->panel($season,$uid),(int)$u['organization_id'],$uid,(string)($games[(string)$season]['game_key']??''))[$kind==='train'?'robot':'field']['holdout']],$uid)];}
+   $reply=['request'=>(new RobotDetectorJobs(dirname(__DIR__,3).'/neptune_secure',(int)$u['organization_id']))->queue($kind,['computer'=>$computer,'match_only'=>(string)($_POST['match_only']??'')==='1','game_key'=>(string)($games[(string)$season]['game_key']??''),'holdout'=>autoscout_train_overview($pdo,$control->panel($season,$uid),(int)$u['organization_id'],$uid,(string)($games[(string)$season]['game_key']??''))[$kind==='train'?'robot':'field']['holdout']],$uid)];}
   elseif(in_array($action,['computer_settings','rename_computer'],true)){
    if(!in_array($computer,array_column(array_filter($control->computers($uid),fn($c)=>!$c['revoked']),'id'),true))throw new CommunityAnalysisError(422,'Choose one of your connected computers.');
    if($action==='rename_computer'){$name=trim((string)($_POST['name']??''));if($name===''||mb_strlen($name)>100)throw new CommunityAnalysisError(422,'Enter a name up to 100 characters.');$q=$pdo->prepare('UPDATE community_training_computers SET name=? WHERE id=? AND user_id=?');$q->execute([$name,$computer,$uid]);$reply=['ok'=>true];}
@@ -212,5 +212,5 @@ sudo apt update &amp;&amp; sudo apt install neptune-training-helper</pre><p clas
 </div>
 <script type="application/json" id="training-initial"><?=json_encode($panel,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR)?></script>
 <script src="../community/assets/training-control.js?v=remove-computers-1" defer></script>
-<script src="/community/assets/pillar.js?v=24-auto-update-toggle" defer></script>
+<script src="/community/assets/pillar.js?v=25-match-only" defer></script>
 <?php community_page_end(); ?>
