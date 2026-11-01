@@ -406,6 +406,29 @@ def robot_test_stats(facts, game_key):
     return merged, summary
 
 
+class BrowserVideoWriter:
+    """Encode browser-playable H.264 with the MP4 index at the beginning."""
+    def __init__(self, path, fps, width, height):
+        import subprocess, tempfile
+        from neptune_robot_jobs import ffmpeg
+        self.errors = tempfile.TemporaryFile()
+        self.proc = subprocess.Popen([ffmpeg(), '-v', 'error', '-y', '-f', 'rawvideo',
+            '-pix_fmt', 'bgr24', '-s', f'{width}x{height}', '-r', str(fps), '-i', '-',
+            '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
+            '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(path)],
+            stdin=subprocess.PIPE, stderr=self.errors)
+    def write(self, frame):
+        self.proc.stdin.write(frame.tobytes())
+    def release(self):
+        self.proc.stdin.close()
+        code = self.proc.wait(timeout=180)
+        self.errors.seek(0)
+        error = self.errors.read().decode(errors='replace')
+        self.errors.close()
+        if code:
+            raise RuntimeError('Could not encode robot test video: '+error[-500:])
+
+
 def robot_test_video(out, video, facts, game_key, title):
     """Render the Robot Detection + Bumper OCR + Constant Identity + Top-Down Homography test video."""
     import bisect
@@ -430,26 +453,41 @@ def robot_test_video(out, video, facts, game_key, title):
     start = max(0., (periods[0]['start'] if periods else 0.)-2)
     end = (periods[-1]['end'] if periods else min(float((facts.get('source') or {}).get('duration_s') or 160.), 160.))+2
     duration = max(1., end - start)
+    probe = cv2.VideoCapture(str(video))
+    native_w, native_h = int(probe.get(cv2.CAP_PROP_FRAME_WIDTH)), int(probe.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = float(probe.get(cv2.CAP_PROP_FPS))
+    probe.release()
+    if native_w < 2 or native_h < 2 or not 1 <= fps <= 240:
+        raise ValueError('Could not read match video dimensions or frame rate')
     VW, VH = 880, 495
+    scale = max(native_w / VW, native_h / VH)
+    output_w, output_h = int(WIDTH*scale)//2*2, int(HEIGHT*scale)//2*2
+    summary.update(video_fps=fps, source_width=native_w, source_height=native_h)
     VX, VY = 8, 44
     cmd = [ffmpeg(), '-v', 'error', '-ss', '%.3f' % start, '-t', '%.3f' % duration, '-i', str(video),
-           '-vf', 'fps=%d,scale=%d:%d' % (TEST_FPS, VW, VH), '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-']
+           '-map', '0:v:0', '-an', '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-']
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    w = writer(out, TEST_FPS)
+    w = BrowserVideoWriter(out, fps, output_w, output_h)
+    def output(canvas, original=None):
+        large = cv2.resize(canvas, (output_w, output_h))
+        if original is not None:
+            x, y = round(VX*scale), round(VY*scale)
+            large[y:y+native_h, x:x+native_w] = original
+        w.write(large)
     intro = card([plain(title), 'Robot detection, bumper OCR & homography test'],
                  ['Original view: green = OCR verified, cyan = constant identity, dashed = inferred, amber = unknown.',
                   'Top-right: live top-down homography field map (%s).' % summary['homography_status'],
                   'Bottom: full-match constant robot identity timeline across all six teams.'])
-    for _ in range(TEST_FPS*3):
-        w.write(intro)
-    k = 0; frame_bytes = VW*VH*3
+    for _ in range(round(fps*3)):
+        output(intro)
+    k = 0; frame_bytes = native_w*native_h*3
     while True:
         raw = proc.stdout.read(frame_bytes)
         if len(raw) < frame_bytes:
             break
-        t = start + k/TEST_FPS; k += 1
+        t = start + k/fps; k += 1
         canvas = np.full((HEIGHT, WIDTH, 3), (18, 15, 12), np.uint8)
-        frame = np.frombuffer(raw, np.uint8).reshape(VH, VW, 3).copy()
+        frame = np.frombuffer(raw, np.uint8).reshape(native_h, native_w, 3).copy()
         idx = bisect.bisect_left(sample_times, t)
         cand = [sample_times[j] for j in (idx-1, idx) if 0 <= j < len(sample_times)]
         near_t = min(cand, key=lambda s: abs(s-t)) if cand else None
@@ -457,13 +495,13 @@ def robot_test_video(out, video, facts, game_key, title):
 
         for p in pts:
             bx, by, bw, bh = p['box']
-            x0, y0 = int(bx*VW), int(by*VH)
-            x1, y1 = int((bx+bw)*VW), int((by+bh)*VH)
+            x0, y0 = int(bx*native_w), int(by*native_h)
+            x1, y1 = int((bx+bw)*native_w), int((by+bh)*native_h)
             col = RT_VERIFIED if p['kind'] == 'verified' else RT_CONSTANT if p['kind'] in ('constant', 'inferred') else RT_UNKNOWN
             if p['kind'] == 'inferred':
-                _dashed_rect(frame, (x0, y0), (x1, y1), col, 2)
+                _dashed_rect(frame, (x0, y0), (x1, y1), col, max(2, round(2*scale)))
             else:
-                cv2.rectangle(frame, (x0, y0), (x1, y1), col, 2)
+                cv2.rectangle(frame, (x0, y0), (x1, y1), col, max(2, round(2*scale)))
             lbl = str(p['team']) if p['team'] is not None else 'Unknown'
             if p['kind'] == 'constant':
                 lbl += ' CONST'
@@ -472,11 +510,11 @@ def robot_test_video(out, video, facts, game_key, title):
             if p['reads']:
                 lbl += ' [OCR %s]' % '/'.join(str(r) for r in p['reads'][:2])
             lbl = plain(lbl)
-            (tw, th), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, .44, 1)
+            (tw, th), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, .44*scale, max(1, round(scale)))
             ly = max(th+6, y0)
-            cv2.rectangle(frame, (max(0, x0), ly-th-6), (min(VW-1, x0+tw+8), ly), col, -1)
-            cv2.putText(frame, lbl, (max(2, x0+4), ly-4), cv2.FONT_HERSHEY_SIMPLEX, .44, (12, 18, 24), 1, cv2.LINE_AA)
-        canvas[VY:VY+VH, VX:VX+VW] = frame
+            cv2.rectangle(frame, (max(0, x0), ly-th-6), (min(native_w-1, x0+tw+8), ly), col, -1)
+            cv2.putText(frame, lbl, (max(2, x0+4), ly-4), cv2.FONT_HERSHEY_SIMPLEX, .44*scale, (12, 18, 24), max(1, round(scale)), cv2.LINE_AA)
+        canvas[VY:VY+VH, VX:VX+VW] = cv2.resize(frame, (VW, VH))
         cv2.rectangle(canvas, (VX, VY), (VX+VW, VY+VH), (60, 75, 95), 1)
 
         mx0, my0, mw, mh = 896, 44, 374, 214
@@ -554,16 +592,20 @@ def robot_test_video(out, video, facts, game_key, title):
 
         banner(canvas, '%s  %d:%02d' % (plain(title)[:52], int(t)//60, int(t) % 60),
                [('OCR verified', RT_VERIFIED), ('Constant / inferred', RT_CONSTANT), ('Unknown', RT_UNKNOWN)])
-        w.write(canvas)
-    proc.stdout.close(); proc.wait(timeout=60)
+        output(canvas, frame)
+    proc.stdout.close()
+    if proc.wait(timeout=60):
+        raise RuntimeError('Could not decode the match video')
+    if not k:
+        raise RuntimeError('Match video contained no playable frames')
     end_lines = [
         'OCR verified points: %d  |  Constant identity carried: %d' % (summary['verified_points'], summary['constant_points']),
         'Inferred points: %d  |  Unresolved detections: %d' % (summary['inferred_points'], summary['unknown_points']),
         'Bumper OCR read frames: %d  |  Top-down map: %s' % (summary['ocr_read_frames'], summary['homography_status']),
     ]
     end_card = card(['Robot detection & constant identity summary'], end_lines)
-    for _ in range(TEST_FPS*5):
-        w.write(end_card)
+    for _ in range(round(fps*5)):
+        output(end_card)
     w.release()
     return Path(out), summary
 

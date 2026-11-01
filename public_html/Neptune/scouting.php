@@ -15,7 +15,7 @@ include __DIR__ . '/partials_header.php';
 .nd-ocean__rays {background:repeating-conic-gradient(from 191deg at 50% -10%, transparent 0deg 8deg,color-mix(in srgb,var(--nd-sea) 8%,transparent) 9deg 11deg,transparent 12deg 24deg);opacity:.5;filter:blur(14px);transform:translate3d(0,calc(var(--nd-scroll,0px)*.14),0);animation:nd-current 20s ease-in-out infinite alternate}
 .nd-ocean__particles {transform:translate3d(0,calc(var(--nd-scroll,0px)*-.09),0)}
 .nd-ocean__bubble {position:absolute;bottom:-20px;left:var(--x);height:var(--size);width:var(--size);border:1px solid rgba(194,225,241,.58);border-radius:50%;background:radial-gradient(circle at 28% 23%,rgba(248,253,255,.32),transparent 45%);box-shadow:inset -1px -2px 5px rgba(104,158,187,.2),0 0 9px rgba(192,228,248,.14);opacity:0;animation:nd-rise var(--duration) linear var(--delay) infinite;will-change:transform,opacity}
-html[data-theme="light"] .nd-ocean__bubble{border-color:rgba(58,104,132,.38);background:radial-gradient(circle at 28% 23%,rgba(255,255,255,.42),transparent 45%);box-shadow:inset -1px -2px 5px rgba(58,103,133,.15),0 0 8px rgba(76,120,150,.12)}
+html[data-theme="light"] .nd-ocean__bubble{border:1.5px solid rgba(19,37,55,.92);background:radial-gradient(circle at 28% 23%,rgba(255,255,255,.42),transparent 45%);box-shadow:inset -1px -2px 5px rgba(19,37,55,.23),0 0 0 .4px rgba(19,37,55,.3);--alpha:.68!important}
 @keyframes nd-rise {0%{opacity:0;transform:translate3d(0,0,0) scale(.65)}12%{opacity:var(--alpha)}86%{opacity:var(--alpha)}100%{opacity:0;transform:translate3d(var(--drift),-130vh,0) scale(1.1)}}
 @keyframes nd-current{from{translate:-1.5% 0}to{translate:1.5% 0}}
 /* Fixed ocean spans the viewport behind the hero and all subsequent sections. */
@@ -51,7 +51,7 @@ body:has(.nd-ocean) .home-hero,body:has(.nd-ocean) .module-card {box-shadow:0 12
 
 
 <style id="neptune-mission-hub-style">
-.neptune-hub .neptune-hub-header.nd-mission-header{position:relative;isolation:isolate;overflow:hidden;margin-bottom:clamp(20px,3vw,34px);padding:clamp(24px,4vw,52px);border:1px solid color-mix(in srgb,var(--nd-accent) 32%,var(--line,#2f4560));border-radius:20px;background:radial-gradient(ellipse at 90% 15%,color-mix(in srgb,var(--nd-accent) 8%,transparent),transparent 60%),linear-gradient(125deg,color-mix(in srgb,var(--card,#152435) 23%,transparent),color-mix(in srgb,var(--card,#152435) 13%,transparent));box-shadow:0 16px 46px rgba(0,0,0,.13);min-height:230px;display:flex;align-items:center}
+.neptune-hub .neptune-hub-header.nd-mission-header{position:relative;isolation:isolate;overflow:hidden;margin-bottom:clamp(20px,3vw,34px);padding:clamp(24px,4vw,52px);border:1px solid color-mix(in srgb,var(--nd-accent) 32%,var(--line,#2f4560));border-radius:20px;background:radial-gradient(ellipse at 90% 15%,color-mix(in srgb,var(--nd-accent) 8%,transparent),transparent 60%),linear-gradient(125deg,color-mix(in srgb,var(--panel,#152435) 23%,transparent),color-mix(in srgb,var(--panel,#152435) 13%,transparent));box-shadow:0 16px 46px rgba(0,0,0,.13);min-height:230px;display:flex;align-items:center}
 .neptune-hub .nd-mission-header::before{content:none}
 .neptune-hub .nd-mission-content{position:relative;z-index:1;max-width:820px;min-width:0}
 .neptune-hub .nd-mission-kicker{display:block;font-size:.77rem;font-weight:850;letter-spacing:.18em;text-transform:uppercase;color:var(--nd-accent);margin-bottom:14px}

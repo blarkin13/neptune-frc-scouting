@@ -183,7 +183,10 @@ def download_video(match, video, stage):
                     raise ValueError('No individual match video was downloaded. The published link may be unavailable or a full-event stream.')
                 # Kept for match verification (event/division) and as provenance; not read from the image.
                 (video.parent/'source-info.json').write_text(json.dumps({k:result.get(k) for k in ('id','title','channel','uploader','upload_date','duration','webpage_url')}))
-        except DownloadError:
+        except DownloadError as error:
+            reason = str(error).lower()
+            if "sign in to confirm" in reason or ("confirm you" in reason and "not a bot" in reason):
+                raise ValueError("YouTube is asking to confirm you are not a bot. Downloads from this computer are temporarily blocked; retry later. Saved sources remain usable.") from None
             raise ValueError('YouTube could not supply this match video. It may be unavailable, restricted, or temporarily blocking downloads. Try another match or retry later.') from None
     else:
         public_https(url)

@@ -52,6 +52,20 @@ final class YouTubeUploader {
   $c=$this->read('client.json');$t=$this->read('token.json');if(!$c||!$t)throw new RuntimeException('YouTube is not connected.');
   return (string)self::http('POST','https://oauth2.googleapis.com/token',['Content-Type: application/x-www-form-urlencoded'],http_build_query(['client_id'=>$c['client_id'],'client_secret'=>$c['client_secret'],'refresh_token'=>$t['refresh_token'],'grant_type'=>'refresh_token']))['json']['access_token'];
  }
+ /** Stream rendered MP4s; native-rate match tests can exceed PHP's memory limit. */
+ private static function putFile(string $url,string $path,array $headers):array{
+  $file=fopen($path,'rb');if(!$file)throw new RuntimeException('Could not open YouTube video');
+  $h=curl_init($url);
+  try{
+   curl_setopt_array($h,[CURLOPT_UPLOAD=>true,CURLOPT_INFILE=>$file,CURLOPT_INFILESIZE=>filesize($path),
+    CURLOPT_HTTPHEADER=>$headers,CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>600,CURLOPT_CONNECTTIMEOUT=>15]);
+   $raw=curl_exec($h);$code=(int)curl_getinfo($h,CURLINFO_RESPONSE_CODE);$err=curl_error($h);
+   if($raw===false)throw new RuntimeException('YouTube request failed: '.$err);
+   $json=json_decode((string)$raw,true);
+   if($code>=400)throw new RuntimeException('YouTube said '.$code.': '.mb_substr((string)($json['error']['message']??$raw),0,200));
+   return is_array($json)?$json:[];
+  }finally{curl_close($h);fclose($file);}
+ }
  /** Resumable upload. Returns {youtube_id, privacy}. */
  public function upload(string $path,string $title,string $description):array{
   $token=$this->accessToken();$size=filesize($path);
@@ -59,7 +73,7 @@ final class YouTubeUploader {
   $start=self::http('POST','https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
    ['Authorization: Bearer '.$token,'Content-Type: application/json; charset=UTF-8','X-Upload-Content-Type: video/mp4','X-Upload-Content-Length: '.$size],$meta);
   $session=$start['headers']['location']??throw new RuntimeException('YouTube did not start the upload.');
-  $done=self::http('PUT',$session,['Content-Type: video/mp4','Content-Length: '.$size],(string)file_get_contents($path))['json'];
+  $done=self::putFile($session,$path,['Content-Type: video/mp4','Content-Length: '.$size]);
   return ['youtube_id'=>(string)($done['id']??''),'privacy'=>(string)($done['status']['privacyStatus']??'unknown')];
  }
 }

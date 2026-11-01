@@ -31,7 +31,7 @@ $neptuneFooterCanDownloadServer = !empty($u) && in_array(
         <a class="neptune-footer-pill" href="<?=e(base_url('event/'))?>"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Discover Neptune</a>
         <a class="neptune-footer-pill" href="<?=e(base_url('wifi/'))?>"><i class="fa-solid fa-wifi" aria-hidden="true"></i> Event Wi-Fi</a>
       <?php endif; ?>
-      <span class="neptune-site-footer-info"><a href="https://www.mckinneysteamacademy.org" style="color:inherit;text-decoration:inherit">McKinney STEAM Academy</a><span class="neptune-site-footer-separator" aria-hidden="true">&middot;</span><span>&copy; <?=date('Y')?></span></span>
+      <span class="neptune-site-footer-info"><a href="https://neptunefrc.com" style="color:inherit;text-decoration:inherit">NeptuneFRC.com</a><span class="neptune-site-footer-separator" aria-hidden="true">&middot;</span><span>&copy; <?=date('Y')?></span></span>
     </div>
   </div>
 </footer>

@@ -1,6 +1,7 @@
 """Keep this computer from sleeping while the helper works (set per computer on Neptune → My computers).
 
 Modes: 'jobs' (default) keeps it awake only while a job runs, 'always' while the helper is open, 'off' never.
+The last mode Neptune sent is remembered, so it holds from launch and while the helper is offline or signed out.
 The display may still turn off; only system sleep is held off. Uses what each system ships with:
   Mac      caffeinate -i (ends with the helper)
   Windows  SetThreadExecutionState(ES_SYSTEM_REQUIRED), renewed every 30 s from one thread
@@ -11,14 +12,23 @@ import shutil
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 MODES = ('jobs', 'always', 'off')
+SAVED = Path.home()/'.neptune-trainer'/'keep-awake.txt'
 
 
 class Awake:
-    def __init__(self, mode='jobs'):
+    def __init__(self, mode='jobs', saved=None):
+        self.saved = saved
+        if saved is not None:
+            try:
+                mode = saved.read_text().strip()
+            except OSError:
+                pass
         self.mode = mode if mode in MODES else 'jobs'
         self.busy = False
+        self._held = False
         self._child = None
         self._lock = threading.Lock()
         self._wake = threading.Event()
@@ -34,12 +44,17 @@ class Awake:
     def active(self):
         """Whether sleep is being held off right now."""
         if sys.platform == 'win32':
-            return self.wanted
+            return self._held
         return self._child is not None and self._child.poll() is None
 
     def set_mode(self, mode):
         if mode in MODES and mode != self.mode:
             self.mode = mode
+            if self.saved is not None:
+                try:
+                    self.saved.parent.mkdir(parents=True, exist_ok=True); self.saved.write_text(mode)
+                except OSError:
+                    pass
             self._apply()
 
     def set_busy(self, busy):
@@ -49,7 +64,7 @@ class Awake:
 
     def close(self):
         self._closing = True
-        self.busy = False; self.mode = 'off'
+        self.busy = False; self.mode = 'off'    # not saved: closing is not a new setting
         self._apply()
 
     def _apply(self):
@@ -82,15 +97,34 @@ class Awake:
         except OSError:
             return None
 
-    def _windows(self):
+    @staticmethod
+    def _windows_call():
         import ctypes
-        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
         call = ctypes.windll.kernel32.SetThreadExecutionState
+        # EXECUTION_STATE is an unsigned DWORD; without this, ES_CONTINUOUS (0x80000000) does not fit a C int.
+        call.argtypes = [ctypes.c_uint]; call.restype = ctypes.c_uint
+        return call
+
+    def _windows(self):
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        try:
+            call = self._windows_call()
+        except Exception:
+            return
         while not self._closing:
             # Held by this thread: ES_CONTINUOUS keeps it until changed, and re-asserting covers a missed call.
-            call(ES_CONTINUOUS | ES_SYSTEM_REQUIRED if self.wanted else ES_CONTINUOUS)
+            # A failed call must not end the thread, or sleep would never be held off again.
+            try:
+                wanted = self.wanted
+                self._held = bool(call(ES_CONTINUOUS | ES_SYSTEM_REQUIRED if wanted else ES_CONTINUOUS)) and wanted
+            except Exception:
+                self._held = False
             self._wake.wait(30); self._wake.clear()
-        call(ES_CONTINUOUS)
+        try:
+            call(ES_CONTINUOUS)
+        except Exception:
+            pass
+        self._held = False
 
 
 _shared = None
@@ -101,5 +135,5 @@ def shared():
     global _shared
     if _shared is None:
         import atexit
-        _shared = Awake(); atexit.register(_shared.close)
+        _shared = Awake(saved=SAVED); atexit.register(_shared.close)
     return _shared

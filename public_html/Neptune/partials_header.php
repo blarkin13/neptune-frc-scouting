@@ -487,13 +487,81 @@ if ($neptuneMissionPage):
 .topbar-clean .neptune-header-identity .neptune-breadcrumbs .crumb-current{color:var(--text,var(--fg,#e5eef7));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .topbar-clean .neptune-header-identity .neptune-breadcrumbs .crumb-sep{font-size:9px;flex-shrink:0}
 @media(max-width:600px){.topbar-clean .neptune-header-identity .neptune-breadcrumbs{font-size:11px;gap:4px;max-width:calc(100vw - 105px)}}
+:root,html[data-theme="light"]{--card:var(--panel);--border:var(--line)}
+body:has(>.underwater-backdrop){background:transparent!important}
+.underwater-backdrop {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+  z-index: -5; pointer-events: none;
+}
+.underwater-lens {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -3;
+  background: radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 60%);
+  mix-blend-mode: screen; animation: causticFlicker 8s ease-in-out infinite alternate;
+}
+html[data-theme="light"] .underwater-lens {
+  background: radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 60%);
+  mix-blend-mode: normal;
+}
+@keyframes causticFlicker { 0%, 100% { opacity: 0.7; } 45% { opacity: 0.95; } 50% { opacity: 0.6; } 75% { opacity: 0.85; } }
+.parallax-beams {
+  position: fixed; top: -20%; left: -10%; width: 120%; height: 140%; pointer-events: none;
+  background: radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 50%),
+    repeating-linear-gradient(60deg, color-mix(in srgb, var(--accent) 3%, transparent) 0px, transparent 100px, color-mix(in srgb, var(--accent) 3%, transparent) 200px);
+  z-index: -4; filter: blur(3px); animation: waveCaustic 20s ease-in-out infinite alternate;
+}
+html[data-theme="light"] .parallax-beams {
+  background: radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 50%),
+    repeating-linear-gradient(60deg, color-mix(in srgb, var(--accent) 4%, transparent) 0px, transparent 100px, color-mix(in srgb, var(--accent) 4%, transparent) 200px);
+}
+@keyframes waveCaustic { 0% { transform: scale(1) skewX(0deg); } 100% { transform: scale(1.08) skewX(4deg); } }
+.app-container { position: relative; z-index: 10; max-width: 820px; margin: 0 auto; }
+.top-header-bar { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; margin-bottom: 20px; flex-wrap: wrap; gap: 16px; }
+.parallax-particles {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -2;
+  background-image:
+    radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--accent) 8%, transparent) 1.5px, transparent 1.5px),
+    radial-gradient(circle at 80% 40%, color-mix(in srgb, var(--accent) 9%, transparent) 2px, transparent 2px),
+    radial-gradient(circle at 40% 70%, color-mix(in srgb, var(--accent) 6%, transparent) 2.5px, transparent 2.5px);
+  background-size: 160px 160px, 240px 240px, 300px 300px;
+  animation: particleDrift 28s linear infinite;
+}
+html[data-theme="light"] .parallax-particles {
+  background-image:
+    radial-gradient(circle at 20% 30%, color-mix(in srgb, var(--text) 14%, transparent) 1.5px, transparent 1.5px),
+    radial-gradient(circle at 80% 40%, color-mix(in srgb, var(--text) 16%, transparent) 2px, transparent 2px),
+    radial-gradient(circle at 40% 70%, color-mix(in srgb, var(--accent) 12%, transparent) 2.5px, transparent 2.5px);
+}
+@keyframes particleDrift {
+  0% { background-position: 0px 800px; }
+  100% { background-position: 0px 0px; }
+}
+@media(prefers-reduced-motion:reduce){
+  .underwater-backdrop,.underwater-lens,.parallax-beams,.parallax-particles{animation:none!important}
+}
 </style>
+<?php // Console redesign uses the existing organization theme variables unchanged.
+$neptuneConsoleCssVersion=@filemtime(__DIR__.'/assets/css/neptune-console-2026.css')?:1; ?>
+<link rel="stylesheet" href="<?=e(base_url('assets/css/neptune-console-2026.css'))?>?v=<?=$neptuneConsoleCssVersion?>">
+<?php $neptuneOceanJsVersion=@filemtime(__DIR__.'/assets/js/neptune-ocean-interactions.js')?:1; ?>
+<script defer src="<?=e(base_url('assets/js/neptune-ocean-interactions.js'))?>?v=<?=$neptuneOceanJsVersion?>"></script>
 </head>
 
-<body class="<?=e($bodyClass)?>" data-module="<?=e($moduleName)?>">
+<body class="<?=e(trim(($u && !$hideChrome ? 'neptune-console ' : '').$bodyClass))?>" data-module="<?=e($moduleName)?>">
 <?php if(!$hideChrome):?>
+  <div class="underwater-backdrop"></div>
+  <div class="underwater-lens"></div>
+  <div class="parallax-beams"></div>
+  <div class="parallax-particles"></div>
 <header class="topbar topbar-clean">
     <div class="neptune-header-identity">
+    <div class="nc-brand-row">
     <a class="brand" href="<?=e(base_url($u ? 'dashboard/index.php' : 'index.php'))?>" aria-label="Neptune home">
         <img
             class="brand-logo neptune-metal-logo"
@@ -507,6 +575,8 @@ if ($neptuneMissionPage):
             <?=$isPublicHome?'fetchpriority="high"':''?>
         >
     </a>
+    <?php if($u):?><div class="nc-brand-copy" aria-hidden="true"><span>NEPTUNE / CONTROL</span><strong>Mission systems</strong></div><?php endif;?>
+    </div>
 <?php
 $isNeptuneAccountView=($neptuneRouteRelative==='dashboard/index.php' && (($_GET['view']??'')==='account'));
 $isDashboardBreadcrumb=(bool)(preg_match('~/dashboard/(?:index\.php)?$~', $scriptPath) || trim((string)$neptuneRouteRelative, '/')==='dashboard/index.php');
@@ -577,9 +647,11 @@ if(($u || $isDashboardBreadcrumb) && !$hideChrome && !$hideBreadcrumbs && !$isLi
                 <span class="neptune-circuit-trace trace-middle"></span>
                 <span class="neptune-circuit-trace trace-bottom"></span>
             </span>
+            <span class="nc-menu-word" aria-hidden="true">MENU</span>
         </button>
 
-        <nav class="nav nav-clean" id="mainNav">
+        <nav class="nav nav-clean" id="mainNav" aria-label="Primary navigation">
+            <div class="nc-nav-overline" aria-hidden="true"><span>NEPTUNE</span><small>Workspace navigator</small></div>
             <a class="mobile-nav-heading neptune-drawer-identity neptune-account-identity-link" href="<?=e(base_url('dashboard/index.php?view=account'))?>" title="My Account" aria-label="Open My Account">
                 <?php if($neptuneOrganizationLogo!==''):?>
                   <span class="topbar-org-logo neptune-org-logo-frame"><img class="neptune-org-logo-image" src="<?=e($neptuneOrganizationLogo)?>" alt="<?=e($u['organization_name']??'Organization')?> logo" loading="lazy"></span>
@@ -589,6 +661,7 @@ if(($u || $isDashboardBreadcrumb) && !$hideChrome && !$hideBreadcrumbs && !$isLi
                 <span class="neptune-drawer-person"><strong><?=e($u['organization_name']??'Neptune')?></strong><small><?=e($u['display_name']??$u['username']??'')?></small></span>
             </a>
 
+            <div class="nc-nav-group" aria-hidden="true">Workspace</div>
             <a class="<?=$activeSection==='home' && !$isNeptuneAccountView?'active':''?>" href="<?=e(base_url('dashboard/index.php'))?>"><i class="fa-solid fa-house"></i><span>Home</span></a>
             <a class="<?=$isNeptuneAccountView?'active':''?>" href="<?=e(base_url('dashboard/index.php?view=account'))?>"><i class="fa-solid fa-user-gear"></i><span>My Account</span></a>
             <a class="<?=$activeSection==='scouting'?'active':''?>" href="<?=e(base_url('scouting.php'))?>"><i class="fa-solid fa-crosshairs"></i><span>Scouting</span></a>
@@ -602,6 +675,10 @@ if(($u || $isDashboardBreadcrumb) && !$hideChrome && !$hideBreadcrumbs && !$isLi
             <?php endif; ?>
 
 
+            <div class="nc-nav-group nc-nav-group-bottom" aria-hidden="true">Personalization</div>
+            <?php if(in_array($u['role']??'',['owner','admin'],true)):?>
+              <a class="<?=$neptuneRouteRelative==='admin/styling.php'?'active':''?>" href="<?=e(base_url('admin/styling.php'))?>"><i class="fa-solid fa-palette"></i><span>Interface Styling</span></a>
+            <?php endif;?>
             <button class="theme-toggle neptune-nav-utility" type="button" id="themeToggle" aria-label="Toggle day/night mode"><i class="fa-solid fa-moon"></i><span class="theme-label">Night mode</span></button>
             <a class="logout-link neptune-nav-utility" href="<?=e(base_url('logout.php'))?>" title="Logout" aria-label="Log out"><i class="fa-solid fa-right-from-bracket"></i><span class="nav-logout">Logout</span></a>
         </nav>

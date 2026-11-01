@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/community-analysis-install.php';
 require_once dirname(__DIR__,3).'/neptune_secure/community-training-control.php';
+require_once dirname(__DIR__,3).'/neptune_secure/robot-label-frames.php';
 header('Cache-Control: private, no-store');
 // The helper's training computer reads the organization's completed robot labels (video time + boxes).
 try {
@@ -21,6 +22,8 @@ try {
    $d['frames']=($x['frames']??[])+$d['frames'];$d['match_key']=$x['match_key']??($d['match_key']??null);
   }
   $frames=array_filter($d['frames'],fn($f)=>!empty($f['complete']));
+  $sourceFrames=(new RobotLabelFrames(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->index($v);
+  foreach($frames as $t=>&$f){unset($f['source_sha256']);$meta=$sourceFrames[(string)$t]??null;if($meta&&($meta['sha256']??'')===($f['frame_sha256']??'')&&preg_match('/^[a-f0-9]{64}$/D',(string)($meta['source_sha256']??'')))$f['source_sha256']=$meta['source_sha256'];}unset($f);
   if($frames)$docs[]=['video_id'=>$v,'match_key'=>$d['match_key']??null,'frames'=>(object)$frames];
  }
  community_training_json_response(['documents'=>$docs]);

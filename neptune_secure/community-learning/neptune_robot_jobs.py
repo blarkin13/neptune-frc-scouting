@@ -25,7 +25,8 @@ SMALL_BUMPER_H = .025             # bumpers shorter than this (of frame height) 
 WIDE_BAND = (.24, .6506)          # 2026 broadcast wide-camera band (normalized y)
 ADOPT_MARGIN = .02                # new detector must beat the current one's held-out F1 by this much
 MIN_FRAMES_PER_MATCH = 8
-MODEL_SIZE = 's'                  # YOLO11 Small; a Nano detector in use is replaced by a fresh Small run, not fine-tuned
+EXTRA_HOLDOUTS = ('2026mnwi_qm5', '2026brba_qm5')   # other events, also never trained on; checked together with Neptune's pick
+MODEL_SIZE = 'n'                  # YOLO11 Nano, warm-started from the detector in use ('s' trains a fresh Small run instead)
 SMALL_BASE = {'file': 'yolo11s.pt', 'sha256': '85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5',
               'url': 'https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.pt'}
 WARM_RECIPE = 'adopted-bumper-warm-start-v2-train-validation'
@@ -36,7 +37,10 @@ def api(config, action, payload=None, timeout=120):
     import urllib.request
     from neptune_helper import public_https, NoRedirect
     url = public_https(config['site'].rstrip('/')+'/api/robot-detector.php')
-    body = json.dumps(dict(payload or {}, action=action)).encode()
+    data = dict(payload or {}, action=action)
+    if action == 'computer_poll':
+        data['capabilities'] = ['test_robot_v1']
+    body = json.dumps(data).encode()
     request = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer '+config['token']})
     with urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect()).open(request, timeout=timeout) as response:
         return json.loads(response.read(80*1024*1024))
@@ -139,7 +143,7 @@ def adopted_trained_on(manifest):
     report = doc.get('report') or {}
     if doc.get('trained_on') or report.get('trained_on'):
         return list(doc.get('trained_on') or report['trained_on'])
-    return [m for m in report.get('matches') or [] if m != report.get('holdout_match')]
+    return [m for m in report.get('matches') or [] if m != report.get('holdout_match') and m not in (report.get('holdout_matches') or ())]
 
 
 def current_wide_weights():
@@ -171,9 +175,9 @@ def small_base():
     return path
 
 
-def training_base(holdout):
-    """(starting weights, recipe). Continue the proven bumper detector when it is already Small;
-    a Nano detector in use is replaced by a fresh Small run from COCO, which never saw any match.
+def training_base(held):
+    """(starting weights, recipe). Continue the proven bumper detector when it is MODEL_SIZE;
+    otherwise (MODEL_SIZE 's' with Nano in use) start a fresh Small run from COCO, which never saw any match.
 
     Refuse an inherited model that learned the evaluation match: excluding it
     from this run alone would not remove its influence from the weights.
@@ -184,20 +188,22 @@ def training_base(holdout):
         raise ValueError('Install the current wide bumper detector before fine-tuning; its training provenance is required.')
     if model_scale(current) != MODEL_SIZE:
         return small_base(), SMALL_RECIPE
-    if holdout in adopted_trained_on(manifest):
+    held = {held} if isinstance(held, str) else set(held)
+    if held & set(adopted_trained_on(manifest)):
         raise ValueError('The starting detector trained on the evaluation match; choose an independent holdout.')
     return current, WARM_RECIPE
 
 
-def dataset_audit(manifest, holdout):
+def dataset_audit(manifest, held):
     """Report the actual built dataset, including matches with fewer than eight frames."""
+    held = {held} if isinstance(held, str) else set(held)
     rows = manifest['frames']
     counts = {}
     for row in rows:
         key = row['match_key']
-        if key == holdout and row['split'] != 'val':
+        if key in held and row['split'] != 'val':
             raise ValueError('Evaluation frames must never enter detector training.')
-        if key != holdout and row['split'] != 'train':
+        if key not in held and row['split'] != 'train':
             raise ValueError('Unexpected validation match in detector dataset.')
         counts[key] = counts.get(key, 0)+1
     validation = [{k: row[k] for k in ('match_key', 'source_sha256', 'image_sha256', 'video_time_ms', 'boxes')}
@@ -246,16 +252,9 @@ def detect(model, image, conf=.25):
             for d in unique_bumpers(found)]
 
 
-def match_video(video_id, folder):
-    from neptune_robot_labels import local_video, youtube_download
-    video = local_video(video_id)
-    if video:
-        return video
-    from neptune_robot_labels import VIDEOS
-    video = VIDEOS/(video_id+'.mp4'); video.parent.mkdir(parents=True, exist_ok=True)
-    if not video.is_file():
-        youtube_download(video_id, video)
-    return video
+def match_video(video_id, folder, config=None):
+    from neptune_match_videos import acquire
+    return acquire(config, video_id)
 
 
 def frame_times(length_s, labelled=(), picked=None):
@@ -274,7 +273,7 @@ def prepare(config, req, progress):
         raise ValueError('No robot detector is installed on this helper yet.')
     work = HOME/'robot-detector-work'/req['id']; work.mkdir(parents=True, exist_ok=True)
     progress('Downloading '+req['match_key'])
-    video = match_video(req['video_id'], work)
+    video = match_video(req['video_id'], work, config)
     length = duration_s(video); model = YOLO(str(weights)); frames = {}
     source_sha=hashlib.sha256(video.read_bytes()).hexdigest()
     from neptune_robot_labels import sync
@@ -390,20 +389,27 @@ def train(config, req, progress):
         raise ValueError('Label at least %d frames in two different matches first.' % MIN_FRAMES_PER_MATCH)
     in_use = SHARED/'manifest.json' if (SHARED/'manifest.json').is_file() else Path(__file__).with_name('robot-detector')/'manifest.json'
     holdout = req.get('holdout') if req.get('holdout') in usable else pick_holdout(usable, adopted_holdout(SHARED/'manifest.json'), adopted_trained_on(in_use))
+    held = {holdout}|{k for k in EXTRA_HOLDOUTS if k in usable}
+    if not set(usable)-held:
+        raise ValueError('Label at least %d frames in a match besides the held-out ones first.' % MIN_FRAMES_PER_MATCH)
     work = HOME/'robot-detector-work'/req['id']; shutil.rmtree(work, ignore_errors=True); work.mkdir(parents=True)   # a restarted run starts clean
     def snapshot_download(video_id,t,sha,path):
         reply=api(config,'label_frame_get',{'video_id':video_id,'t_ms':t,'sha256':sha})
         raw=base64.b64decode(reply['image_b64'],validate=True)
         if hashlib.sha256(raw).hexdigest()!=sha:raise ValueError('Training frame failed its saved-image checksum')
         path.write_bytes(raw)
-    built = labels.build(docs, work/'frames', holdout={holdout}, download=labels.youtube_download, progress=progress,snapshot_download=snapshot_download)
+    def source_download(video_id, path):
+        video = match_video(video_id, path.parent, config)
+        if video != path:
+            shutil.copyfile(video, path)
+    built = labels.build(docs, work/'frames', holdout=held, download=source_download, progress=progress,snapshot_download=snapshot_download)
     config_yaml = prepare_dataset(Path(built['manifest']), work/'dataset')
     yolo_validation_from_training(config_yaml.parent)   # before workshop images join training
     from neptune_external_bumpers import append_workshop
     supplemental = append_workshop(external_training_datasets(config), work/'dataset')
     if supplemental['frames']:
         progress('Including %d reviewed workshop images (%d bumper boxes) in training only' % (supplemental['frames'], supplemental['boxes']))
-    base, recipe = training_base(holdout)
+    base, recipe = training_base(held)
     base_sha256 = hashlib.sha256(base.read_bytes()).hexdigest()
     model = YOLO(str(base))
     if recipe == WARM_RECIPE:
@@ -424,14 +430,14 @@ def train(config, req, progress):
                          translate=.2, scale=.5, fliplr=.5, mosaic=1.0, close_mosaic=10)
     best = Path(result.save_dir)/'weights'/'best.pt'
     manifest = json.loads(Path(built['manifest']).read_text())
-    audit = dataset_audit(manifest, holdout)
+    audit = dataset_audit(manifest, held)
     check = [(work/'frames'/f['image'], [[b['xywh'][0]-b['xywh'][2]/2, b['xywh'][1]-b['xywh'][3]/2, b['xywh'][0]+b['xywh'][2]/2, b['xywh'][1]+b['xywh'][3]/2,
                'red' if b['class_id'] == 0 else 'blue'] for b in f['boxes']]) for f in manifest['frames'] if f['split'] == 'val']
-    progress('Comparing new and current detector on %s' % holdout)
+    progress('Comparing new and current detector on %s' % ', '.join(sorted(held)))
     new = evaluate(best, check)
     current = current_wide_weights(); old = evaluate(current, check) if current else None
     adopt = old is None or new['f1'] >= old['f1']+ADOPT_MARGIN
-    report = {'engine': VERSION, 'holdout_match': holdout, 'trained_on': audit['trained_on'], 'external_training': supplemental, 'frames': built['frames']+supplemental['frames'], 'train_frames': built['train']+supplemental['frames'], 'check_frames': built['val'],
+    report = {'engine': VERSION, 'holdout_match': holdout, 'holdout_matches': sorted(held), 'trained_on': audit['trained_on'], 'external_training': supplemental, 'frames': built['frames']+supplemental['frames'], 'train_frames': built['train']+supplemental['frames'], 'check_frames': built['val'],
               'bumpers': built['boxes']+supplemental['boxes'], 'matches': audit['matches'], 'frames_per_match': audit['frames_per_match'],
               'evaluation_sha256': audit['evaluation_sha256'], 'starting_weights_sha256': base_sha256,
               'training_recipe': recipe, 'model_size': MODEL_SIZE, 'new': new, 'current': old, 'adopted': adopt, 'margin': ADOPT_MARGIN, 'skipped': built['skipped']}
@@ -598,7 +604,7 @@ def train_field(config, req, progress):
     for d in docs:
         vid = doc_video(d); split = 'val' if d is holdout else 'train'
         progress('Preparing field frames from '+((d.get('source') or {}).get('match_key') or vid))
-        video=match_video(vid,work)
+        video=match_video(vid,work,config)
         source_fingerprints[doc_key(d)]=hashlib.sha256(Path(video).read_bytes()).hexdigest()
         if source_fingerprints[doc_key(d)] in HELD_OUT_SOURCES:raise ValueError('Reserved benchmark source cannot train or tune a field detector')
         frames=ft.samples(d,sample_frames(video,step=2.0 if split=='val' else 4.0),lambda t:frame(video,t))
@@ -680,7 +686,7 @@ def test_robot(config, req, progress):
     match_key = req['match_key']
     title = req.get('title') or match_key
     progress('Downloading '+match_key)
-    video = match_video(req['video_id'], work)
+    video = match_video(req['video_id'], work, config)
     sha = hashlib.sha256(Path(video).read_bytes()).hexdigest()
     dur = duration_s(video)
     game = games.select(match_key)
@@ -722,16 +728,27 @@ def test_robot(config, req, progress):
     progress('Rendering original view with boxes, bumper OCR, and top-down homography')
     out = HOME/'review-videos'/('robot-test-'+req['id']+'.mp4'); out.parent.mkdir(parents=True, exist_ok=True)
     _, summary = rv.robot_test_video(out, video, facts, game['game_key'], title)
-    if out.stat().st_size > 45*1024*1024:
-        out.unlink(missing_ok=True)
-        raise ValueError('Rendered match test video exceeds the 45 MB upload limit.')
+    if out.stat().st_size > 512*1024*1024:
+        raise ValueError('Rendered match test exceeds 512 MB; the local video has been kept.')
     yt_title, yt_desc = rv.describe_robot_test(title, match_key, summary, VERSION)
     progress('Sending match test video to Neptune')
+    offset = 0
+    with out.open('rb') as stream:
+        while chunk := stream.read(1024*1024):
+            ack = api(config, 'robot_test_chunk', {'request_id': req['id'], 'lease': req['lease'],
+                'offset': offset, 'data_b64': base64.b64encode(chunk).decode()}, timeout=120)
+            offset += len(chunk)
+            if ack.get('next_offset') != offset:
+                raise ValueError('Neptune did not confirm the video transfer; local video kept.')
+            progress('Sending match test video to Neptune: %d%%' % (offset*100/out.stat().st_size))
     reply = api(config, 'robot_test_put', {
         'request_id': req['id'], 'lease': req['lease'],
         'title': yt_title, 'description': yt_desc, 'summary': summary,
-        'video_b64': base64.b64encode(out.read_bytes()).decode()
+        'chunked': True, 'size': out.stat().st_size,
+        'sha256': hashlib.sha256(out.read_bytes()).hexdigest()
     }, timeout=900)
+    if not reply.get('test', {}).get('id'):
+        raise ValueError('Neptune did not confirm the saved test video; local video kept.')
     out.unlink(missing_ok=True)
     return {'match_key': match_key, 'summary': summary, 'test': reply.get('test')}
 
@@ -757,6 +774,8 @@ def run_pending(config, progress, busy=lambda value: None):
             if reply.get('cancelled'):
                 raise InterruptedError('Cancelled on Neptune')
     try:
+        if req.get('kind') not in ('prepare', 'test_robot', 'train_field', 'train'):
+            raise ValueError('Unsupported helper job: '+str(req.get('kind')))
         result = prepare(config, req, report) if req['kind'] == 'prepare' else \
                  test_robot(config, req, report) if req['kind'] == 'test_robot' else \
                  train_field(config, req, report) if req['kind'] == 'train_field' else train(config, req, report)

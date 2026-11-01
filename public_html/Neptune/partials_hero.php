@@ -168,6 +168,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
     function neptune_hero_guide(string $title): array
     {
         $rules = [
+            ['~^my account$~i', [['fa-user-pen','Update profile'],['fa-shield-halved','Review security'],['fa-clipboard-check','Track assignments']]],
             ['~match scouting~i', [['fa-location-crosshairs','Find your station'],['fa-robot','Confirm the robot'],['fa-hand-pointer','Start scouting']]],
             ['~tag scouting tags~i', [['fa-tags','Review tags'],['fa-plus','Add organization tags'],['fa-eye','Control visibility']]],
             ['~tag scouting~i', [['fa-robot','Choose a robot'],['fa-tags','Record what you see'],['fa-floppy-disk','Save observation']]],
@@ -288,7 +289,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
         if ($html === '' || !str_contains($html, 'topbar-identity') || !str_contains($html, '<main')) return $html;
         // Look for actual markup. Inline scripts in the shared header contain
         // strings like 'home-hero-logo' that must not disable every page hero.
-        if (preg_match('~<(?:section|div|article|header)\b[^>]*\bclass\s*=\s*(["\'])[^"\']*\b(?:home-hero|auth-card|nd-mission-header)\b[^"\']*\1~i', $html)) return $html;
+        if (preg_match('~<(?:section|div|article|header)\b[^>]*\bclass\s*=\s*(["\'])[^"\']*\b(?:home-hero|auth-card)\b[^"\']*\1~i', $html)) return $html;
 
         // Heroes live at the top of Neptune pages. Some admin pages embed large
         // editor styles before their headings; keep a capped scan that can reach
@@ -334,7 +335,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
         }
 
         $selectorClasses = [
-            'community-platform-hero','neptune-page-hero','npd-hero','match-scout-hero','vgb-hero','impact-hero','tag-context-hero','module-page-header','builder-page-header','dg-hero','style-head','page-head',
+            'nd-mission-header','community-platform-hero','neptune-page-hero','npd-hero','match-scout-hero','vgb-hero','impact-hero','tag-context-hero','module-page-header','builder-page-header','dg-hero','style-head','page-head',
             'spot-page-head','asb-head','alliance-page-head','ar-head','dr-head','training-hero','cbt-hero','ng-hero','robot-page-titlebar','mb-titlebar','pit-board-titlebar'
         ];
 
@@ -389,7 +390,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
 
         $tagMods = [];
         if ($hero !== null) {
-            $tagMods[$hero] = ['classes'=>['neptune-page-hero'], 'attrs'=>['data-neptune-hero'=>'server']];
+            $tagMods[$hero] = ['classes'=>['neptune-page-hero','nc-standard-hero'], 'attrs'=>['data-neptune-hero'=>'server']];
         }
 
         // Existing-category behavior exactly mirrors the old JS compositor.
@@ -420,25 +421,27 @@ if (!function_exists('neptune_hero_buffer_start')) {
         $recognizedKicker = null;
         if ($hero !== null) {
             foreach ($descendants as $d) {
-                if (array_intersect(['match-scout-kicker','vgb-kicker','dg-kicker','neptune-hero-kicker'],$els[$d]['classes'])) { $recognizedKicker=$d; break; }
+                if (array_intersect(['match-scout-kicker','vgb-kicker','dg-kicker','neptune-hero-kicker','nd-mission-kicker','account-kicker'],$els[$d]['classes'])) { $recognizedKicker=$d; break; }
             }
         }
 
         $insertions = [];
-        // These pages use the same large, low-contrast Font Awesome insignia as
-        // the four mission hubs. Keeping this inside the compositor covers both
-        // existing and newly generated heroes without editing every admin view.
-        $route = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+        // Install one theme-colored Font Awesome mark per hero, on the hero
+        // itself. Inserting beside a nested H1 made top:50% resolve against
+        // its small inner wrapper instead of the whole hero on some pages.
         $hasRelief = $hero !== null && (bool)array_filter(
             $descendants,
-            static fn($idx) => in_array('nd-page-mission-mark', $els[$idx]['classes'], true)
+            static fn($idx) => (bool)array_intersect(['nd-page-mission-mark','nd-mission-mark','nd-account-hero-mark'], $els[$idx]['classes'])
         );
-        if (preg_match('~/(?:admin|community)/~i', $route) && !$hasRelief) {
+        $generatedRelief = '';
+        if (!$hasRelief) {
             $relief = neptune_hero_relief_icon($title, $bodyModule);
-            $insertions[] = [
-                $els[$h1]['start'],
-                '<i class="fa-solid '.htmlspecialchars($relief, ENT_QUOTES, 'UTF-8').' nd-page-mission-mark" aria-hidden="true"></i>'
-            ];
+            $reliefHtml = '<i class="fa-solid '.htmlspecialchars($relief, ENT_QUOTES, 'UTF-8').' nd-page-mission-mark" aria-hidden="true"></i>';
+            if ($hero !== null) {
+                $insertions[] = [$els[$hero]['open_end'], $reliefHtml];
+            } elseif ($generated) {
+                $generatedRelief = $reliefHtml;
+            }
         }
         if ($recognizedKicker !== null) {
             $tagMods[$recognizedKicker]['classes'][] = 'neptune-hero-kicker';
@@ -452,16 +455,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
         $existingPillGroup = null;
         if ($hero !== null) {
             foreach ($descendants as $d) {
-                if (array_intersect(['match-scout-steps','mb-key','vgb-status-row','neptune-hero-pills'],$els[$d]['classes'])) { $existingPillGroup=$d; break; }
-            }
-            if ($existingPillGroup === null) {
-                foreach ($descendants as $d) {
-                    if ($els[$d]['tag'] !== 'div') continue;
-                    $kids=$children[$d] ?? [];
-                    if (count($kids)<2 || count($kids)>7) continue;
-                    $all=true; foreach($kids as $kid) if(!in_array('pill',$els[$kid]['classes'],true)){ $all=false; break; }
-                    if($all){$existingPillGroup=$d;break;}
-                }
+                if (array_intersect(['match-scout-steps','neptune-hero-pills'],$els[$d]['classes'])) { $existingPillGroup=$d; break; }
             }
         }
 
@@ -494,7 +488,7 @@ if (!function_exists('neptune_hero_buffer_start')) {
         }
         foreach ($insertions as [$at,$text]) $mods[] = [$at,$at,$text, 1];
         if ($generated && $wrapStart !== null && $wrapEnd !== null) {
-            $mods[] = [$wrapStart,$wrapStart,'<section class="neptune-page-hero neptune-page-hero-generated" data-neptune-hero="server">', 1];
+            $mods[] = [$wrapStart,$wrapStart,'<section class="neptune-page-hero neptune-page-hero-generated nc-standard-hero" data-neptune-hero="server">'.$generatedRelief, 1];
             $mods[] = [$wrapEnd,$wrapEnd,'</section>', 0];
         }
 
@@ -541,7 +535,8 @@ body>.nd-depth-field>.nd-depth-bubble{
   animation:nd-depth-rise var(--nd-time) linear var(--nd-delay) infinite;
   will-change:transform,opacity;
 }
-html[data-theme="light"] body>.nd-depth-field>.nd-depth-bubble{border-color:rgba(58,104,132,.38);background:radial-gradient(circle at 28% 21%,rgba(255,255,255,.42),transparent 55%);box-shadow:inset -1px -2px 4px rgba(58,103,133,.15),0 0 8px rgba(76,120,150,.12)}
+html[data-theme="light"] .neptune-page-hero[data-neptune-hero="server"]{background:radial-gradient(ellipse at 84% 12%,color-mix(in srgb,var(--nd-depth-color) 12%,transparent),transparent 55%),linear-gradient(125deg,color-mix(in srgb,var(--panel) 88%,transparent),color-mix(in srgb,var(--panel) 78%,transparent))!important}
+html[data-theme="light"] body>.nd-depth-field>.nd-depth-bubble{border:1.5px solid rgba(19,37,55,.92);background:radial-gradient(circle at 28% 21%,rgba(255,255,255,.42),transparent 55%);box-shadow:inset -1px -2px 4px rgba(19,37,55,.23),0 0 0 .4px rgba(19,37,55,.3);--nd-alpha:.68!important}
 @keyframes nd-depth-rise{
   0%{opacity:0;transform:translate3d(0,0,0) scale(.65)}
   12%,82%{opacity:var(--nd-alpha)}

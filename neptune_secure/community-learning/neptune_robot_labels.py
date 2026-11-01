@@ -69,15 +69,23 @@ def build(docs, out, holdout=(), download=None, progress=print, snapshot_downloa
         frames = {int(t): f for t, f in (doc.get('frames') or {}).items() if f.get('complete')}
         if not frames or not match[:4].isdigit():
             continue
-        video = local_video(vid)
-        if video is None and download:
-            video = VIDEOS/(vid+'.mp4'); video.parent.mkdir(parents=True, exist_ok=True)
-            if not video.is_file():
-                progress('Downloading '+match)
-                download(vid, video)
-        if video is None or not video.is_file():
-            skipped[match] = 'video_not_available'; continue
-        source = hashlib.sha256(video.read_bytes()).hexdigest()
+        # Immutable saved stills already carry the fingerprint of the original video.
+        # Legacy frames still need that source video; do not substitute an image hash for it.
+        def valid_sha(value):
+            return isinstance(value, str) and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
+        needs_video = any(not f.get('frame_sha256') or not valid_sha(f.get('source_sha256')) for f in frames.values())
+        source = None; video = None
+        if needs_video:
+            video = local_video(vid)
+            if video is None and download:
+                video = VIDEOS/(vid+'.mp4'); video.parent.mkdir(parents=True, exist_ok=True)
+                if not video.is_file():
+                    progress('Downloading '+match)
+                    download(vid, video)
+            if video is None or not video.is_file():
+                skipped[match] = 'video_not_available'; continue
+            from neptune_match_videos import digest
+            source = digest(video)
         for t, f in sorted(frames.items()):
             image = out/'images'/('%s_%08d.jpg' % (vid, t))
             saved_sha=f.get('frame_sha256')
@@ -90,7 +98,7 @@ def build(docs, out, holdout=(), download=None, progress=print, snapshot_downloa
             elif not image.is_file():
                 subprocess.run([ffmpeg(), '-v', 'error', '-y', '-ss', '%.3f' % (t/1000), '-i', str(video), '-frames:v', '1', '-q:v', '2', str(image)], check=True)
             boxes = [{'class_id': 0 if b['alliance'] == 'red' else 1, 'xywh': xywh} for b in f['boxes'] if (xywh := box_xywh(b))]
-            rows.append({'match_key': match, 'source_sha256': source, 'split': 'val' if match in holdout else 'train', 'reviewed': True,
+            rows.append({'match_key': match, 'source_sha256': f['source_sha256'] if saved_sha and valid_sha(f.get('source_sha256')) else source, 'split': 'val' if match in holdout else 'train', 'reviewed': True,
                          'all_visible_bumpers_labeled': True, 'image': 'images/'+image.name,
                          'image_sha256': hashlib.sha256(image.read_bytes()).hexdigest(), 'boxes': boxes, 'video_time_ms': t, 'origin': VERSION})
         progress('%s: %d frames' % (match, len(frames)))

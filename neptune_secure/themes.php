@@ -19,6 +19,7 @@ $defaults = [
 $presets=[
  'Neptune Default'=>[],
  'Neptune Classic'=>[],
+ 'Hippocampus Blue'=>['bg'=>'#113958','bg2'=>'#164B6C','panel'=>'#1C4F70','panel2'=>'#245C80','line'=>'#3C799A','text'=>'#F4FCFF','muted'=>'#BBD9E8','bg-glow'=>'#246F9D','shadow'=>'#03182D66','c1-blue'=>'#4CC5E7','accent'=>'#71DEF1','solid-text'=>'#062A3D','c1-red'=>'#E77580','c1-green'=>'#66D0A4','good'=>'#72DAB5','bad'=>'#FF8795','warn'=>'#FFD37C','ready'=>'#79CEE9','module-trident'=>'#61CAEF','module-augur'=>'#A0ACEF','module-saturn'=>'#F2C180','module-vulcan'=>'#EC9E9E','module-system'=>'#90C9DF','module-org'=>'#7CDDB8','module-ops'=>'#6CC7E9','access-strategy'=>'#94C8F1','access-admin'=>'#FFD385','access-owner'=>'#E4F5FC'],
  'Deep Ocean'=>['c1-blue'=>'#166B8F','accent'=>'#1685B5','bg'=>'#071019','bg2'=>'#0A151F','panel'=>'#0D1B27','panel2'=>'#122432','line'=>'#294354','text'=>'#F2F7FA','muted'=>'#91A7B5','bg-glow'=>'#0D3550','ready'=>'#42B8D8','alliance-blue'=>'#166B8F','alliance-blue-deep'=>'#125A78','module-trident'=>'#1685B5','module-augur'=>'#7167B2','module-saturn'=>'#987039','module-vulcan'=>'#A85B49','module-system'=>'#6B7F8F','module-org'=>'#3F816A','module-ops'=>'#1685B5'],
  'Steel Blue'=>['c1-blue'=>'#526D82','accent'=>'#6E91AA','bg'=>'#0B1117','bg2'=>'#101820','panel'=>'#151F28','panel2'=>'#1B2934','line'=>'#344A59','text'=>'#EDF3F6','muted'=>'#9AABB5','bg-glow'=>'#183041','ready'=>'#7FB3D5','alliance-blue'=>'#526D82','alliance-blue-deep'=>'#405A6F','module-trident'=>'#6E91AA','module-augur'=>'#737699','module-saturn'=>'#8D7551','module-vulcan'=>'#956456','module-system'=>'#71828F','module-org'=>'#58796F','module-ops'=>'#6E91AA'],
  'Teal'=>['c1-blue'=>'#167D7F','accent'=>'#2BA8A0','bg'=>'#071211','bg2'=>'#0B1918','panel'=>'#0F211F','panel2'=>'#142B29','line'=>'#2C4C49','text'=>'#F0F7F6','muted'=>'#92AAA7','bg-glow'=>'#0B3A39','ready'=>'#42C2B8','alliance-blue'=>'#167D7F','alliance-blue-deep'=>'#115F61','module-trident'=>'#2BA8A0','module-augur'=>'#756DB1','module-saturn'=>'#9A753C','module-vulcan'=>'#A95D4B','module-system'=>'#607E7B','module-org'=>'#3E816A','module-ops'=>'#2BA8A0'],
@@ -52,6 +53,7 @@ foreach($presets as $presetName=>$presetValues){
 }
 $presetLight=[
  'Neptune Default'=>$defaults['light'],
+ 'Hippocampus Blue'=>['bg'=>'#E1F5FE','bg2'=>'#D4EEF9','panel'=>'#F8FDFF','panel2'=>'#E9F7FE','line'=>'#A6D6EA','text'=>'#14394E','muted'=>'#496C7F','c1-blue'=>'#0874A4','solid-text'=>'#FFFFFF','accent'=>'#096F97','good'=>'#177654','bad'=>'#AC3F4D','warn'=>'#87601B','bg-glow'=>'#B3E7F9','shadow'=>'#164A6626'],
  'Deep Ocean'=>['c1-blue'=>'#166B8F','solid-text'=>'#FFFFFF','bg'=>'#F4F8FA','bg2'=>'#EAF1F4','panel'=>'#FFFFFF','panel2'=>'#F0F5F7','line'=>'#CBD8DE','text'=>'#14232C','muted'=>'#60717B','accent'=>'#166B8F','good'=>'#27814E','bad'=>'#C7443E','warn'=>'#7A5A16','bg-glow'=>'#DCEBF1','shadow'=>'#10212B1A'],
  'Steel Blue'=>['c1-blue'=>'#405A6F','solid-text'=>'#FFFFFF','bg'=>'#F5F7F8','bg2'=>'#EDEFF1','panel'=>'#FFFFFF','panel2'=>'#F1F3F4','line'=>'#CDD5DA','text'=>'#1B252C','muted'=>'#65717A','accent'=>'#526D82','good'=>'#2F7B58','bad'=>'#B84640','warn'=>'#846420','bg-glow'=>'#E3E9ED','shadow'=>'#17222A1A'],
  'Teal'=>['c1-blue'=>'#167D7F','solid-text'=>'#FFFFFF','bg'=>'#F3F9F8','bg2'=>'#E7F2F0','panel'=>'#FFFFFF','panel2'=>'#EDF6F4','line'=>'#C8DCD9','text'=>'#152624','muted'=>'#607572','accent'=>'#167D7F','good'=>'#2C7D67','bad'=>'#BD4843','warn'=>'#7E651C','bg-glow'=>'#DAEFEB','shadow'=>'#1025211A'],
@@ -73,6 +75,7 @@ $presetLight['Neptune Default']=$presetLight['Navy + Cyan'];
 $presetMeta=[
  'Neptune Default'=>'Standard Neptune palette - Navy + Cyan',
  'Neptune Classic'=>'Original Neptune palette',
+ 'Hippocampus Blue'=>'Brighter underwater blues, aqua accents and blue-glass panels',
  'Deep Ocean'=>'Richer ocean blues',
  'Steel Blue'=>'Subdued and professional',
  'Teal'=>'Modern teal system',

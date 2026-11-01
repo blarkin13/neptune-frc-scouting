@@ -34,7 +34,7 @@ def details(p):
  return {'path':str(p),'name':p.name,'bytes':total,'modified':st.st_mtime,'is_dir':p.is_dir(),'fingerprint':digest(files)}
 def inventory():
  rows=[];kept=[]
- for sub,pattern,feed in [('mac','Neptune-Training-Helper-[0-9]*.zip','appcast.xml'),('windows','Neptune-Training-Helper-[0-9]*-update.zip','latest.json')]:
+ for sub,pattern,feed in [('mac','Neptune-Training-Helper-[0-9]*.zip','appcast.xml'),('windows','Neptune-Training-Helper-[0-9]*-update.zip','latest.json'),('linux','Neptune-Training-Helper-[0-9]*-update.zip','latest.json')]:
   folder=DOWNLOADS/sub
   if not folder.is_dir() or folder.is_symlink():continue
   versions=sorted([p for p in folder.glob(pattern) if p.is_file() and not p.is_symlink()],key=lambda p:natural(p.name),reverse=True)
@@ -48,7 +48,7 @@ def inventory():
    d=details(p)
    if d:rows.append(d)
  if BACKUPS.is_dir() and not BACKUPS.is_symlink():
-  backups=sorted([p for p in BACKUPS.glob('*-backup-20[0-9][0-9]*') if not p.is_symlink()],key=lambda p:p.stat().st_mtime_ns,reverse=True)
+  backups=sorted([p for p in BACKUPS.glob('*-backup-*') if re.search(r'-backup-\d{8,}(?:\D|$)',p.name) and not p.is_symlink()],key=lambda p:p.stat().st_mtime_ns,reverse=True)
   eligible=[]
   for p in backups:
    d=details(p)
@@ -58,7 +58,7 @@ def inventory():
    if i<KEEP:kept.append({'path':str(p),'reason':'Newest two rollback copies'})
    else:rows.append(d)
  return {'items':sorted(rows,key=lambda r:r['path']),'kept':kept,'keep_versions':KEEP,
-         'scope':'Keeps the newest two Mac/Windows helper releases, live feed targets and two newest root rollback copies. Database dumps and journal logs are preserved.'}
+         'scope':'Keeps the newest two Mac/Windows/Linux helper releases, live feed targets and two newest root rollback copies. Database dumps and journal logs are preserved.'}
 def write_plan(plan):
  STATE.mkdir(parents=True,exist_ok=True)
  fd,tmp=tempfile.mkstemp(prefix='.release-prune-',dir=STATE)

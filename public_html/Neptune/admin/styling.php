@@ -3,6 +3,8 @@ require_once dirname(__DIR__,3).'/neptune_secure/bootstrap.php';
 require_once dirname(__DIR__,3).'/neptune_secure/themes.php';
 $u=require_role(['owner','admin']);$org=(int)$u['organization_id'];$userId=(int)$u['id'];neptune_theme_ensure_schema($pdo);
 $pageTitle='Interface Styling';$moduleName='SATURN';$error='';
+
+$catalog=neptune_theme_catalog();
 if($_SERVER['REQUEST_METHOD']==='POST'){
   verify_csrf();
   try{
@@ -14,7 +16,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     throw new RuntimeException('Unknown styling action.');
   }catch(Throwable $e){$error=$e->getMessage();}
 }
-$builtins=neptune_theme_builtins();$customThemes=neptune_theme_custom_list($pdo,$org);$active=neptune_theme_active($pdo,$org);$catalog=neptune_theme_catalog();
+$builtins=neptune_theme_builtins();$customThemes=neptune_theme_custom_list($pdo,$org);$active=neptune_theme_active($pdo,$org);
 $darkGroups=[
  'Foundation'=>['bg'=>'Page background','bg2'=>'Background 2','panel'=>'Panel','panel2'=>'Panel 2','line'=>'Borders','text'=>'Text','muted'=>'Muted text','bg-glow'=>'Background glow','shadow'=>'Shadow'],
  'Brand & Status'=>['c1-blue'=>'Primary','accent'=>'Accent','c1-red'=>'Competition red','c1-green'=>'Competition green','good'=>'Success','bad'=>'Error','warn'=>'Warning','ready'=>'Ready','solid-text'=>'Solid text'],
@@ -36,7 +38,7 @@ include dirname(__DIR__).'/partials_header.php';
 <section class="neptune-page-hero"><div><div class="neptune-hero-kicker"><i class="fa-solid fa-palette"></i> SATURN · ORGANIZATION</div><h1>Interface Styling</h1><p>Create and manage themes for <b><?=e($u['organization_name'])?></b>. Theme changes are organization-scoped and require Admin or Owner access.</p><div class="neptune-hero-pills"><span class="neptune-hero-pill"><i class="fa-solid fa-user-shield"></i> Admin+</span><span class="neptune-hero-pill"><i class="fa-solid fa-circle-check"></i> Active: <?=e($active['name'])?></span><span class="neptune-hero-pill"><i class="fa-solid fa-wand-magic-sparkles"></i> <?=count($customThemes)?> custom</span></div></div></section>
 <?php if(isset($_GET['saved'])):?><div class="notice good">Theme applied to <?=e($u['organization_name'])?>.</div><?php endif;?><?php if(isset($_GET['theme_saved'])):?><div class="notice good">Organization theme saved.</div><?php endif;?><?php if(isset($_GET['deleted'])):?><div class="notice good">Theme deleted.</div><?php endif;?><?php if($error):?><div class="notice bad"><?=e($error)?></div><?php endif;?>
 <section><div class="style-head"><div><h2>Built-in Themes</h2><p>Apply one directly or use it as a starting point.</p></div></div><div class="theme-grid">
-<?php foreach($builtins as $key=>$theme):$p=$theme['palette']['dark'];$sw=[$p['bg'],$p['panel'],$p['c1-blue'],$p['accent'],$p['good'],$p['module-augur']];$on=$active['type']==='builtin'&&$active['key']===$key;?>
+<?php $builtinThemeNumber=0; foreach($builtins as $key=>$theme):$builtinThemeNumber++;$p=$theme['palette']['dark'];$sw=[$p['bg'],$p['panel'],$p['c1-blue'],$p['accent'],$p['good'],$p['module-augur']];$on=$active['type']==='builtin'&&$active['key']===$key;?>
 <article class="theme-card <?=$on?'active':''?>" <?=$on?'':'role="button" tabindex="0" data-apply-form="apply-builtin-'.e($key).'"'?>><div class="theme-top"><div><span class="theme-kind">Built-in</span><h3><?=e($theme['name'])?></h3></div><?php if($on):?><span class="pill"><i class="fa-solid fa-check"></i> Active</span><?php endif;?></div><p><?=e($theme['description'])?></p><div class="theme-swatches"><?php foreach($sw as $c):?><span style="background:<?=e($c)?>"></span><?php endforeach;?></div><div class="theme-actions"><button type="button" class="secondary customize theme-icon-action" data-source="builtin:<?=e($key)?>" title="Customize <?=e($theme['name'])?>" aria-label="Customize <?=e($theme['name'])?>"><i class="fa-solid fa-wand-magic-sparkles"></i></button></div><?php if(!$on):?><form method="post" id="apply-builtin-<?=e($key)?>" hidden><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="action" value="apply_builtin"><input type="hidden" name="theme_key" value="<?=e($key)?>"></form><?php endif;?></article>
 <?php endforeach;?></div></section>
 <section><div class="style-head"><div><h2><?=e($u['organization_name'])?> Themes</h2><p>Reusable themes created by your organization.</p></div><button type="button" class="secondary" id="createTheme2"><i class="fa-solid fa-plus"></i> Create Theme</button></div><?php if(!$customThemes):?><div class="card muted">No custom themes yet.</div><?php else:?><div class="theme-grid">

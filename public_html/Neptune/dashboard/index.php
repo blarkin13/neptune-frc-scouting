@@ -475,14 +475,79 @@ html[data-theme="light"] .account-empty-bubble{border:1.5px solid rgba(19,37,55,
  .account-assignment-status{font-size:.73rem;padding:4px 7px}
  .account-bulk-toolbar{padding:10px;gap:7px}
 }
+
+/* Ocean layout consistency: My Account uses a peer full-width hero rather
+   than nesting the hero inside the profile/security panel. This matches the
+   Scouting/Analytics/Command Center mission headers and does not move forms. */
+body.neptune-console.neptune-my-account main.wrap {
+  max-width:1380px;
+}
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero {
+  position:relative;isolation:isolate;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:center;align-items:stretch;
+  box-sizing:border-box;width:100%;min-height:230px;
+  padding:clamp(24px,4vw,52px)!important;
+  margin:0 0 clamp(20px,3vw,34px)!important;
+  border:1px solid var(--nc-outline-bright,var(--border))!important;
+  border-radius:clamp(19px,2.5vw,30px)!important;
+  background:
+    radial-gradient(ellipse 75% 85% at 100% 0%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 78%),
+    linear-gradient(125deg,color-mix(in srgb,var(--accent) 9%,var(--panel)),var(--panel) 61%,color-mix(in srgb,var(--accent) 5%,var(--panel2)))!important;
+  box-shadow:0 22px 60px color-mix(in srgb,var(--shadow) 78%,transparent),inset 0 1px 0 color-mix(in srgb,var(--text) 8%,transparent)!important;
+}
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero::before {
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:
+    linear-gradient(110deg,transparent 0 65%,color-mix(in srgb,var(--accent) 5%,transparent) 65.15% 65.3%,transparent 65.5%),
+    repeating-radial-gradient(circle at 98% 5%,transparent 0 44px,color-mix(in srgb,var(--accent) 10%,transparent) 45px 46px,transparent 47px 78px);
+  opacity:.7;
+}
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero > :not(.nd-account-hero-mark) {
+  position:relative;z-index:1;max-width:min(70%,850px);
+}
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero > .nd-account-hero-mark {
+  position:absolute!important;top:50%!important;right:clamp(18px,4vw,54px)!important;
+  transform:translateY(-50%)!important;z-index:0!important;
+  font-size:clamp(5.5rem,13vw,12rem)!important;line-height:1!important;
+  color:var(--accent)!important;opacity:.1!important;pointer-events:none;
+}
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero h1 {
+  font-size:clamp(2.35rem,5vw,4.65rem)!important;
+  line-height:1.04!important;letter-spacing:-.055em!important;
+  margin:clamp(12px,1.8vw,20px) 0 12px!important;
+  color:var(--text)!important;font-weight:810!important;
+}
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero p {
+  color:var(--muted)!important;line-height:1.65!important;
+  font-size:clamp(1rem,1.4vw,1.15rem)!important;margin:0!important;
+}
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero .account-kicker {
+  color:var(--accent);font-size:.83rem;letter-spacing:.17em;
+}
+body.neptune-console.neptune-my-account main.wrap .account-profile-unified {
+  margin-bottom:16px;
+}
+@media(max-width:700px){
+  body.neptune-console.neptune-my-account main.wrap .account-standalone-hero {
+    min-height:0!important;padding:24px 20px!important;
+    margin-bottom:20px!important;border-radius:16px!important;
+  }
+  body.neptune-console.neptune-my-account main.wrap .account-standalone-hero > :not(.nd-account-hero-mark){max-width:100%}
+  body.neptune-console.neptune-my-account main.wrap .account-standalone-hero > .nd-account-hero-mark {
+    right:-12px!important;font-size:7rem!important;opacity:.06!important;
+  }
+  body.neptune-console.neptune-my-account main.wrap .account-standalone-hero h1{font-size:clamp(2.1rem,9vw,3.1rem)!important}
+}
 </style>
 <div class="account-ocean" id="accountOcean" aria-hidden="true"></div>
-<section class="account-panel account-profile-unified" id="account-profile">
-  <header class="account-profile-top">
+<header class="account-profile-top account-standalone-hero nd-mission-header" aria-labelledby="account-page-title">
+
+    <i class="fa-solid fa-user-astronaut nd-account-hero-mark" aria-hidden="true"></i>
     <div class="account-kicker"><i class="fa-solid fa-compass" aria-hidden="true"></i> NEPTUNE / PERSONAL COMMAND</div>
-    <h1>My Account</h1>
+    <h1 id="account-page-title">My Account</h1>
     <p>Your profile, security, and scouting assignments in one place.</p>
-  </header>
+</header>
+<section class="account-panel account-profile-unified" id="account-profile">
   <div class="account-profile-person">
     <button id="accountAvatarButton" class="account-photo-trigger" type="button" aria-label="Change your profile photo" aria-haspopup="dialog" aria-controls="accountPhotoDialog" title="Change profile photo">
       <?php if($accountPhoto):?><img src="<?=e($accountPhoto)?>" alt="" referrerpolicy="no-referrer"><?php else:?><i class="fa-solid fa-user-astronaut" aria-hidden="true"></i><?php endif;?>
@@ -1013,6 +1078,7 @@ body:has(.nd-ocean) .home-hero::after { content:none !important; }
 </style>
 <div class="ops-home">
 <section class="card home-hero">
+  <i class="fa-solid fa-compass nd-home-hero-mark" aria-hidden="true"></i>
   <div class="nd-hero-bubbles" aria-hidden="true"></div>
   <div class="nd-hero-main">
     <div class="nd-hero-kicker"><i class="fa-solid fa-water" aria-hidden="true"></i> NEPTUNE / MISSION CONTROL</div>

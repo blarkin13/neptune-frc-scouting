@@ -1,0 +1,908 @@
+/* Neptune // DEEP CURRENT — shared console shell, 2026-10-31
+   Additive styling only. The current Interface Styling organization palette owns
+   --bg, --panel, --line, --accent, --text, --muted and module accents. This file
+   intentionally defines no new fixed color palette and changes no scouting logic.
+*/
+body.neptune-console {
+  --nc-glass:color-mix(in srgb,var(--panel) 88%,transparent);
+  --nc-glass-strong:color-mix(in srgb,var(--panel) 96%,transparent);
+  --nc-outline:color-mix(in srgb,var(--accent) 19%,var(--line));
+  --nc-outline-bright:color-mix(in srgb,var(--accent) 49%,var(--line));
+  --nc-aura:color-mix(in srgb,var(--accent) 15%,transparent);
+  --nc-radius:22px;
+  --nc-card-shadow:0 14px 42px color-mix(in srgb,var(--shadow) 62%,transparent);
+  background:var(--bg);
+  color:var(--text);
+}
+/* An instrument-grade ocean floor: fine contours and wide, quiet shafts of light. */
+.neptune-console > .underwater-backdrop {
+  background:
+    radial-gradient(ellipse 74% 43% at 85% 0%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 78%),
+    radial-gradient(ellipse 62% 65% at -10% 70%,color-mix(in srgb,var(--module-trident) 12%,transparent),transparent 78%),
+    linear-gradient(165deg,var(--bg),var(--bg2) 54%,var(--bg));
+}
+.neptune-console > .underwater-backdrop::after {
+  content:"";position:absolute;inset:0;
+  background-image:
+    repeating-radial-gradient(ellipse 85% 45% at 102% 102%,transparent 0 49px,color-mix(in srgb,var(--accent) 8%,transparent) 50px 51px,transparent 52px 90px),
+    linear-gradient(90deg,color-mix(in srgb,var(--accent) 4%,transparent) 1px,transparent 1px),
+    linear-gradient(0deg,color-mix(in srgb,var(--accent) 4%,transparent) 1px,transparent 1px);
+  background-size:auto,96px 96px,96px 96px;
+  mask-image:linear-gradient(to bottom,transparent 0%,#000 24%,#000 95%);
+  opacity:.6;
+}
+.neptune-console > .underwater-lens {opacity:.8;animation-duration:16s}
+.neptune-console > .parallax-beams {opacity:.48;animation-duration:28s}
+.neptune-console > .parallax-particles {opacity:.42;animation-duration:42s}
+html[data-theme="light"] body.neptune-console > .underwater-backdrop::after{opacity:.35}
+html[data-theme="light"] body.neptune-console > .underwater-lens{opacity:.33}
+html[data-theme="light"] body.neptune-console > .parallax-beams{opacity:.2}
+html[data-theme="light"] body.neptune-console > .parallax-particles{opacity:.16}
+
+/* Floating command rail, not a second page hero. Navigation remains the
+   existing, access-controlled, keyboard-operable hamburger drawer. */
+body.neptune-console .topbar-clean {
+  min-height:88px;
+  padding:12px clamp(16px,2.7vw,44px);
+  gap:18px;
+  border-bottom:1px solid var(--nc-outline);
+  background:color-mix(in srgb,var(--bg) 86%,transparent);
+  backdrop-filter:blur(25px) saturate(140%);
+  -webkit-backdrop-filter:blur(25px) saturate(140%);
+  box-shadow:0 10px 40px color-mix(in srgb,var(--shadow) 36%,transparent);
+}
+body.neptune-console .topbar-clean::after {
+  content:"";position:absolute;bottom:-1px;left:clamp(16px,2.7vw,44px);
+  width:clamp(78px,13vw,175px);height:2px;border-radius:2px;
+  background:linear-gradient(90deg,var(--accent),transparent);
+  pointer-events:none;
+}
+body.neptune-console .nc-brand-row {display:flex;align-items:center;gap:22px;min-width:0}
+body.neptune-console .nc-brand-copy {
+  display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;
+  border-left:1px solid var(--nc-outline-bright);padding-left:20px;
+}
+body.neptune-console .nc-brand-copy span,
+body.neptune-console .nc-nav-overline span {
+  font-size:.65rem;font-weight:900;letter-spacing:.23em;color:var(--accent);
+}
+body.neptune-console .nc-brand-copy strong {
+  font-size:.9rem;font-weight:660;letter-spacing:.015em;color:var(--text);
+}
+body.neptune-console .topbar-clean .neptune-header-identity {gap:5px;flex:1 1 auto;min-width:0}
+body.neptune-console .topbar-clean .neptune-header-identity .neptune-breadcrumbs {
+  margin:0 0 0 3px;padding:0;color:var(--muted);font-size:.71rem;
+}
+body.neptune-console .topbar-clean .neptune-header-identity .neptune-breadcrumbs .crumb-current{font-weight:780;color:var(--text)}
+body.neptune-console .topbar-clean:has(#mainNav) #mobileMenuToggle {
+  flex:0 0 auto!important;width:auto!important;min-width:106px!important;
+  height:48px!important;gap:11px!important;padding:8px 16px!important;
+  border:1px solid var(--nc-outline-bright)!important;
+  border-radius:15px!important;background:color-mix(in srgb,var(--accent) 9%,var(--panel))!important;
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--text) 8%,transparent),0 8px 24px color-mix(in srgb,var(--shadow) 30%,transparent);
+  color:var(--text)!important;
+}
+body.neptune-console .topbar-clean #mobileMenuToggle .nc-menu-word {
+  font-size:.72rem;font-weight:900;letter-spacing:.13em;
+}
+body.neptune-console .topbar-clean:has(#mainNav) #mobileMenuToggle:hover,
+body.neptune-console .topbar-clean:has(#mainNav) #mobileMenuToggle:focus-visible {
+  border-color:var(--accent)!important;background:color-mix(in srgb,var(--accent) 17%,var(--panel))!important;
+}
+/* The menu is a vertical instrument panel with real page links and theme tools. */
+body.neptune-console .topbar-clean:has(#mainNav) #mainNav {
+  right:clamp(12px,2.7vw,44px)!important;top:calc(100% + 10px)!important;
+  width:min(390px,calc(100vw - 24px))!important;
+  max-height:calc(100dvh - 114px)!important;padding:15px!important;gap:5px!important;
+  border:1px solid var(--nc-outline-bright)!important;border-radius:23px!important;
+  background:var(--nc-glass-strong)!important;
+  box-shadow:0 28px 85px color-mix(in srgb,var(--shadow) 95%,transparent),inset 0 1px 0 color-mix(in srgb,var(--text) 7%,transparent)!important;
+  backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+}
+body.neptune-console .topbar-clean #mainNav .nc-nav-overline {
+  padding:8px 13px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;
+  border-bottom:1px solid var(--line);margin-bottom:6px;
+}
+body.neptune-console .topbar-clean #mainNav .nc-nav-overline small {color:var(--muted);font-size:.7rem;font-weight:650}
+body.neptune-console .topbar-clean #mainNav .nc-nav-group {
+  margin:11px 9px 5px;color:var(--muted);font-size:.63rem;
+  text-transform:uppercase;letter-spacing:.18em;font-weight:900;
+}
+body.neptune-console .topbar-clean #mainNav .nc-nav-group-bottom{padding-top:14px;border-top:1px solid var(--line)}
+body.neptune-console .topbar-clean:has(#mainNav) #mainNav>a:not(.neptune-drawer-identity),
+body.neptune-console .topbar-clean:has(#mainNav) #mainNav>button {
+  min-height:46px!important;padding:11px 14px!important;border:1px solid transparent!important;
+  border-radius:12px!important;color:var(--text)!important;font-weight:700!important;
+  transition:background-color .16s,border-color .16s,transform .16s;
+}
+body.neptune-console .topbar-clean:has(#mainNav) #mainNav>a:not(.neptune-drawer-identity):hover,
+body.neptune-console .topbar-clean:has(#mainNav) #mainNav>button:hover {
+  background:color-mix(in srgb,var(--accent) 11%,var(--panel2))!important;
+  border-color:var(--nc-outline)!important;transform:translateX(2px);
+}
+body.neptune-console .topbar-clean:has(#mainNav) #mainNav>a.active:not(.neptune-drawer-identity) {
+  background:color-mix(in srgb,var(--accent) 16%,var(--panel2))!important;
+  border-color:var(--nc-outline-bright)!important;
+  color:var(--text)!important;
+}
+body.neptune-console .topbar-clean #mainNav>a:not(.neptune-drawer-identity)>i,
+body.neptune-console .topbar-clean #mainNav>button>i {width:25px;color:var(--accent);text-align:center}
+body.neptune-console .topbar-clean #mainNav .neptune-drawer-identity {
+  margin:0!important;padding:12px!important;border:1px solid var(--nc-outline)!important;
+  border-radius:15px!important;background:color-mix(in srgb,var(--accent) 6%,var(--panel2))!important;
+}
+/* Page structure / typographic rhythm. */
+body.neptune-console main.wrap:not(.wrap-wide){max-width:1512px;padding:clamp(17px,2.5vw,38px) clamp(14px,3.1vw,48px) 72px}
+body.neptune-console main.wrap > .module-page{max-width:1380px}
+body.neptune-console main.wrap :is(h1,h2,h3){text-wrap:balance}
+body.neptune-console main.wrap :is(.module-page-header,.neptune-hub-section-head,.home-links-heading) > :is(h2,h3) {letter-spacing:-.035em}
+body.neptune-console main.wrap :is(.section-kicker,.neptune-hub-section-kicker,.neptune-hero-kicker,.nd-mission-kicker){letter-spacing:.18em;font-weight:850}
+/* Heroes: asymmetric cinematic panels with a radar reticle in the far corner.
+   Glass and accents are derived from the Interface Styling palette. */
+body.neptune-console main.wrap :is(.home-hero,.neptune-page-hero),
+body.neptune-console main.wrap .neptune-hub .nd-mission-header {
+  position:relative;isolation:isolate;overflow:hidden;
+  border:1px solid var(--nc-outline-bright)!important;
+  border-radius:clamp(19px,2.5vw,30px)!important;
+  background:
+    radial-gradient(ellipse 75% 85% at 100% 0%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 78%),
+    linear-gradient(125deg,color-mix(in srgb,var(--accent) 9%,var(--panel)),var(--panel) 61%,color-mix(in srgb,var(--accent) 5%,var(--panel2)))!important;
+  box-shadow:0 22px 60px color-mix(in srgb,var(--shadow) 78%,transparent),inset 0 1px 0 color-mix(in srgb,var(--text) 8%,transparent)!important;
+}
+body.neptune-console main.wrap :is(.home-hero,.neptune-page-hero)::before,
+body.neptune-console main.wrap .neptune-hub .nd-mission-header::before {
+  content:"";position:absolute;pointer-events:none;z-index:0;
+  inset:0;background:
+    linear-gradient(110deg,transparent 0 65%,color-mix(in srgb,var(--accent) 5%,transparent) 65.15% 65.3%,transparent 65.5%),
+    repeating-radial-gradient(circle at 98% 5%,transparent 0 44px,color-mix(in srgb,var(--accent) 10%,transparent) 45px 46px,transparent 47px 78px);
+  opacity:.6;
+}
+body.neptune-console main.wrap :is(.home-hero,.neptune-page-hero) > *,
+body.neptune-console main.wrap .neptune-hub .nd-mission-header > * {position:relative;z-index:1}
+body.neptune-console main.wrap .neptune-page-hero {padding:clamp(24px,3vw,42px)!important;margin-bottom:26px!important}
+body.neptune-console main.wrap :is(.neptune-page-hero,.nd-mission-header) h1 {
+  font-weight:810!important;letter-spacing:-.052em!important;line-height:1.02!important;
+}
+body.neptune-console main.wrap .neptune-page-hero p {line-height:1.65!important;max-width:78ch}
+body.neptune-console main.wrap .home-hero {
+  padding:clamp(23px,3.4vw,49px)!important;
+  gap:clamp(18px,2.7vw,40px)!important;
+}
+body.neptune-console main.wrap .home-hero .status-panel {
+  border:1px solid var(--nc-outline)!important;background:var(--nc-glass-strong)!important;
+  border-radius:20px!important;padding:clamp(18px,2vw,28px);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--text) 8%,transparent);
+}
+body.neptune-console main.wrap .home-event-metrics>div {border-color:var(--nc-outline)}
+body.neptune-console main.wrap .home-event-metrics b {font-variant-numeric:tabular-nums}
+/* One common card material for system hubs, ordinary panels and quick launchers. */
+body.neptune-console main.wrap :is(.card,.quick-link,.neptune-hub-card,.module-launch-card,.theme-card,.status-panel,.ops-panel) {
+  border-color:var(--nc-outline);
+  border-radius:var(--nc-radius);
+  box-shadow:var(--nc-card-shadow);
+}
+body.neptune-console main.wrap :is(.quick-link,.neptune-hub-card,.module-launch-card) {
+  position:relative;overflow:hidden;
+  background:linear-gradient(152deg,color-mix(in srgb,var(--panel2) 35%,var(--panel)),var(--panel) 71%);
+  color:var(--text);
+  border:1px solid var(--nc-outline);
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+body.neptune-console main.wrap :is(.quick-link,.neptune-hub-card,.module-launch-card)::before {
+  content:"";position:absolute;top:0;left:18px;right:40%;height:2px;
+  background:linear-gradient(90deg,var(--card-accent,var(--module-accent,var(--accent))),transparent);
+  opacity:.75;pointer-events:none;
+}
+body.neptune-console main.wrap :is(.quick-link,.neptune-hub-card,.module-launch-card):hover {
+  transform:translateY(-3px);border-color:var(--nc-outline-bright);
+  box-shadow:0 23px 50px color-mix(in srgb,var(--shadow) 77%,transparent);
+}
+body.neptune-console main.wrap .neptune-hub-card {min-height:210px;padding:clamp(18px,2vw,25px)}
+body.neptune-console main.wrap .neptune-hub-card h3 {font-size:1.2rem;letter-spacing:-.035em}
+body.neptune-console main.wrap .neptune-hub-card p {line-height:1.58}
+body.neptune-console main.wrap .neptune-hub-icon,
+body.neptune-console main.wrap .quick-icon {
+  border:1px solid color-mix(in srgb,var(--card-accent,var(--accent)) 30%,var(--line));
+  border-radius:15px;
+  background:color-mix(in srgb,var(--card-accent,var(--accent)) 13%,var(--panel2));
+  color:var(--card-accent,var(--accent));
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--text) 7%,transparent);
+}
+body.neptune-console main.wrap .neptune-hub-section-head {
+  padding:0 0 14px;margin-bottom:20px;border-bottom:1px solid var(--nc-outline);
+}
+body.neptune-console main.wrap .neptune-hub-section-head h2 {font-size:clamp(1.4rem,2.1vw,2rem)}
+body.neptune-console main.wrap .neptune-hub-section {margin-top:clamp(24px,4vw,48px)}
+body.neptune-console main.wrap .neptune-hub-grid {gap:clamp(14px,1.7vw,22px)}
+body.neptune-console main.wrap .quick-grid {gap:clamp(14px,1.7vw,22px)}
+body.neptune-console main.wrap .quick-link{min-height:128px;padding:clamp(16px,1.8vw,24px);gap:16px}
+body.neptune-console main.wrap .quick-link b{font-size:1.1rem;letter-spacing:-.025em}
+body.neptune-console main.wrap .quick-link .muted{font-size:.84rem;line-height:1.48}
+body.neptune-console main.wrap :is(.status-panel,.card,.ops-panel){background:var(--nc-glass-strong)}
+body.neptune-console main.wrap .theme-card {background:var(--nc-glass-strong);border-color:var(--nc-outline)}
+body.neptune-console main.wrap .theme-card.active{border-color:var(--accent)}
+/* Precision controls. Do not change match-scout actions, stop/go buttons,
+   scoring grids, timer readouts, map controls, or designer drag handles. */
+body.neptune-console main.wrap :is(.btn,button.secondary):not(.action):not(.preview-action) {
+  border-radius:12px;
+  transition:filter .18s,transform .18s,border-color .18s;
+}
+body.neptune-console main.wrap .btn:hover:not(:disabled){transform:translateY(-1px)}
+body.neptune-console main.wrap :is(.card,.theme-editor,.nm-page) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+body.neptune-console main.wrap :is(.card,.theme-editor,.nm-page) select,
+body.neptune-console main.wrap :is(.card,.theme-editor,.nm-page) textarea {
+  border-radius:11px;
+}
+body.neptune-console main.wrap .table-wrap {border-radius:14px}
+body.neptune-console main.wrap .pill {border-color:var(--nc-outline);background:color-mix(in srgb,var(--panel2) 89%,transparent)}
+body.neptune-console main.wrap .notice{border-radius:13px}
+/* Accessible day mode uses the same theme, not a separate hard-coded skin. */
+html[data-theme="light"] body.neptune-console {
+  --nc-glass:color-mix(in srgb,var(--panel) 95%,transparent);
+  --nc-glass-strong:var(--panel);
+  --nc-card-shadow:0 9px 30px color-mix(in srgb,var(--shadow) 47%,transparent);
+}
+html[data-theme="light"] body.neptune-console .topbar-clean{
+  background:color-mix(in srgb,var(--panel) 90%,transparent);
+}
+html[data-theme="light"] body.neptune-console main.wrap :is(.home-hero,.neptune-page-hero),
+html[data-theme="light"] body.neptune-console main.wrap .neptune-hub .nd-mission-header {
+  background:
+    radial-gradient(ellipse 76% 90% at 100% 0%,color-mix(in srgb,var(--accent) 10%,transparent),transparent 75%),
+    linear-gradient(120deg,color-mix(in srgb,var(--accent) 5%,var(--panel)),var(--panel) 70%)!important;
+}
+@media(max-width:800px){
+  body.neptune-console .topbar-clean{min-height:72px;padding:8px 14px;gap:10px}
+  body.neptune-console .nc-brand-copy{display:none}
+  body.neptune-console .topbar-clean:has(#mainNav) #mobileMenuToggle{
+    min-width:50px!important;width:50px!important;padding:8px!important;gap:0!important;
+  }
+  body.neptune-console .nc-menu-word{display:none!important}
+  body.neptune-console .topbar-clean:has(#mainNav) #mainNav{
+    top:calc(100% + 7px)!important;right:8px!important;
+    max-height:calc(100dvh - 89px)!important;
+  }
+  body.neptune-console main.wrap:not(.wrap-wide){padding:18px 14px 55px}
+  body.neptune-console main.wrap .home-hero{grid-template-columns:1fr!important}
+  body.neptune-console main.wrap .neptune-page-hero{padding:22px!important}
+  body.neptune-console main.wrap .neptune-hub-card{min-height:180px}
+}
+@media(max-width:440px){
+  body.neptune-console .topbar-clean .neptune-header-identity .neptune-breadcrumbs{max-width:calc(100vw - 104px)}
+  body.neptune-console main.wrap :is(.quick-link,.neptune-hub-card){border-radius:17px}
+  body.neptune-console main.wrap .home-hero{padding:19px!important}
+  body.neptune-console main.wrap .neptune-page-hero{border-radius:19px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  body.neptune-console main.wrap :is(.quick-link,.neptune-hub-card,.module-launch-card),
+  body.neptune-console main.wrap :is(.quick-link,.neptune-hub-card,.module-launch-card):hover,
+  body.neptune-console .topbar-clean #mainNav a{transition:none!important;transform:none!important}
+}
+/* Locked navigation tiles retain their unavailable appearance. */
+body.neptune-console main.wrap .neptune-hub-card.is-locked:hover {
+  transform:none;border-color:var(--nc-outline);box-shadow:var(--nc-card-shadow);
+}
+
+/* NEPTUNE OCEAN POLISH — hero marks anchored to the actual hero, not to
+   nested headings. Shared with deep mission pages and standard module heroes. */
+body.neptune-console main.wrap .neptune-page-hero[data-neptune-hero="server"] {
+  min-height:clamp(168px,21vw,260px)!important;
+  /* Do not override page-specific grid or flex layouts. */
+}
+body.neptune-console main.wrap .neptune-page-hero[data-neptune-hero="server"] > .nd-page-mission-mark {
+  position:absolute!important;
+  top:50%!important;right:clamp(12px,3.5vw,58px)!important;
+  transform:translateY(-50%)!important;
+  z-index:0!important;margin:0!important;padding:0!important;
+  width:auto!important;height:auto!important;
+  font-size:clamp(5.5rem,13vw,12rem)!important;
+  line-height:1!important;color:var(--module-accent-readable,var(--accent))!important;
+  opacity:.13!important;pointer-events:none;user-select:none;
+}
+body.neptune-console main.wrap .neptune-page-hero[data-neptune-hero="server"] > :not(.nd-page-mission-mark) {
+  position:relative;z-index:1;
+}
+/* The main hubs already have their own Font Awesome marks; normalize their
+   optical centering to the same vertical axis. */
+body.neptune-console main.wrap .nd-mission-header > .nd-mission-mark {
+  position:absolute!important;top:50%!important;
+  right:clamp(16px,4vw,54px)!important;
+  transform:translateY(-50%)!important;
+  line-height:1!important; margin:0!important;
+  pointer-events:none;
+}
+/* My Account uses a dedicated profile header and bypasses the shared hero
+   compositor. Give it the matching relief icon and concentric ocean chart lines. */
+body.neptune-console.neptune-my-account main.wrap .account-profile-top {
+  position:relative;isolation:isolate;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:center;
+  min-height:clamp(165px,19vw,235px);
+  margin:-8px -8px 26px;padding:clamp(22px,3vw,42px);
+  border:1px solid var(--nc-outline-bright);
+  border-radius:clamp(18px,2.2vw,26px);
+  background:radial-gradient(ellipse at 97% 0%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 75%),
+             linear-gradient(128deg,color-mix(in srgb,var(--accent) 7%,var(--panel)),var(--panel2));
+}
+body.neptune-console.neptune-my-account main.wrap .account-profile-top::before {
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:
+    repeating-radial-gradient(circle at 90% 0%,transparent 0 58px,color-mix(in srgb,var(--accent) 16%,transparent) 59px 61px,transparent 62px 104px),
+    linear-gradient(116deg,transparent 0 66%,color-mix(in srgb,var(--accent) 6%,transparent) 66.15% 66.4%,transparent 66.6%);
+  opacity:.75;
+}
+body.neptune-console.neptune-my-account main.wrap .account-profile-top > :not(.nd-account-hero-mark){position:relative;z-index:1}
+body.neptune-console.neptune-my-account main.wrap .account-profile-top > .nd-account-hero-mark{
+  position:absolute!important;top:50%;right:clamp(12px,4vw,52px);
+  transform:translateY(-50%);z-index:0;
+  color:var(--accent);opacity:.14;font-size:clamp(6rem,14vw,13rem);
+  line-height:1;pointer-events:none;user-select:none;
+}
+/* Home already has its own Neptune logo; use a quiet FA compass as the
+   secondary deep-water watermark rather than replacing any branding. */
+body.neptune-console main.wrap .home-hero > .nd-home-hero-mark {
+  position:absolute!important;top:50%;right:clamp(16px,4vw,64px);
+  transform:translateY(-50%);z-index:0!important;
+  color:var(--accent);font-size:clamp(6rem,14vw,13rem);
+  line-height:1;opacity:.085;pointer-events:none;user-select:none;
+}
+@media(max-width:700px){
+  body.neptune-console main.wrap .neptune-page-hero[data-neptune-hero="server"] > .nd-page-mission-mark {
+    font-size:clamp(5rem,23vw,7rem)!important;right:-10px!important;opacity:.085!important;
+  }
+  body.neptune-console.neptune-my-account main.wrap .account-profile-top{min-height:170px;margin:-3px -3px 20px;padding:22px}
+  body.neptune-console.neptune-my-account main.wrap .nd-account-hero-mark{right:-12px!important;font-size:7rem!important;opacity:.09!important}
+}
+/* NEPTUNE HERO SYSTEM — ONE GEOMETRY / ONE SPACING RHYTHM
+   This block deliberately comes after Deep Current and Ocean Polish styles.
+   The compositor tags the actual page hero .nc-standard-hero on internal routes.
+   Home (site index) and the main dashboard retain their own distinct treatment. */
+body.neptune-console {
+  --nc-standard-hero-height: 360px;
+  --nc-standard-hero-radius: 28px;
+  --nc-standard-hero-gap: 26px;
+  --nc-standard-hero-padding: clamp(28px, 3vw, 46px);
+}
+body.neptune-console main.wrap .neptune-page-hero.nc-standard-hero,
+body.neptune-console main.wrap .neptune-hub .nd-mission-header.nc-standard-hero,
+body.neptune-console.neptune-my-account main.wrap header.account-standalone-hero.nd-mission-header.nc-standard-hero {
+  box-sizing:border-box!important;
+  width:100%!important;
+  height:var(--nc-standard-hero-height)!important;
+  min-height:var(--nc-standard-hero-height)!important;
+  max-height:none!important;
+  padding:var(--nc-standard-hero-padding)!important;
+  border-radius:var(--nc-standard-hero-radius)!important;
+  margin:0 0 var(--nc-standard-hero-gap)!important;
+  align-self:stretch!important;
+  overflow:hidden!important;
+  flex-shrink:0!important;
+}
+/* Shared internal content rhythm: title, subtitle and three step chips. */
+body.neptune-console main.wrap .neptune-page-hero.nc-standard-hero .neptune-hero-pills,
+body.neptune-console main.wrap .neptune-hub .nd-mission-header.nc-standard-hero .neptune-hero-pills,
+body.neptune-console.neptune-my-account main.wrap .account-standalone-hero.nc-standard-hero .neptune-hero-pills {
+  display:flex!important;
+  flex-wrap:wrap!important;
+  align-items:center!important;
+  gap:9px!important;
+  margin:20px 0 0!important;
+  max-width:min(100%,920px)!important;
+  position:relative!important;
+  z-index:2!important;
+}
+body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pill {
+  display:inline-flex!important;
+  align-items:center!important;
+  gap:8px!important;
+  min-height:35px!important;
+  padding:7px 12px!important;
+  border-radius:999px!important;
+  color:var(--text)!important;
+  background:color-mix(in srgb,var(--panel2) 86%,transparent)!important;
+  border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line))!important;
+  font-size:.76rem!important;
+  font-weight:750!important;
+  line-height:1.18!important;
+  white-space:nowrap;
+}
+body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pill strong {
+  display:inline-grid;place-items:center;
+  width:20px;height:20px;min-width:20px;
+  border-radius:50%;color:var(--text)!important;
+  background:color-mix(in srgb,var(--accent) 20%,var(--panel));
+  font-size:.7rem;font-variant-numeric:tabular-nums;
+}
+body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pill i {
+  color:var(--module-accent-readable,var(--accent))!important;
+  font-size:.78rem;
+}
+/* Keep decorative Font Awesome marks on the same centerline after height fix. */
+body.neptune-console main.wrap .nc-standard-hero > :is(.nd-page-mission-mark,.nd-mission-mark,.nd-account-hero-mark) {
+  position:absolute!important;
+  top:50%!important;
+  right:clamp(16px,4vw,58px)!important;
+  transform:translateY(-50%)!important;
+  height:auto!important;
+  margin:0!important;
+  line-height:1!important;
+  pointer-events:none!important;
+  user-select:none!important;
+  z-index:0!important;
+}
+/* Hub pages previously used 230px, and My Account used its own 230px min-height. */
+body.neptune-console main.wrap .neptune-hub .nd-mission-header.nc-standard-hero {
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+}
+body.neptune-console.neptune-my-account main.wrap header.account-standalone-hero.nc-standard-hero {
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:stretch!important;
+  justify-content:center!important;
+}
+body.neptune-console main.wrap .neptune-hub .nc-standard-hero .nd-mission-content {
+  max-width:min(75%,950px)!important;
+  min-width:0!important;
+  position:relative;
+  z-index:1;
+}
+/* The home hero also shares the visual border radius, but dashboard content
+   must never be forced into a fixed-height panel. */
+body.neptune-console main.wrap .home-hero {
+  border-radius:var(--nc-standard-hero-radius)!important;
+  margin-bottom:var(--nc-standard-hero-gap)!important;
+}
+@media(max-width:1000px){
+  body.neptune-console {
+    --nc-standard-hero-height: 340px;
+    --nc-standard-hero-padding:28px;
+  }
+  body.neptune-console main.wrap .neptune-hub .nc-standard-hero .nd-mission-content {max-width:85%!important}
+}
+@media(max-width:700px){
+  body.neptune-console {
+    --nc-standard-hero-radius:20px;
+    --nc-standard-hero-gap:18px;
+    --nc-standard-hero-padding:24px 20px;
+  }
+  /* Allow content-height expansion for narrow screens and font scaling.
+     A consistent 360px minimum avoids short headers while permitting overflow-safe expansion. */
+  body.neptune-console main.wrap .neptune-page-hero.nc-standard-hero,
+  body.neptune-console main.wrap .neptune-hub .nd-mission-header.nc-standard-hero,
+  body.neptune-console.neptune-my-account main.wrap header.account-standalone-hero.nd-mission-header.nc-standard-hero {
+    height:auto!important;
+    min-height:360px!important;
+    max-height:none!important;
+    padding:var(--nc-standard-hero-padding)!important;
+    border-radius:var(--nc-standard-hero-radius)!important;
+    margin:0 0 var(--nc-standard-hero-gap)!important;
+  }
+  body.neptune-console main.wrap .neptune-hub .nc-standard-hero .nd-mission-content {max-width:100%!important}
+  body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pills {gap:7px!important;margin-top:17px!important}
+  body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pill {min-height:32px!important;padding:6px 10px!important;white-space:normal}
+  body.neptune-console main.wrap .home-hero {border-radius:var(--nc-standard-hero-radius)!important}
+}
+@media(prefers-reduced-motion:reduce){
+  body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pill{transition:none!important}
+}
+
+
+/* NEPTUNE AMBIENT LAYERS & QUIET CARD FOCUS — 2026-10-31
+   The background elements are intentionally negative-z descendants of body.
+   Isolating body establishes a reliable paint context above html's canvas,
+   so they're not lost behind the root background on some pages/renderers.
+   Isolation does not create a containing block or change app layout.
+   These only run for signed-in console pages; public and minimal views
+   retain their existing treatment. */
+body.neptune-console {
+  isolation:isolate;
+}
+/* The original ambientOscillation animation lives in neptune-ocean.css,
+   which is loaded by specific event/Wi-Fi pages, not by the shared header.
+   Give shared console pages their own slower, softer ambient modulation. */
+body.neptune-console > .underwater-backdrop {
+  animation:nc-ambient-depth 32s ease-in-out infinite alternate;
+}
+@keyframes nc-ambient-depth {
+  from {filter:hue-rotate(0deg) brightness(1)}
+  to {filter:hue-rotate(-5deg) brightness(1.025)}
+}
+/* Dark/bright themes both inherit the selected organization palette. The
+   previous overlay's 0.42 opacity over 8%-accent particle dots was almost
+   invisible; restore gentle contrast while keeping detail behind content. */
+body.neptune-console > .underwater-lens {
+  opacity:.82;
+  animation-duration:18s;
+}
+body.neptune-console > .parallax-beams {
+  opacity:.68;
+  animation-duration:29s;
+  background:
+    radial-gradient(ellipse at 30% 0%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 56%),
+    repeating-linear-gradient(60deg,color-mix(in srgb,var(--accent) 9%,transparent) 0px,transparent 115px,color-mix(in srgb,var(--accent) 9%,transparent) 225px);
+}
+body.neptune-console > .parallax-particles {
+  opacity:.73;
+  animation-duration:46s;
+  background-image:
+    radial-gradient(circle at 20% 30%,color-mix(in srgb,var(--accent) 24%,transparent) 1.5px,transparent 2px),
+    radial-gradient(circle at 80% 40%,color-mix(in srgb,var(--accent) 21%,transparent) 2px,transparent 2.5px),
+    radial-gradient(circle at 40% 70%,color-mix(in srgb,var(--accent) 19%,transparent) 2.5px,transparent 3px);
+}
+html[data-theme="light"] body.neptune-console > .underwater-lens {opacity:.44}
+html[data-theme="light"] body.neptune-console > .parallax-beams {opacity:.38}
+html[data-theme="light"] body.neptune-console > .parallax-particles {
+  opacity:.49;
+  background-image:
+    radial-gradient(circle at 20% 30%,color-mix(in srgb,var(--text) 20%,transparent) 1.5px,transparent 2px),
+    radial-gradient(circle at 80% 40%,color-mix(in srgb,var(--text) 18%,transparent) 2px,transparent 2.5px),
+    radial-gradient(circle at 40% 70%,color-mix(in srgb,var(--accent) 24%,transparent) 2.5px,transparent 3px);
+}
+/* Replace the continuously rising bubble rings with a subtle, static
+   interaction cue. No animation loop, bright splashes, or overlay competing
+   with card text and buttons. Preserve theme colors and keyboard focus. */
+body.neptune-console main.wrap :is(.neptune-hub-card,.quick-link,.module-launch-card) {
+  transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;
+}
+body.neptune-console main.wrap :is(.neptune-hub-card,.quick-link,.module-launch-card):is(:hover,:focus-within) {
+  transform:translateY(-2px);
+  border-color:var(--nc-outline-bright);
+  box-shadow:0 18px 38px color-mix(in srgb,var(--shadow) 72%,transparent),
+             inset 0 1px 0 color-mix(in srgb,var(--accent) 14%,transparent);
+}
+body.neptune-console main.wrap :is(.module-card,.theme-card,.account-panel,.ops-panel) {
+  transition:border-color .22s ease,box-shadow .22s ease;
+}
+body.neptune-console main.wrap :is(.module-card,.theme-card,.account-panel,.ops-panel):is(:hover,:focus-within) {
+  border-color:var(--nc-outline-bright);
+  box-shadow:0 15px 36px color-mix(in srgb,var(--shadow) 64%,transparent);
+}
+@media(prefers-reduced-motion:reduce){
+  body.neptune-console > .underwater-backdrop {animation:none!important}
+  body.neptune-console main.wrap :is(.neptune-hub-card,.quick-link,.module-launch-card,.module-card,.theme-card,.account-panel,.ops-panel) {
+    transition:none!important;
+  }
+  body.neptune-console main.wrap :is(.neptune-hub-card,.quick-link,.module-launch-card):is(:hover,:focus-within){transform:none!important}
+}
+
+
+/* NEPTUNE OCEAN REFINEMENT 2 — single hero baseline & environmental hover bubbles.
+   Targets only the authenticated console. These rules come after the earlier
+   hero overrides; don't adjust dashboard/index heroes or match-scoring widgets. */
+body.neptune-console {
+  --nc-standard-hero-height:360px;
+  --nc-standard-hero-radius:28px;
+  --nc-standard-hero-gap:26px;
+  --nc-standard-hero-padding:clamp(28px,3vw,46px);
+}
+/* Previous hub headers were vertically centered, while Account and other heroes
+   used their own alignment and margins. Align content to one top inset. */
+body.neptune-console main.wrap :is(.neptune-page-hero.nc-standard-hero,.neptune-hub .nd-mission-header.nc-standard-hero,header.account-standalone-hero.nc-standard-hero) {
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-start!important;
+  justify-content:flex-start!important;
+  box-sizing:border-box!important;
+  width:100%!important;
+  height:var(--nc-standard-hero-height)!important;
+  min-height:var(--nc-standard-hero-height)!important;
+  max-height:none!important;
+  padding:var(--nc-standard-hero-padding)!important;
+  margin:0 0 var(--nc-standard-hero-gap)!important;
+  border-radius:var(--nc-standard-hero-radius)!important;
+  gap:0!important;
+}
+/* Account previously had a more-specific !important centering rule. Override
+   it explicitly or Account still starts 40px lower than the module hubs. */
+body.neptune-console.neptune-my-account main.wrap header.account-standalone-hero.nd-mission-header.nc-standard-hero {
+  justify-content:flex-start!important;
+  align-items:flex-start!important;
+}
+/* Main section wrappers must not insert an extra gutter ahead of the hero. */
+body.neptune-console main.wrap > :is(.module-page,.neptune-hub):has(> .nc-standard-hero) {
+  margin-top:0!important;
+  padding-top:0!important;
+}
+body.neptune-console main.wrap .neptune-hub .nd-mission-header.nc-standard-hero .nd-mission-content {
+  max-width:min(76%,920px)!important;
+  margin:0!important;
+  padding:0!important;
+}
+body.neptune-console main.wrap header.account-standalone-hero.nc-standard-hero > :not(.nd-account-hero-mark) {
+  max-width:min(76%,920px)!important;
+}
+/* Typography and the text column follow the same rhythm, regardless of whether
+   a page supplies a kicker, a subtitle, or both. */
+body.neptune-console main.wrap .nc-standard-hero :is(.nd-mission-kicker,.neptune-hero-kicker,.account-kicker) {
+  margin:0 0 16px!important;
+  padding:0!important;
+  font-size:.77rem!important;
+  font-weight:850!important;
+  line-height:1.3!important;
+  letter-spacing:.18em!important;
+  text-transform:uppercase!important;
+}
+body.neptune-console main.wrap .nc-standard-hero h1 {
+  margin:0 0 12px!important;
+  font-size:clamp(2.35rem,5vw,4.65rem)!important;
+  line-height:1.04!important;
+  letter-spacing:-.055em!important;
+  font-weight:810!important;
+}
+body.neptune-console main.wrap .nc-standard-hero p {
+  margin:0!important;
+  font-size:clamp(1rem,1.4vw,1.15rem)!important;
+  line-height:1.65!important;
+  max-width:65ch!important;
+}
+body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pills {
+  margin:18px 0 0!important;
+  gap:9px!important;
+}
+/* Page-specific hero icons stay centered on the actual hero, not its text. */
+body.neptune-console main.wrap .nc-standard-hero > :is(.nd-mission-mark,.nd-page-mission-mark,.nd-account-hero-mark) {
+  position:absolute!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  right:clamp(16px,4vw,58px)!important;
+  margin:0!important;
+}
+/* Hover bubbles are a temporary increase in the ambient field, NOT card decals.
+   Their visual appearance matches the shared nd-depth-bubble background rings. */
+body.neptune-console > .nc-hover-ocean-field {
+  position:fixed;
+  inset:0;
+  z-index:0;
+  overflow:hidden;
+  pointer-events:none;
+  user-select:none;
+  contain:paint;
+}
+body.neptune-console main.wrap {position:relative;z-index:1}
+body.neptune-console > :is(.nd-depth-field,.nc-hover-ocean-field) > .nc-hover-bubble {
+  position:absolute;
+  display:block;
+  left:var(--nc-x);
+  top:var(--nc-y);
+  width:var(--nc-size);
+  height:var(--nc-size);
+  border:1px solid rgba(194,225,241,.58);
+  border-radius:50%;
+  opacity:0;
+  background:radial-gradient(circle at 28% 21%,rgba(248,253,255,.32),transparent 55%);
+  box-shadow:inset -1px -2px 4px rgba(104,158,187,.2),0 0 9px rgba(192,228,248,.14);
+  animation:nc-hover-bubble-rise var(--nc-duration) ease-out forwards;
+  will-change:transform,opacity;
+}
+@keyframes nc-hover-bubble-rise {
+  0% {opacity:calc(var(--nc-alpha) * .5);transform:translate3d(0,6px,0) scale(.62)}
+  5% {opacity:var(--nc-alpha);transform:translate3d(0,0,0) scale(.82)}
+  78% {opacity:calc(var(--nc-alpha) * .8)}
+  100% {opacity:0;transform:translate3d(var(--nc-drift),var(--nc-rise),0) scale(1.08)}
+}
+html[data-theme="light"] body.neptune-console > :is(.nd-depth-field,.nc-hover-ocean-field) > .nc-hover-bubble {
+  border:1.5px solid rgba(19,37,55,.72);
+  background:radial-gradient(circle at 28% 21%,rgba(255,255,255,.42),transparent 55%);
+  box-shadow:inset -1px -2px 4px rgba(19,37,55,.20),0 0 0 .4px rgba(19,37,55,.20);
+}
+/* Keep hover feedback on the cards themselves brief and minimal. */
+body.neptune-console main.wrap :is(.neptune-hub-card,.quick-link,.module-launch-card,.module-card,.theme-card,.card,.ops-panel):is(:hover,:focus-within) {
+  border-color:var(--nc-outline-bright);
+}
+@media(max-width:1000px){
+  body.neptune-console {--nc-standard-hero-height:340px;--nc-standard-hero-padding:28px}
+}
+@media(max-width:700px){
+  body.neptune-console {--nc-standard-hero-radius:20px;--nc-standard-hero-gap:18px;--nc-standard-hero-padding:24px 20px}
+  body.neptune-console main.wrap :is(.neptune-page-hero.nc-standard-hero,.neptune-hub .nd-mission-header.nc-standard-hero,header.account-standalone-hero.nc-standard-hero) {
+    height:auto!important;
+    min-height:360px!important;
+    max-height:none!important;
+    padding:var(--nc-standard-hero-padding)!important;
+  }
+  body.neptune-console main.wrap .neptune-hub .nd-mission-header.nc-standard-hero .nd-mission-content,
+  body.neptune-console main.wrap header.account-standalone-hero.nc-standard-hero > :not(.nd-account-hero-mark) {max-width:100%!important}
+  body.neptune-console main.wrap .nc-standard-hero h1 {font-size:clamp(2.1rem,9vw,3.1rem)!important}
+  body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pills {margin-top:17px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  body.neptune-console > .nc-hover-ocean-field {display:none!important}
+  body.neptune-console > :is(.nd-depth-field,.nc-hover-ocean-field) > .nc-hover-bubble {animation:none!important}
+}
+
+
+/* NEPTUNE · SINGLE HEADER/HERO RHYTHM + OCEAN GLASS
+   Keep this AFTER earlier hero and bubble treatments. Target authenticated
+   internal standard heroes only; leave Home/index, dashboards, and dedicated
+   fullscreen match consoles alone. No scripting or DOM changes. */
+body.neptune-console {
+  --nc-hero-top-gap: 24px;
+  --nc-hero-inner-inset: 40px;
+  --nc-hero-kicker-to-title: 16px;
+  --nc-hero-title-to-copy: 12px;
+  --nc-card-glass: color-mix(in srgb,var(--panel) 91%,transparent);
+  --nc-card-glass-2: color-mix(in srgb,var(--panel2) 88%,transparent);
+}
+/* Source of the inconsistent header gap: main.wrap uses a viewport-scaled
+   top gutter, while several module shells add their own top padding/margins.
+   Apply the same fixed gutter wherever the server compositor found a hero. */
+body.neptune-console main.wrap:not(.wrap-wide):has(.nc-standard-hero) {
+  padding-top:var(--nc-hero-top-gap)!important;
+}
+body.neptune-console main.wrap:not(.wrap-wide):has(.nc-standard-hero) > :is(
+  .module-page,.neptune-hub,.community-main,.command-page,.builder-page,
+  .style-page,.alliance-page,.match-scout-shell,.impact-shell,.tag-context-shell,
+  .ar-page,.dr-page,.asb-page,.ntp-hub,.vgb
+) {
+  padding-top:0!important;
+  margin-top:0!important;
+}
+body.neptune-console main.wrap:not(.wrap-wide) :is(
+  .neptune-page-hero.nc-standard-hero,
+  .nd-mission-header.nc-standard-hero,
+  .account-standalone-hero.nc-standard-hero
+) {
+  box-sizing:border-box!important;
+  display:flex!important;
+  flex-flow:column nowrap!important;
+  justify-content:flex-start!important;
+  align-items:flex-start!important;
+  padding:var(--nc-hero-inner-inset)!important;
+  margin-top:0!important;
+  margin-bottom:var(--nc-standard-hero-gap,26px)!important;
+  gap:0!important;
+  height:var(--nc-standard-hero-height,360px)!important;
+  min-height:var(--nc-standard-hero-height,360px)!important;
+  max-height:none!important;
+  border-radius:var(--nc-standard-hero-radius,28px)!important;
+}
+/* Auto Scout loads community.css after the console sheet and ships a more
+   specific !important padding override. My Account has its own inline stylesheet.
+   Be explicit here so both inherit the same inset as regular module heroes. */
+body.neptune-console main.wrap:not(.wrap-wide) .community-main.auto-scout-platform > .community-platform-hero.neptune-page-hero.nc-standard-hero[data-neptune-hero="server"],
+body.neptune-console.neptune-my-account main.wrap:not(.wrap-wide) > header.account-standalone-hero.nd-mission-header.nc-standard-hero {
+  padding:var(--nc-hero-inner-inset)!important;
+  margin-top:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-start!important;
+  justify-content:flex-start!important;
+}
+/* A hub's heading sits in .nd-mission-content; other pages place its elements
+   directly in the hero. Normalize both structures, not just the outer frame. */
+body.neptune-console main.wrap .nc-standard-hero .nd-mission-content {
+  margin:0!important;
+  padding:0!important;
+  align-self:flex-start!important;
+  display:block!important;
+}
+body.neptune-console main.wrap .nc-standard-hero :is(
+  .nd-mission-kicker,.neptune-hero-kicker,.account-kicker
+) {
+  display:flex!important;
+  align-items:center!important;
+  margin:0 0 var(--nc-hero-kicker-to-title)!important;
+  padding:0!important;
+  line-height:1.35!important;
+}
+body.neptune-console main.wrap .nc-standard-hero h1 {
+  margin:0 0 var(--nc-hero-title-to-copy)!important;
+  padding:0!important;
+  line-height:1.04!important;
+}
+body.neptune-console.neptune-my-account main.wrap header.account-standalone-hero.nc-standard-hero h1,
+body.neptune-console main.wrap .community-main.auto-scout-platform .community-platform-hero.nc-standard-hero h1 {
+  margin:0 0 var(--nc-hero-title-to-copy)!important;
+}
+body.neptune-console main.wrap .nc-standard-hero :is(p,.muted) {
+  margin:0!important;
+}
+body.neptune-console main.wrap .nc-standard-hero .neptune-hero-pills {
+  margin:18px 0 0!important;
+}
+/* Some pages include heading utility wrappers. They should not contribute
+   separate top gutters once they become the actual standard hero. */
+body.neptune-console main.wrap .nc-standard-hero :is(
+  .module-page-header,.neptune-hub-header,.page-head,.style-head
+) {
+  margin-top:0!important;
+  padding-top:0!important;
+}
+/* Slightly translucent, theme-derived glass cards. Keep the original text,
+   borders, hover-triggered environmental bubbles and interaction intact. */
+body.neptune-console main.wrap :is(
+  .neptune-hub-card,.quick-link,.module-launch-card
+) {
+  background:linear-gradient(155deg,var(--nc-card-glass-2),var(--nc-card-glass) 76%)!important;
+  -webkit-backdrop-filter:blur(6px);
+  backdrop-filter:blur(6px);
+}
+body.neptune-console main.wrap :is(
+  .card,.module-card,.theme-card,.status-panel,.ops-panel,.account-panel
+) {
+  background-color:var(--nc-card-glass)!important;
+  -webkit-backdrop-filter:blur(5px);
+  backdrop-filter:blur(5px);
+}
+/* Prefer translucent card fill over older opaque .card backgrounds. Preserve
+   decorative gradients if a card has one, so module identity still reads. */
+body.neptune-console main.wrap :is(.card,.module-card,.theme-card,.status-panel,.ops-panel,.account-panel):not(.home-hero) {
+  background:linear-gradient(145deg,var(--nc-card-glass-2),var(--nc-card-glass))!important;
+}
+/* Auto Scout community.css is loaded after the global console stylesheet. */
+body.neptune-console main.wrap .community-main.auto-scout-platform > :is(section,article):not(.nc-standard-hero),
+body.neptune-console main.wrap .community-main.auto-scout-platform .connection-panel {
+  background:linear-gradient(145deg,var(--nc-card-glass-2),var(--nc-card-glass))!important;
+  -webkit-backdrop-filter:blur(5px);
+  backdrop-filter:blur(5px);
+}
+html[data-theme="light"] body.neptune-console {
+  --nc-card-glass:color-mix(in srgb,var(--panel) 96%,transparent);
+  --nc-card-glass-2:color-mix(in srgb,var(--panel2) 94%,transparent);
+}
+@media(max-width:800px) {
+  body.neptune-console {--nc-hero-top-gap:18px;--nc-hero-inner-inset:26px}
+}
+@media(max-width:700px) {
+  body.neptune-console {--nc-hero-top-gap:16px;--nc-hero-inner-inset:24px 20px}
+  body.neptune-console main.wrap:not(.wrap-wide) :is(
+    .neptune-page-hero.nc-standard-hero,.nd-mission-header.nc-standard-hero,
+    .account-standalone-hero.nc-standard-hero
+  ) {
+    height:auto!important;
+    min-height:360px!important;
+    padding:var(--nc-hero-inner-inset)!important;
+  }
+}
+@media(prefers-reduced-transparency:reduce) {
+  body.neptune-console {--nc-card-glass:var(--panel);--nc-card-glass-2:var(--panel2)}
+  body.neptune-console main.wrap :is(
+    .card,.module-card,.theme-card,.status-panel,.ops-panel,.account-panel,
+    .neptune-hub-card,.quick-link,.module-launch-card
+  ) {backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+}
+
+
+/* NEPTUNE · VISIBLE OCEAN GLASS — correction to the former 88–96% opaque card treatment.
+   Genuine alpha-channel surface fills, never opacity on card content. Theme palette
+   controls colors, and ambient/hover bubble layers remain behind the cards. */
+body.neptune-console {
+  --nc-card-glass: color-mix(in srgb, var(--panel) 76%, transparent);
+  --nc-card-glass-2: color-mix(in srgb, var(--panel2) 70%, transparent);
+}
+html[data-theme="light"] body.neptune-console {
+  --nc-card-glass: color-mix(in srgb, var(--panel) 86%, transparent);
+  --nc-card-glass-2: color-mix(in srgb, var(--panel2) 82%, transparent);
+}
+/* The previous 5–6px blur erased the thin bubble outlines. Keep a subtle
+   refractive glass effect without smearing the underwater field behind it. */
+body.neptune-console main.wrap :is(
+  .neptune-hub-card, .quick-link, .module-launch-card,
+  .card, .module-card, .theme-card, .status-panel, .ops-panel, .account-panel
+) {
+  -webkit-backdrop-filter: blur(1.5px) !important;
+  backdrop-filter: blur(1.5px) !important;
+}
+body.neptune-console main.wrap .community-main.auto-scout-platform > :is(section,article):not(.nc-standard-hero),
+body.neptune-console main.wrap .community-main.auto-scout-platform .connection-panel {
+  -webkit-backdrop-filter: blur(1.5px) !important;
+  backdrop-filter: blur(1.5px) !important;
+}
+/* Users with OS-level reduced transparency enabled retain the opaque fallback. */
+@media (prefers-reduced-transparency: reduce) {
+  body.neptune-console {
+    --nc-card-glass: var(--panel);
+    --nc-card-glass-2: var(--panel2);
+  }
+  body.neptune-console main.wrap :is(
+    .neptune-hub-card, .quick-link, .module-launch-card,
+    .card, .module-card, .theme-card, .status-panel, .ops-panel, .account-panel
+  ),
+  body.neptune-console main.wrap .community-main.auto-scout-platform > :is(section,article):not(.nc-standard-hero),
+  body.neptune-console main.wrap .community-main.auto-scout-platform .connection-panel {
+    -webkit-backdrop-filter:none !important;
+    backdrop-filter:none !important;
+  }
+}

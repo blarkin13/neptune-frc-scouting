@@ -39,7 +39,7 @@ try{
 require_once __DIR__.'/layout.php';
 community_page_start('Watch and tag a match','Add human robot tags and scoring evidence for training. A few clear observations are useful; no helper app is needed.','catalog');
 ?>
-<link rel="stylesheet" href="assets/video-tags.css?v=12-compact-dock">
+<link rel="stylesheet" href="assets/video-tags.css?v=20-light-mode">
 <?php if($error):?><section role="alert"><?=e($error)?></section><?php else: ?>
 <div class="tag-studio" id="tagStudio">
 <div class="studio-heading"><div><a href="./?view=catalog">← Matches</a><h1><?=e($match['title'])?></h1><small class="studio-purpose">Human training examples · <?=e($gameControls['game']['name'])?> · One click per observed action</small></div><div class="studio-actions"><div class="studio-contributions" aria-label="Previously saved contributions"><?php $prior=community_match_coverage($pdo,[$match]);community_coverage_html($prior[(int)$match['id']]); ?></div><a href="training-labels.php">Training data</a><button type="button" id="focusMode">Full screen</button></div></div>

@@ -12,6 +12,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/external-bumper-training.php';
 require_once dirname(__DIR__,3).'/neptune_secure/robot-label-frames.php';
 require_once dirname(__DIR__,3).'/neptune_secure/youtube-uploader.php';
 require_once dirname(__DIR__,3).'/neptune_secure/score-moments.php';
+require_once dirname(__DIR__,3).'/neptune_secure/match-video-cache.php';
 header('Cache-Control: private, no-store');
 // Connected helpers: claim detector requests, report progress, upload pre-fill boxes or an adopted detector,
 // and download the current shared detector.
@@ -78,6 +79,10 @@ try {
   // Shared robot-identity model: the reviewing helper reports after training; every helper downloads the model in use.
   'tracking_put'=>(new TrackingIdentityShare(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put($computer,$p),
   'tracking_current'=>(new TrackingIdentityShare(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->current(isset($p['have'])?(string)$p['have']:null),
+  'video_cache_info'=>(new MatchVideoCache(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->info((string)($p['video_id']??'')),
+  'video_cache_chunk'=>(new MatchVideoCache(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->chunk((string)($p['video_id']??''),(string)($p['sha256']??''),(int)($p['offset']??-1)),
+  'video_cache_begin'=>(new MatchVideoCache(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->begin((string)($p['video_id']??''),(string)($p['sha256']??''),(int)($p['bytes']??0),(string)$computer['id']),
+  'video_cache_put'=>(new MatchVideoCache(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put((string)($p['upload_id']??''),(int)($p['offset']??-1),(string)($p['data_b64']??''),(string)$computer['id']),
   'claim'=>['request'=>$jobs->claim($computer)],
   'training_supplement_index'=>['packages'=>$jobs->matchVideoOnly($computer)?[]:(new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->index()],
   'training_supplements'=>(function()use($computer,$p){$store=new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']);if(isset($p['id']))return ['datasets'=>[$store->get((string)$p['id'],(string)($p['sha256']??''))]];foreach($store->index() as $item)if($item['id']==='6962-workshop-v1')return ['datasets'=>[$store->get($item['id'],$item['sha256'])]];return ['datasets'=>[]];})(),
@@ -93,6 +98,7 @@ try {
   'selfcheck_put'=>$jobs->putSelfcheck($computer,$p),
   'score_put'=>(new ScoreMoments(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put($p),
   'review_put'=>$jobs->putReview($computer,$p,new YouTubeUploader(dirname(__DIR__,3).'/neptune_secure')),
+  'robot_test_chunk'=>$jobs->putRobotTestChunk($computer,$p),
   'robot_test_put'=>$jobs->putRobotTest($computer,$p),
   'current_field'=>$jobs->currentField(isset($p['have'])?(string)$p['have']:null,isset($p['game_key'])?(string)$p['game_key']:null),
   'adopt_field'=>$jobs->adoptField($computer,$p),

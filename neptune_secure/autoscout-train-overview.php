@@ -94,9 +94,10 @@ function autoscout_train_overview(PDO $pdo,array $panel,int $org,int $user,strin
  $shippedRobot=json_decode((string)@file_get_contents($engine.'/robot-detector/manifest.json'),true)['trained_on']??[];
  $shippedField=json_decode((string)@file_get_contents($engine.'/field-detector/trained_on.json'),true)[$game]??[];
  $heldRobot=autoscout_holdout($usable,$robot['report']['holdout_match']??null,autoscout_trained_on($robot,$shippedRobot));
+ $heldRobots=array_values(array_unique(array_filter(array_merge([$heldRobot],array_intersect(['2026mnwi_qm5','2026brba_qm5'],$usable)))));   // helpers 2.7.70+ also hold these out (EXTRA_HOLDOUTS)
  $cornerMarked=array_keys(array_filter($fieldMatches,fn($v)=>$v['targets']&&$v['corners']));
  $heldField=autoscout_holdout($cornerMarked,$name($field['report']['holdout_match']??''),array_map($name,autoscout_trained_on($field,$shippedField)));
- $about=['robot'=>['1 · Robots — robot detector',sprintf('Learning from %d labelled frames in %d matches%s',array_sum(array_intersect_key($robotMatches,array_flip($usable))),count($usable),$heldRobot?' · checking on '.$heldRobot.' (held out, same every run)':'')],
+ $about=['robot'=>['1 · Robots — robot detector',sprintf('Learning from %d labelled frames in %d matches%s',array_sum(array_intersect_key($robotMatches,array_flip($usable))),count($usable),$heldRobot?' · checking on '.implode(', ',$heldRobots).' (held out, same every run)':'')],
   'field'=>['2 · Field — field detector',sprintf('Learning from %d marked matches%s',count($marked),$heldField?' · checking on '.$heldField.' (held out, same every run)':'')],
   'actions'=>['3 · Actions — action & scoring models',sprintf('Learning from %d tagged matches (%d tags, %d imported actions)',$panel['counts']['matches']??0,$panel['counts']['tags']??0,$panel['counts']['external']??0)],
   'test'=>['Test & release','']];
@@ -113,7 +114,7 @@ function autoscout_train_overview(PDO $pdo,array $panel,int $org,int $user,strin
   'computers'=>autoscout_computers($pdo,$jobs,$panel['computers'],$requests),
   'queue'=>$queue,
   'test_videos'=>$jobs->testVideos(),
-  'robot'=>['external'=>$externalSummary,'rows'=>$robotRows,'holdout'=>$heldRobot,'current'=>$robot,'history'=>count($jobs->history('robot')),'matches'=>$robotMatches,'events'=>array_values(array_unique(array_filter(array_map($event,array_keys($robotMatches))))),'min_frames'=>8,'runs'=>array_values(array_filter($requests,fn($r)=>$r['kind']==='train'))],
+  'robot'=>['external'=>$externalSummary,'rows'=>$robotRows,'holdout'=>$heldRobot,'holdouts'=>$heldRobots,'current'=>$robot,'history'=>count($jobs->history('robot')),'matches'=>$robotMatches,'events'=>array_values(array_unique(array_filter(array_map($event,array_keys($robotMatches))))),'min_frames'=>8,'runs'=>array_values(array_filter($requests,fn($r)=>$r['kind']==='train'))],
   'field'=>['baseline'=>($shippedField&&is_file($engine.'/field-detector/model.pt'))?['kind'=>'bundled','trained_on'=>$shippedField]:null,'holdout'=>$heldField,'game_key'=>$game,'current'=>$field,'history'=>count($jobs->history('field',$game)),'matches'=>$fieldMatches,'events'=>array_values(array_unique(array_filter(array_map($event,array_keys($fieldMatches))))),'runs'=>array_values(array_filter($requests,fn($r)=>$r['kind']==='train_field'&&($r['game_key']??RobotDetectorJobs::defaultGame())===$game))],
   'actions'=>['models'=>$panel['models'],'latest'=>$latest?['id'=>$latest['id'],'created_at'=>$latest['created_at']]:null,'released'=>$panel['released'],'counts'=>$panel['counts']],
  ];

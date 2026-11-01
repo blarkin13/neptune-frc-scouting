@@ -2,11 +2,13 @@
 import bisect,hashlib,json,math,re
 from pathlib import Path
 VERSION='source-bound-field-context-v1'
-KINDS={'scoring_target','scoring_zone','feeding_zone','collection_zone','field_boundary','field_calibration','field_reference'}
+KINDS={'scoring_target','scoring_zone','feeding_zone','collection_zone','climb_zone','defense_zone','field_boundary','field_calibration','field_reference'}
 
 def validate(d):
     if d.get('contract')!='neptune-field-regions-v1' or d.get('schema_version')!=1 or d.get('coordinate_system')!='normalized_full_video_frame' or d.get('time_basis')!='video_elapsed_ms':raise ValueError('Unsupported field-region contract')
     if not isinstance(d.get('regions'),list) or len(d['regions'])>500:raise ValueError('Invalid region count')
+    # A region type added on the site after this engine shipped is skipped, never fatal for the whole document.
+    if any(isinstance(r,dict) and r.get('kind') not in KINDS for r in d['regions']):d=dict(d,regions=[r for r in d['regions'] if not isinstance(r,dict) or r.get('kind') in KINDS])
     for r in d['regions']:
         ps=r.get('points',[])
         if r.get('kind') not in KINDS or r.get('camera_view') not in {'wide','closeup-left','closeup-right','other'} or r.get('alliance') not in {'red','blue','neutral'} or r.get('reviewed') is not True:raise ValueError('Invalid region metadata')
