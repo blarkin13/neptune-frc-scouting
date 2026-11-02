@@ -154,3 +154,19 @@ html[data-theme="light"] .tr-steps li[data-done="true"] b{color:var(--solid-text
 .ts-h>.ts-toggle>i:first-child{color:#3fb950;width:18px;text-align:center}
 .ts-h .ts-toggle{background:none!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0!important;min-height:0!important;color:var(--text,#e6edf3)!important;font-size:1.05rem!important;font-weight:700!important;width:auto!important;transform:none!important}
 .ts-folded .ts-h{margin-bottom:0}
+.ts-fullscreen{margin-left:auto;background:transparent!important;border:1px solid var(--line)!important;border-radius:8px!important;color:var(--text)!important;padding:6px 10px!important;min-height:0!important}
+.ts-sec[data-sec="now"]:fullscreen{background:var(--panel,#091525);padding:24px;overflow:auto}
+.ts-sec[data-sec="now"]:fullscreen .tt-console{min-height:calc(100vh - 110px);display:flex;flex-direction:column}
+.ts-sec[data-sec="now"]:fullscreen .tc-log{flex:1;max-height:none;height:auto}
+.tt-name{background:transparent!important;border:0!important;padding:2px!important;color:var(--text)!important;font-size:1.08rem;font-weight:700;cursor:pointer}
+.tt-name i{font-size:.75rem;color:var(--muted);margin-left:5px}
+.tt-name-form{display:flex;gap:7px;align-items:center;max-width:100%}.tt-name-form[hidden]{display:none}
+.tt-name-form input{min-width:180px;max-width:360px}
+.tt-name-form button{min-height:0!important;padding:6px 12px!important}
+.tt-model-actions{display:flex;gap:8px;flex-wrap:wrap}
+.tt-model-actions .tt-icon-action{display:inline-flex;flex-direction:column;align-items:center;gap:4px;min-width:90px;padding:10px 14px!important;border:1px solid var(--line)!important;border-radius:12px!important;background:var(--panel2)!important;color:var(--text)!important;text-decoration:none;font-size:.8rem;font-weight:650}
+.tt-model-actions .tt-icon-action i{font-size:1.6rem;color:var(--accent)}
+.tt-selfcheck{margin:10px 0;border-top:1px solid var(--line);padding-top:10px}.tt-selfcheck summary{cursor:pointer;color:var(--text);font-weight:600}.tt-selfcheck small{color:var(--muted);font-weight:400}
+.training-platforms button.training-platform{text-align:left;cursor:pointer;font:inherit}
+#linux-install-modal{width:min(700px,94vw);max-height:90vh;overflow:auto;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+#linux-install-modal::backdrop{background:rgba(0,0,0,.7)}

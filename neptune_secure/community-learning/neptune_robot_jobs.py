@@ -26,7 +26,7 @@ WIDE_BAND = (.24, .6506)          # 2026 broadcast wide-camera band (normalized 
 ADOPT_MARGIN = .02                # new detector must beat the current one's held-out F1 by this much
 MIN_FRAMES_PER_MATCH = 8
 EXTRA_HOLDOUTS = ('2026mnwi_qm5', '2026brba_qm5')   # other events, also never trained on; checked together with Neptune's pick
-MODEL_SIZE = 'n'                  # YOLO11 Nano, warm-started from the detector in use ('s' trains a fresh Small run instead)
+MODEL_SIZE = 's'                  # YOLO11 Small; start from COCO when the detector in use is Nano
 SMALL_BASE = {'file': 'yolo11s.pt', 'sha256': '85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5',
               'url': 'https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.pt'}
 WARM_RECIPE = 'adopted-bumper-warm-start-v2-train-validation'
@@ -79,6 +79,11 @@ def train_device():
         return 0 if torch.cuda.is_available() else 'cpu'
     except ImportError:
         return 'cpu'
+
+
+def loader_settings(device):
+    """Feed CUDA while keeping the larger Small model within 16 GB of VRAM."""
+    return {'workers': 2, 'batch': 4 if MODEL_SIZE == 's' else 8} if device != 'cpu' else {'workers': 0, 'batch': 4}
 
 
 def all_cores():
@@ -382,6 +387,8 @@ def train(config, req, progress):
     import neptune_robot_labels as labels
     from neptune_detector_training import prepare as prepare_dataset
     progress('Downloading robot labels')
+    # Refresh the adopted weights before choosing the warm start and comparison model.
+    sync_detector(config)
     docs = labels.sync(config)
     counts = {d.get('match_key'): sum(1 for f in d.get('frames', {}).values() if f.get('complete')) for d in docs}
     usable = sorted(k for k, n in counts.items() if k and n >= MIN_FRAMES_PER_MATCH)
@@ -417,15 +424,18 @@ def train(config, req, progress):
         bumper_classes(model.names)  # refuse a generic context model even if the path is wrong
         progress('Fine-tuning the current bumper detector; evaluation match remains excluded')
     else:
-        progress('Training a larger (YOLO11 Small) bumper detector from scratch; evaluation match remains excluded')
+        progress('Training YOLO11 Small from COCO-pretrained weights; held-out matches remain excluded')
     epochs = int(req.get('epochs') or (80 if recipe == WARM_RECIPE else 120))
     def epoch_end(trainer):
         progress('Training robot detector: pass %d of up to %d' % (trainer.epoch+1, epochs))
     model.add_callback('on_fit_epoch_end', epoch_end)
     batch_progress(model, 'Training robot detector', epochs, progress)
     # NVIDIA GPU or CPU (train_device): Apple GPU training hangs with this PyTorch build.
+    device = train_device()
+    loading = loader_settings(device)
+    progress('Training input: %d images per batch, %d loader workers on %s' % (loading['batch'], loading['workers'], device))
     with all_cores():
-        result = model.train(data=str(config_yaml), epochs=epochs, imgsz=1280, batch=4, device=train_device(), workers=0, patience=20, seed=2026,
+        result = model.train(data=str(config_yaml), epochs=epochs, imgsz=1280, device=device, **loading, patience=20, seed=2026,
                          deterministic=True, plots=False, project=str(work/'runs'), name='bumper', exist_ok=True, verbose=False,
                          translate=.2, scale=.5, fliplr=.5, mosaic=1.0, close_mosaic=10)
     best = Path(result.save_dir)/'weights'/'best.pt'

@@ -4,11 +4,11 @@ declare(strict_types=1);
 // A pillar page: pillar_open() · pillar_summary() (what's trained, data, what's next) · its own work area · pillar_close().
 
 function pillar_open(int $season,bool $helpers=false):void { ?>
-<link rel="stylesheet" href="/community/assets/train-tabs.css?v=13-light-mode">
+<link rel="stylesheet" href="/community/assets/train-tabs.css?v=14-helper-dashboard">
 <div id="pillar" data-season="<?=$season?>" data-csrf="<?=e(csrf_token())?>" data-endpoint="/autoscout/train.php">
  <?php if($helpers):?>
  <div id="pillar-status" class="ts" aria-live="polite">
-  <section class="ts-sec" data-sec="now"><h3 class="ts-h"><button type="button" class="ts-toggle" aria-expanded="true"><i class="fa-solid fa-chart-line" aria-hidden="true"></i>Running now <i class="fa-solid fa-chevron-down ts-chev" aria-hidden="true"></i></button><span class="ts-count" data-slot="now-count">…</span><span class="ts-mini" data-slot="now-mini"></span></h3><div data-slot="now">Checking…</div></section>
+  <section class="ts-sec" data-sec="now"><h3 class="ts-h"><button type="button" class="ts-toggle" aria-expanded="true"><i class="fa-solid fa-chart-line" aria-hidden="true"></i>Running now <i class="fa-solid fa-chevron-down ts-chev" aria-hidden="true"></i></button><span class="ts-count" data-slot="now-count">…</span><span class="ts-mini" data-slot="now-mini"></span><button type="button" class="ts-fullscreen" aria-label="Expand Running now to full screen" title="Full screen"><i class="fa-solid fa-expand" aria-hidden="true"></i></button></h3><div data-slot="now">Checking…</div></section>
   <section class="ts-sec" data-sec="helpers"><h3 class="ts-h"><button type="button" class="ts-toggle" aria-expanded="true"><i class="fa-solid fa-desktop" aria-hidden="true"></i>Connected helpers <i class="fa-solid fa-chevron-down ts-chev" aria-hidden="true"></i></button><span class="ts-count" data-slot="helpers-count">…</span><span class="ts-mini" data-slot="helpers-mini"></span></h3><div class="hc-grid" data-slot="helpers">Checking…</div></section>
   <section class="ts-sec ts-empty" data-sec="queue"><h3 class="ts-h"><button type="button" class="ts-toggle" aria-expanded="true"><i class="fa-solid fa-list" aria-hidden="true"></i>Queue <i class="fa-solid fa-chevron-down ts-chev" aria-hidden="true"></i></button><span class="ts-count ts-quiet" data-slot="waiting-count">…</span><span class="ts-mini" data-slot="waiting-mini"></span></h3><div data-slot="waiting"></div></section>
  </div>
@@ -32,5 +32,5 @@ function pillar_summary(string $part,string $how,?string $train=null):void { ?>
 
 function pillar_close():void { ?>
 </div>
-<script src="/community/assets/pillar.js?v=22" defer></script>
+<script src="/community/assets/pillar.js?v=26-helper-dashboard" defer></script>
 <?php }
