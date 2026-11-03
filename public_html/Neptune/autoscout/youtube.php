@@ -28,7 +28,7 @@ require_once dirname(__DIR__).'/community/layout.php';community_page_start('Revi
 ?>
 <?php if($message):?><p role="status"><strong><?=e($message)?></strong></p><?php endif?><?php if($error):?><p role="alert"><strong><?=e($error)?></strong></p><?php endif?>
 <section><span class="stage-label">STATUS</span><h2><?=$s['connected']?'Connected to '.e($s['channel']??'your channel'):'Not connected'?></h2>
-<p>Videos are uploaded as <strong>unlisted</strong>. Until your Google Cloud project passes YouTube’s API audit, YouTube keeps them <strong>private</strong>: you can watch them while signed in to this channel. Each run’s link appears under <em>Past runs</em> on 1 · Robots and 2 · Field. The last 10 videos are also kept on Neptune.</p>
+<p>Videos are uploaded as <strong>unlisted</strong>. Until your Google Cloud project passes YouTube’s API audit, YouTube keeps them <strong>private</strong>: you can watch them while signed in to this channel. Each run’s link appears under <em>Past runs</em> on 1 · Robots and 3 · Field. The last 10 videos are also kept on Neptune.</p>
 <?php if($s['connected']):?><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf_token())?>"><input type="hidden" name="action" value="disconnect"><button class="button-secondary">Disconnect YouTube</button></form><?php endif?></section>
 <section><span class="stage-label">STEP 1 · ONE TIME, IN GOOGLE CLOUD</span><h2>Create the OAuth client</h2><ol>
 <li>At <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a>, create a project (for example “Neptune Auto Scout”).</li>

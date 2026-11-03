@@ -90,6 +90,23 @@
   fill('field','runs',runs(d.runs,r=>`${placed(r.new)} vs ${r.current?placed(r.current):'none'}`));
   return !c||ready.length<2;
  }
+ // Tracking: the robot-identity model trains on the helper where tracking is reviewed, after every saved review,
+ // and is shared with every helper only once it passes the held-out identity check there. No Train button.
+ function tracking(d){
+  d=d||{};const r=d.report,s=d.shared,v=r?.validation||{},iv=s?.identity_validation||r?.identity_validation||{},reviews=d.reviews||[];
+  fill('tracking','current',s?`<dl><dt>Shared since</dt><dd>${when(s.at)}</dd><dt>Trained on</dt><dd>${esc(s.trained_by)}</dd><dt>Identity check</dt><dd>${pct(iv.precision)} of names right${iv.points?` on ${iv.points} reviewed boxes`:''}</dd><dt>Learned from</dt><dd>${(s.matches||[]).map(esc).join(', ')||'—'}</dd></dl>`
+   :'<p>No shared identity model yet. Robots are named from bumper reads and the tracker’s own rules until one passes its check.</p>');
+  fill('tracking','data',`<dl><dt>Reviewed matches on Neptune</dt><dd>${reviews.length?reviews.map(x=>esc(x.match_key)).join(', '):'none yet'}</dd>${r?`<dt>Latest report</dt><dd>${esc(r.computer)}, ${when(r.at)}</dd><dt>Same-robot pairs</dt><dd>${r.pairs??0} from ${(r.matches||[]).length} matches</dd>${v.tp!=null?`<dt>Pair check (held-out match)</dt><dd>${v.tp} linked, ${v.fp} wrong links, ${v.fn} missed</dd>`:''}`:''}</dl>`);
+  const matches=(r?.matches||[]).length,eligible=v.tp>=30&&v.fp===0;
+  fill('tracking','next',next([
+   [matches>=3,`Review tracking on at least 3 matches in the helper (${matches} so far). Correct every box you watch, including the ones it named.`],
+   [eligible,eligible?'Pair check passed on held-out matches.':'The pair check needs 30+ same-robot links with none wrong, on matches it did not learn from.'],
+   [!!s,s?'The model passed the identity check and is shared with every helper.':'The identity check needs 98% of names right on held-out reviewed matches, and at least 150 right.'],
+   [true,'Test a match below to watch detection, tracking and bumper reads together.'],
+  ]));
+  const st=slot('tracking','training-status');if(st)st.textContent=r?`Trains on ${r.computer} after each saved tracking review.`:'Trains on the helper where you review tracking, after each saved review.';
+  return !s;
+ }
  function actions(d,o,busy){
   const l=d.latest,c=d.counts||{};
   fill('actions','current',l?`<dl><dt>Latest model</dt><dd>${when(l.created_at)}</dd><dt>Released</dt><dd>${d.released?(d.released===l.id?'Yes, this one':'An earlier model'):'Not yet — evaluate it on Test & release'}</dd></dl>`:'<p>No action model yet.</p>');
@@ -106,23 +123,50 @@
   return !l||changed.length>0;
  }
 
- // One computer on My computers: state, current job, queued work for it, start/stop and keep-awake controls.
+ // Each connected computer is a self-contained management card, not a row in one shared panel.
  const kinds={robot:'Robot detector',field:'Field detector',prepare:'Prepare frames',actions:'Actions training',test:'Match test',evaluation:'Evaluation'};
- const ago=t=>{if(!t)return 'never';const s=Date.now()/1000-t;return s<90?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':when(t)};
- function computerCard(c,job){
-  const badge=c.job?'<span class="tt-badge ok">Working</span>':c.online?'<span class="tt-badge ok">Online · idle</span>':`<span class="tt-badge">Offline · seen ${ago(c.last_seen)}</span>`;
+ const ago=t=>{if(!t)return 'never';const s=Math.max(0,Date.now()/1000-t);return s<90?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':when(t)};
+ const usageMeter=(label,percent,display)=>{
+  const n=Number(percent),usable=percent!=null&&Number.isFinite(n),value=usable?Math.max(0,Math.min(100,n)):0;
+  return `<div class="tt-computer-meter"><div class="tt-computer-meter-label"><span>${label}</span><b>${esc(display)}</b></div><div class="tt-computer-meter-track" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" ${usable?'aria-valuenow="'+value.toFixed(0)+'"':'aria-valuetext="unavailable"'}><span style="width:${value}%"></span></div></div>`;
+ };
+ function computerCard(c){
+  const g=c.stats?.gpu,st=c.stats||{},working=!!c.job,online=!!c.online;
+  const state=working?'Training':online?'Available':'Offline',stateClass=working?'working':online?'available':'offline';
+  const isMac=/mac|apple/i.test(c.platform||c.device||'');
+  const device=String(c.platform||c.device||'Computer').replace(/ · CPU$/,'');
+  const gpuName=g?.name&&!device.includes(g.name)?g.name.replace(/^NVIDIA GeForce /,''):'';
+  const version=c.version?'Helper '+c.version:'Helper version unavailable';
   const verdict=c.selfcheck?.summary?.verdict;
-  const facts=[c.platform||c.device,c.version&&'helper '+c.version,verdict&&/ · (NVIDIA[^·]+?) · /.test(verdict)&&(c.platform||'').includes(verdict.match(/ · (NVIDIA[^·]+?) · /)[1])?verdict.replace(' · '+verdict.match(/ · (NVIDIA[^·]+?) · /)[1],''):verdict].filter(Boolean).map(esc).join(' · ');
-  const stop=c.job?(c.job.request?`<button type="button" class="button-secondary" data-cancel="${esc(c.job.request)}">Stop</button>`:c.job.job?`<button type="button" class="button-secondary" data-stop-job="${esc(c.job.job)}">Stop after this match</button> <button type="button" class="button-secondary" data-cancel-job="${esc(c.job.job)}">Cancel now</button>`:''):'';
-  const waiting=c.waiting.length?`<p class="training-note">Waiting for this computer: ${c.waiting.map(w=>`${kinds[w.kind]} <button type="button" class="button-secondary tt-cancel" data-cancel="${esc(w.request)}">Cancel</button>`).join(' ')}</p>`:'';
-  const start=c.job?'':`<button type="button" class="tt-icon-action" data-start="train" data-computer="${esc(c.id)}" title="Train robot detector" aria-label="Train robot detector"><i class="fa-solid fa-robot" aria-hidden="true"></i><span>Robots</span></button> <button type="button" class="tt-icon-action" data-start="train_field" data-computer="${esc(c.id)}" title="Train field detector" aria-label="Train field detector"><i class="fa-solid fa-draw-polygon" aria-hidden="true"></i><span>Field</span></button> <a class="tt-icon-action" href="/autoscout/train.php?connect=1&amp;computer=${encodeURIComponent(c.id)}#train" title="Train actions" aria-label="Train actions"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Actions</span></a>`;
-  const awake=`<label class="tt-awake">Keep awake <select data-awake="${esc(c.id)}">${[['jobs','During jobs'],['always','Always while the helper is open'],['off','Off']].map(([v,l])=>`<option value="${v}"${c.settings.keep_awake===v?' selected':''}>${l}</option>`).join('')}</select></label> <small>${!c.polls?'Needs the updated helper.':c.online?(c.awake?'☀ Awake now':'Allowed to sleep now'):''}</small>`;
+  const ramPct=st.ram_total_mb?100*st.ram_used_mb/st.ram_total_mb:null;
+  const vramPct=g?.mem_total_mb?100*g.mem_used_mb/g.mem_total_mb:null;
+  const stats=c.stats?`<div class="tt-computer-meters" aria-label="System resources">
+    ${usageMeter('CPU',st.cpu,st.cpu!=null?st.cpu+'%':'—')}
+    ${usageMeter('GPU',g?.util,g?.util!=null?g.util+'%':'—')}
+    ${usageMeter('RAM',ramPct,st.ram_total_mb?gb(st.ram_used_mb)+' / '+gb(st.ram_total_mb)+' GB':'—')}
+    ${usageMeter('VRAM',vramPct,g?.mem_total_mb?gb(g.mem_used_mb)+' / '+gb(g.mem_total_mb)+' GB':'—')}
+   </div>`:`<p class="tt-computer-no-stats">${c.polls?'Waiting for the first hardware reading.':'Live CPU and GPU readings require an updated helper.'}</p>`;
+  const stop=working?(c.job.request?`<button type="button" class="button-secondary" data-cancel="${esc(c.job.request)}">Stop</button>`:c.job.job?`<button type="button" class="button-secondary" data-stop-job="${esc(c.job.job)}">Stop after match</button><button type="button" class="button-secondary" data-cancel-job="${esc(c.job.job)}">Cancel now</button>`:''):'';
+  const waiting=(c.waiting||[]).length?`<div class="tt-computer-queue"><span class="tt-computer-subheading">Queued on this helper</span>${c.waiting.map(w=>`<div>${esc(kinds[w.kind]||w.kind||'Training job')} <button type="button" class="button-secondary tt-cancel" data-cancel="${esc(w.request)}">Cancel</button></div>`).join('')}</div>`:'';
+  const task=c.job?`<div class="tt-computer-job"><span class="tt-computer-subheading">Running now</span><strong>${esc(kinds[c.job.kind]||c.job.kind||'Training')}</strong></div>`:`<div class="tt-computer-job tt-computer-job--idle"><span class="tt-computer-subheading">Current work</span><span>${online?'Ready for a training job':'Open the helper app to reconnect'}</span></div>`;
+  const start=working?'':`<button type="button" class="tt-icon-action" data-start="train" data-computer="${esc(c.id)}" title="Train robot detector" aria-label="Train robot detector on ${esc(c.name)}"><i class="fa-solid fa-robot" aria-hidden="true"></i><span>Robots</span></button><button type="button" class="tt-icon-action" data-start="train_field" data-computer="${esc(c.id)}" title="Train field detector" aria-label="Train field detector on ${esc(c.name)}"><i class="fa-solid fa-draw-polygon" aria-hidden="true"></i><span>Field</span></button><a class="tt-icon-action" href="/autoscout/train.php?connect=1&amp;computer=${encodeURIComponent(c.id)}#train" title="Train actions" aria-label="Train actions on ${esc(c.name)}"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Actions</span></a>`;
+  const awake=`<label class="tt-awake">Keep awake <select data-awake="${esc(c.id)}">${[['jobs','During jobs'],['always','Always while open'],['off','Off']].map(([v,l])=>`<option value="${v}"${c.settings?.keep_awake===v?' selected':''}>${l}</option>`).join('')}</select></label><small>${!c.polls?'Needs the updated helper':online?(c.awake?'Awake now':'May sleep when idle'):''}</small>`;
   const u=c.update||{};
-  const upd=!u.remote?`<p class="training-note">${u.behind?`Update ${esc(u.latest)} available · update this helper once by hand to allow remote updates.`:'Remote updates arrive with the next helper update.'}</p>`
-   :`<p class="training-note tt-update">${u.requested?`<span class="tt-badge ok">${esc(u.message||'Update requested · installs when the helper is idle, then reopens')}</span> <button type="button" class="button-secondary tt-cancel" data-update="cancel" data-computer="${esc(c.id)}">Cancel update</button>`:u.behind?`<span class="tt-badge warn">Update ${esc(u.latest)} available</span> <button type="button" class="button-secondary" data-update="request" data-computer="${esc(c.id)}">Update</button>`:`Up to date${u.latest?' · '+esc(u.latest):''}`}
-    <label class="tt-auto-update"><input type="checkbox" role="switch" data-auto-update="${esc(c.id)}"${u.auto?' checked':''}><span class="tt-auto-update-track" aria-hidden="true"></span><span>Update automatically</span></label></p>`;
-  const check=c.selfcheck,checkHtml=check?`<details class="tt-selfcheck"><summary>Hardware &amp; training check · ${esc(check.summary?.verdict||'See results')} <small>${when(check.checked_at)}</small></summary><table class="tt-runs">${(check.checks||[]).map(x=>`<tr><td>${x.ok?'✓':'⚠'}</td><td>${esc(x.check)}</td><td class="tt-msg">${esc(x.detail)}</td></tr>`).join('')}</table></details>`:'<p class="training-note">Hardware check will appear after this helper starts.</p>';
-  return `<div class="tt-computer"><div class="tt-job-head"><button type="button" class="tt-name" data-edit-name="${esc(c.id)}" aria-label="Edit computer name ${esc(c.name)}">${esc(c.name)} <i class="fa-solid fa-pen" aria-hidden="true"></i></button><form class="tt-name-form" data-name-form="${esc(c.id)}" hidden><input aria-label="Computer name" maxlength="80" value="${esc(c.name)}" data-original="${esc(c.name)}"><button type="submit" hidden>Save</button><button type="button" data-cancel-name>Cancel</button></form>${badge}</div><p class="training-note">${facts||'—'}</p>${waiting}<div class="training-actions tt-model-actions">${start}${stop}${!c.online&&!c.job?` <button type="button" class="button-secondary" data-remove="${esc(c.id)}" data-name="${esc(c.name)}">Remove</button>`:''}</div>${checkHtml}${upd}${awake}</div>`;
+  // Wake: another helper on the same home network sends this sleeping computer a Wake-on-LAN packet.
+  const wakeHtml=online||!c.polls?'':`<div class="tt-computer-update">${c.settings?.wake_requested&&Date.now()/1000-c.settings.wake_requested<900?`<span class="tt-badge ok">Wake sent · waiting for it to check in</span><button type="button" class="button-secondary tt-cancel" data-wake="cancel" data-computer="${esc(c.id)}">Cancel</button>`:`<button type="button" class="button-secondary" data-wake="request" data-computer="${esc(c.id)}">Wake</button><span class="training-note">Needs another helper running on the same home network.</span>`}</div>`;
+  const upd=!u.remote?`<div class="tt-computer-update"><p class="training-note">${u.behind?`Update ${esc(u.latest)} available · update this helper manually to enable future remote updates.`:'Remote updates are enabled by the next helper version.'}</p></div>`
+   :`<div class="tt-computer-update">${u.requested?`<span class="tt-badge ok">${esc(u.message||'Update requested · installs when idle')}</span><button type="button" class="button-secondary tt-cancel" data-update="cancel" data-computer="${esc(c.id)}">Cancel update</button>`:u.behind?`<span class="tt-badge warn">Update ${esc(u.latest)} available</span><button type="button" class="button-secondary" data-update="request" data-computer="${esc(c.id)}">Update</button>`:`<span class="training-note">Up to date${u.latest?' · '+esc(u.latest):''}</span>`}
+    <label class="tt-auto-update"><input type="checkbox" role="switch" data-auto-update="${esc(c.id)}"${u.auto?' checked':''}><span class="tt-auto-update-track" aria-hidden="true"></span><span>Automatic updates</span></label></div>`;
+  const check=c.selfcheck,checkHtml=check?`<details class="tt-selfcheck"><summary>Hardware &amp; training check <small>${when(check.checked_at)}</small></summary><p class="training-note">${esc(check.summary?.verdict||'Check results')}</p><div class="tt-computer-check-scroll"><table class="tt-runs">${(check.checks||[]).map(x=>`<tr><td>${x.ok?'✓':'⚠'}</td><td>${esc(x.check)}</td><td class="tt-msg">${esc(x.detail)}</td></tr>`).join('')}</table></div></details>`:'<p class="tt-computer-no-check">Hardware checks appear after this helper starts.</p>';
+  return `<article class="tt-computer tt-computer--${stateClass}">
+   <header class="tt-computer-head"><span class="tt-computer-device-icon"><i class="fa-solid ${isMac?'fa-laptop':'fa-desktop'}" aria-hidden="true"></i></span>
+    <div class="tt-computer-identity"><button type="button" class="tt-name" data-edit-name="${esc(c.id)}" aria-label="Rename ${esc(c.name)}">${esc(c.name)} <i class="fa-solid fa-pen" aria-hidden="true"></i></button><form class="tt-name-form" data-name-form="${esc(c.id)}" hidden><input aria-label="Computer name" maxlength="80" value="${esc(c.name)}" data-original="${esc(c.name)}"><button type="submit" hidden>Save</button><button type="button" data-cancel-name>Cancel</button></form><small>${esc(device)}</small></div>
+    <span class="tt-computer-status tt-computer-status--${stateClass}"><i aria-hidden="true"></i>${state}</span></header>
+   <div class="tt-computer-facts"><span>${esc(version)}</span>${gpuName?`<span title="Graphics processor">${esc(gpuName)}</span>`:''}<span>${online?'Last check-in '+ago(c.reported_at||c.last_seen):'Last seen '+ago(c.last_seen)}</span></div>
+   ${task}${stats}${waiting}
+   <div class="tt-computer-operations"><span class="tt-computer-subheading">Training controls</span><div class="training-actions tt-model-actions">${start}${stop}${!online&&!working?`<button type="button" class="button-secondary tt-computer-remove" data-remove="${esc(c.id)}" data-name="${esc(c.name)}">Remove</button>`:''}</div></div>
+   <div class="tt-computer-settings">${checkHtml}${upd}<div class="tt-computer-awake">${awake}</div>${wakeHtml}</div>
+  </article>`;
  }
  document.addEventListener('click',e=>{const b=e.target.closest('[data-edit-name],[data-cancel-name]');if(!b)return;const card=b.closest('.tt-computer'),form=card.querySelector('[data-name-form]'),name=card.querySelector('[data-edit-name]');form.hidden=b.hasAttribute('data-cancel-name');name.hidden=!form.hidden;if(!form.hidden){const input=form.querySelector('input');input.focus();input.select()}});
  document.addEventListener('input',e=>{const input=e.target.closest('[data-name-form] input');if(input)input.closest('form').querySelector('[type="submit"]').hidden=input.value.trim()===input.dataset.original||!input.value.trim()});
@@ -142,6 +186,7 @@
   }catch(err){alert(err.message);b.disabled=false}
  });
  document.addEventListener('change',async e=>{const a=e.target.closest('[data-auto-update]');if(a){try{await send({action:'computer_settings',computer:a.dataset.autoUpdate,auto_update:a.checked?'true':'false'});a.blur();await refresh()}catch(err){alert(err.message)}return}});
+ document.addEventListener('click',async e=>{const w=e.target.closest('[data-wake]');if(!w)return;w.disabled=true;try{await send({action:'computer_settings',computer:w.dataset.computer,wake:w.dataset.wake});await refresh()}catch(err){alert(err.message);w.disabled=false}});
  document.addEventListener('change',async e=>{const s=e.target.closest('[data-awake]');if(!s)return;try{await send({action:'computer_settings',computer:s.dataset.awake,keep_awake:s.value});s.blur();await refresh()}catch(err){alert(err.message)}});
 
  const tbar=(p,w=22)=>{p=Math.max(0,Math.min(100,p||0));const cells=p/100*w,full=Math.floor(cells),part=' ▏▎▍▌▋▊▉'[Math.floor((cells-full)*8)];return '▕'+'█'.repeat(full)+(full<w?part+' '.repeat(w-full-1):'')+'▏'};
@@ -153,7 +198,7 @@
   const menu=document.getElementById('trial-model');if(!menu||!slot('test','gates'))return;
   const id=menu.value,m=(o.actions.models||[]).find(x=>x.id===id),released=o.actions.released&&o.actions.released===id;
   const newer=[['robot detector',o.robot.current],['field detector',o.field.current]].filter(([,c])=>c&&m&&c.adopted_at>m.created_at).map(([n])=>n);
-  fill('test','model-info',m?`<dl><dt>Trained</dt><dd>${when(m.created_at)}</dd><dt>Status</dt><dd>${released?'Released':m.evaluated?'Passed its checks — ready to release':'Experimental — not yet scored'}</dd></dl>`+(newer.length?`<p class="tr-warn">⚠ The ${newer.join(' and ')} changed after this model was trained. Its results may be off; retrain on 3 · Actions for a fair test.</p>`:''):'');
+  fill('test','model-info',m?`<dl><dt>Trained</dt><dd>${when(m.created_at)}</dd><dt>Status</dt><dd>${released?'Released':m.evaluated?'Passed its checks — ready to release':'Experimental — not yet scored'}</dd></dl>`+(newer.length?`<p class="tr-warn">⚠ The ${newer.join(' and ')} changed after this model was trained. Its results may be off; retrain on 4 · Actions for a fair test.</p>`:''):'');
   const vids=o.test_videos||[];fill('test','latest-video',vids[0]?`<p class="training-note">Latest match test: ${esc(vids[0].match_key||'')} · ${video(vids[0])} <small>(${when(vids[0].saved_at)})</small></p>`:'');
   fill('test','release-state',released?'✓ This model is what Auto Scout uses now.':m?.evaluated?'All checks passed. Review the report, then release.':o.actions.released?'Another model is released. This one unlocks when its checks pass.':'Release unlocks when every check in step 3 passes.');
   const done={model:!!m,preview:vids.length>0,score:!!m?.evaluated,release:!!released};
@@ -261,16 +306,19 @@
    el.textContent=active.length?'Training in progress'+(active.length>1?' · '+active.length+' runs':'')+'.':'Not currently training.';
   }
   const busy=k=>o.queue.some(q=>q.part===k);
-  const needs={robot:robot(o.robot,busy('robot')),field:field(o.field,busy('field')),actions:actions(o.actions,o,busy('actions'))};
+  const needs={robot:robot(o.robot,busy('robot')),tracking:tracking(o.tracking),field:field(o.field,busy('field')),actions:actions(o.actions,o,busy('actions'))};
   for(const [part,need] of Object.entries(needs)){const f=document.querySelector(`[data-part="${part}"] .tt-sum-flag`);if(f)f.hidden=!need;if(!picked[part])sumTab(part,need?'next':'current')}
   fill('test','videos',(o.test_videos||[]).length?'<table class="tt-runs"><tr><th>Made</th><th>Match</th><th>Video</th></tr>'+o.test_videos.map(v=>`<tr><td>${when(v.saved_at)}</td><td>${esc(v.match_key||'')}</td><td>${video(v)}</td></tr>`).join('')+'</table>':'<p class="training-note">No match test videos yet. Run Preview a match below.</p>');
   // Helpers & settings → My computers. Not redrawn while you are using one of its controls.
-  const mine=slot('helpers','computers');
-  if(mine&&!mine.contains(document.activeElement))mine.innerHTML=(comps.some(c=>c.update?.remote&&c.update?.behind&&!c.update?.requested)?'<p class="training-actions"><button type="button" class="button-secondary" data-update="all">Update all computers</button></p>':'')+(comps.length?comps.map(c=>computerCard(c,(q0,cc)=>job(o.queue.find(x=>(q0.request&&x.request===q0.request)||(q0.job&&x.job===q0.job))||q0,cc))).join(''):'<p class="training-note">No computers connected yet. Install the helper below and connect it.</p>');
+  const mine=slot('helpers','computers'),computerToolbar=slot('helpers','computers-actions');
+  if(mine&&!mine.contains(document.activeElement)&&!computerToolbar?.contains(document.activeElement)){
+   if(computerToolbar)computerToolbar.innerHTML=comps.some(c=>c.update?.remote&&c.update?.behind&&!c.update?.requested)?'<button type="button" class="button-secondary" data-update="all">Update all computers</button>':'';
+   mine.innerHTML=comps.length?comps.map(computerCard).join(''):'<p class="tt-computer-empty">No computers connected yet. Install the helper below and connect it.</p>';
+  }
   // Helpers & settings: each helper's last GPU self-check.
   testFlow(o);
   // Test & release: the detectors a test uses are always the ones in use; only the Actions model is chosen.
-  fill('test','detectors',`Uses the robot detector ${o.robot.current?'you trained (adopted '+when(o.robot.current.adopted_at)+')':'built into the helper'} and ${o.field.current?'the field detector you trained for '+esc(o.field.game_key)+' (adopted '+when(o.field.current.adopted_at)+')':'the field detector built into the helper for '+esc(o.field.game_key)}. Where you marked scoring areas on 2 · Field, those marks are used instead.`);
+  fill('test','detectors',`Uses the robot detector ${o.robot.current?'you trained (adopted '+when(o.robot.current.adopted_at)+')':'built into the helper'} and ${o.field.current?'the field detector you trained for '+esc(o.field.game_key)+' (adopted '+when(o.field.current.adopted_at)+')':'the field detector built into the helper for '+esc(o.field.game_key)}. Where you marked scoring areas on 3 · Field, those marks are used instead.`);
   const menu=document.getElementById('trial-model'),empty=slot('test','no-model');
   if(menu&&empty){const has=[...menu.options].some(x=>x.value);empty.hidden=has;menu.hidden=!has}
   // A dot on each pillar in the Auto Scout menu that needs something.

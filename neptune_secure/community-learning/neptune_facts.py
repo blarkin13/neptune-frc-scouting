@@ -60,7 +60,23 @@ EXTRA_LAYOUTS = {
                     'red_roster': (0.68, 0.99, 0.28, 0.48), 'blue_roster': (0.02, 0.32, 0.28, 0.48),
                     'red_label': (0.58, 0.66, 0.28, 0.48), 'blue_label': (0.34, 0.42, 0.28, 0.48),
                     'shift': (0.44, 0.56, 0.25, 0.48), 'marker': (0.82, 0.96, 0.0, 0.25)}},
+    # The FIRST AGE overlay as a bottom bar (PNW District Oregon State Fair, 2026): one wide camera above it,
+    # red left, title row on top, RED/BLUE words over the scores and the clock below the shift. `band` is the
+    # bottom fraction of the frame; regions are fractions of that bar. Measured on 2026orsal qm7 (09nv2jSPRow).
+    'frc-2026-age-bottom-v1': {
+        'season': 2026, 'band': 0.24, 'band_at': 'bottom', 'camera_top': 0.0, 'camera_bottom': 0.755,
+        'marker': 'REBUILT',
+        'regions': {'clock': (0.44, 0.56, 0.66, 1.0), 'red_score': (0.32, 0.44, 0.66, 1.0),
+                    'blue_score': (0.56, 0.68, 0.66, 1.0), 'title': (0.16, 0.84, 0.0, 0.24),
+                    'red_roster': (0.0, 0.32, 0.36, 0.64), 'blue_roster': (0.68, 1.0, 0.36, 0.64),
+                    'red_label': (0.32, 0.44, 0.36, 0.66), 'blue_label': (0.56, 0.68, 0.36, 0.66),
+                    'shift': (0.44, 0.56, 0.36, 0.66), 'marker': (0.84, 1.0, 0.0, 0.26)}},
 }
+
+
+def camera_span(layout):
+    """(top, bottom) of the camera area as frame fractions: below a top scoreboard, or above a bottom one."""
+    return layout.get('camera_top', 0.24), layout.get('camera_bottom', 1.0)
 MIN_LAYOUT_FRAMES = 20
 # Bumper tiles over the camera area (fractions of the area below camera_top); they overlap so a number
 # on a tile edge is still whole in one tile. Overlapping reads of one frame count once.
@@ -978,12 +994,12 @@ def glyph_light(image, box):
             'lit_display': saturation >= DISPLAY_SATURATION and brightness >= DISPLAY_BRIGHTNESS}
 
 
-def bumper_frames(video, work, top, start, end, every):
+def bumper_frames(video, work, top, start, end, every, bottom=1.0):
     start = max(0.0, start)   # a video that begins after auto started has a negative auto start
     folder = work / 'bumpers'
     clear(folder, '*')
     n = len(TILES)
-    fc = '[0:v]fps=%g:round=up,crop=iw:ih*%g:0:ih*%g,split=%d%s' % (1 / every, 1 - top, top, n + 1, ''.join('[s%d]' % i for i in range(n + 1)))
+    fc = '[0:v]fps=%g:round=up,crop=iw:ih*%g:0:ih*%g,split=%d%s' % (1 / every, bottom - top, top, n + 1, ''.join('[s%d]' % i for i in range(n + 1)))
     for i, (x0, x1, y0, y1) in enumerate(TILES):
         fc += ';[s%d]crop=iw*%g:ih*%g:iw*%g:ih*%g,scale=2*trunc(iw):-2[t%d]' % (i, x1 - x0, y1 - y0, x0, y0, i)
     # Full-resolution colour sample; one frame is held in memory at a time. The scale filter keeps the RGB
@@ -1053,12 +1069,12 @@ def decide_identities(raw, roster, closeup_top=None):
     return identities
 
 
-def read_bumpers(video, work, backend, roster, start, end, every=2.0, top=0.24, closeup_top=None):
+def read_bumpers(video, work, backend, roster, start, end, every=2.0, top=0.24, closeup_top=None, bottom=1.0):
     """Raw bumper reads (every roster-like token, with evidence) and per-team identity decisions."""
     teams = set(roster['red'] + roster['blue'])
     alliance = {t: 'red' for t in roster['red']}
     alliance.update({t: 'blue' for t in roster['blue']})
-    tiles = bumper_frames(video, work, top, start, end, every)
+    tiles = bumper_frames(video, work, top, start, end, every, bottom)
     texts = backend.recognize([p for _, _, p, _ in tiles])
     save_raw(work / 'raw-bumpers.jsonl', [(t, p) for t, _, p, _ in tiles], texts, work)
     raw, loaded = [], (None, None)
@@ -1170,6 +1186,9 @@ def analyze_video(video, match, work, stage=None, duration=None, metadata_title=
     layouts=rules.get('layout_profiles',LAYOUTS)
     if not layouts:raise FactsError('%s rules are configured, but its broadcast reader needs a validated layout profile. Import a calibrated game pack; another season’s layout will not be reused.' % rules['game'])
     layouts=dict(layouts,**{k:v for k,v in EXTRA_LAYOUTS.items() if v['season']==season and k not in layouts})
+    # Scoreboards across the bottom of the picture are read from their own strip, after the top ones.
+    bottoms={k:v for k,v in layouts.items() if v.get('band_at')=='bottom'}
+    layouts={k:v for k,v in layouts.items() if k not in bottoms}
     band_crop = max(p['band'] for p in layouts.values())
     folder = work / 'overlay'
     clear(folder, 'ov_*.jpg')
@@ -1178,7 +1197,23 @@ def analyze_video(video, match, work, stage=None, duration=None, metadata_title=
     texts = recognize_with_progress(backend,[p for _, p in band],stage,'Reading the scoreboard')
     save_raw(work / 'raw-overlay.jsonl', band, texts, work)
     try:
-        layout_id, profile, layout_stats = detect_layout(band, texts, season, layouts, roster)
+        try:
+            layout_id, profile, layout_stats = detect_layout(band, texts, season, layouts, roster)
+        except FactsError as top_error:
+            if not bottoms:
+                raise
+            low = max(p['band'] for p in bottoms.values())
+            bfolder = work / 'overlay-bottom'
+            clear(bfolder, 'ob_*.jpg')
+            ffmpeg(['-i', str(video), '-vf', 'fps=1:round=up,crop=iw:ih*%g:0:ih*%g' % (low, 1 - low), '-q:v', '3', str(bfolder / 'ob_%05d.jpg')])
+            lband = frames_at(bfolder, 'ob_*.jpg', 0.0, 1.0)
+            ltexts = recognize_with_progress(backend,[p for _, p in lband],stage,'Reading the scoreboard at the bottom')
+            try:
+                layout_id, profile, layout_stats = detect_layout(lband, ltexts, season, bottoms, roster)
+            except FactsError as bottom_error:
+                raise FactsError(str(top_error).replace('). The facts', '; at the bottom: %s). The facts' % str(bottom_error).split('(', 1)[-1].split(')', 1)[0], 1)) from None
+            save_raw(work / 'raw-overlay-bottom.jsonl', lband, ltexts, work)
+            band, texts = lband, ltexts
         samples, clock_rejects = overlay_samples(band, texts, profile, rules, work)
         facts['score_rereads'] = reread_scores(samples, profile, backend, work)
     except FactsError:
@@ -1191,6 +1226,7 @@ def analyze_video(video, match, work, stage=None, duration=None, metadata_title=
         samples, clock_rejects = generic_samples(band, texts, sides, rules, work)
     sig = layout_stats.pop('signature', None)
     facts['layout'] = dict(layout_stats, profile=layout_id,camera_top=profile['camera_top'])
+    if 'camera_bottom' in profile:facts['layout']['camera_bottom'] = profile['camera_bottom']
     clocked = [s for s in samples if 'clock' in s]
     periods, period_rejects = anchor_periods(clocked, rules, duration)
     facts['periods'] = periods
@@ -1217,7 +1253,7 @@ def analyze_video(video, match, work, stage=None, duration=None, metadata_title=
     refresh_score_timeline(facts, samples, match)
     # ---- Stage 3: bumper numbers ----
     stage[0] = 'Reading bumper numbers'
-    facts['bumpers'] = read_bumpers(video, work, backend, roster, match_t0, match_t1, every, profile['camera_top'], profile.get('closeup_top'))
+    facts['bumpers'] = read_bumpers(video, work, backend, roster, match_t0, match_t1, every, profile['camera_top'], profile.get('closeup_top'), profile.get('camera_bottom', 1.0))
     facts['timeline_samples'] = len(band)
     if layout_id.startswith('generic-') and learn and sig and periods['teleop'] and facts['identity']['checks']['roster']['status'] == 'match':
         # The read was clean on its own vote and the overlay roster agrees station by station: remember this overlay (provisional until another match agrees).

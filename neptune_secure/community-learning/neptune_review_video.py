@@ -299,7 +299,7 @@ def _homography_calibrations(facts, game_key):
     """Return ([(region, H)], status_label) for top-down mapping, with wide-band fallback when unmarked."""
     from neptune_homography import calibrate, field_references, reference_map
     from neptune_field_regions import load
-    d = load(facts, game_key)
+    d = load(facts, game_key, allow_detected=True)
     calibrations = []
     mode = 'uncalibrated'
     if d:
@@ -312,7 +312,7 @@ def _homography_calibrations(facts, game_key):
                 if r.get('kind') == 'field_boundary' and r.get('camera_view') == 'wide' and len(r.get('points', [])) == 4 and r.get('corner_indices', list(range(4))) == list(range(4)) and not r.get('inferred_corner_indices'):
                     try:
                         calibrations.append((r, calibrate(ordered_quad(r['points']))))
-                        mode = 'calibrated (boundary)'
+                        mode = 'field model (detected corners)' if d.get('application') == 'detected' else 'calibrated (boundary)'
                     except ValueError:
                         pass
         if not any(r.get('camera_view') == 'wide' for r, _ in calibrations):
@@ -327,8 +327,9 @@ def _homography_calibrations(facts, game_key):
                     calibrations.append((dict(marks[0], id='field-references:'+shot), h))
                     mode = 'calibrated (floor refs)'
     if not calibrations:
-        top = (facts.get('layout') or {}).get('camera_top', .24)
-        bot = top + (1. - top) * .56
+        layout = facts.get('layout') or {}
+        top = layout.get('camera_top', .24)
+        bot = layout['camera_bottom'] if 'camera_bottom' in layout else top + (1. - top) * .56
         try:
             h = calibrate([[.12, top+.05], [.88, top+.05], [.98, bot-.02], [.02, bot-.02]])
             calibrations = [({'id': 'wide-approx', 'camera_view': 'wide', 'start_ms': 0, 'end_ms': 10**9}, h)]
@@ -615,7 +616,7 @@ def describe_robot_test(title, match_key, summary, engine):
     yt_title = ('Robot detection & constant ID test · %s' % (title or match_key))[:100]
     roster = summary.get('roster') or {}
     body = [
-        'Neptune Auto Scout · 1 · Robots pillar — robot detection, bumper OCR, constant identity, and top-down homography test.',
+        'Neptune Auto Scout · 2 · Tracking pillar — robot detection, tracking, bumper OCR, constant identity, and top-down homography test.',
         '',
         'Match: %s (%s)' % (title, match_key),
         'Red roster: %s  |  Blue roster: %s' % (', '.join(map(str, roster.get('red', []))) or '-', ', '.join(map(str, roster.get('blue', []))) or '-'),

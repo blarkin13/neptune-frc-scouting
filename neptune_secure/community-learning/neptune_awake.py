@@ -4,7 +4,8 @@ Modes: 'jobs' (default) keeps it awake only while a job runs, 'always' while the
 The last mode Neptune sent is remembered, so it holds from launch and while the helper is offline or signed out.
 The display may still turn off; only system sleep is held off. Uses what each system ships with:
   Mac      caffeinate -i (ends with the helper)
-  Windows  SetThreadExecutionState(ES_SYSTEM_REQUIRED), renewed every 30 s from one thread
+  Windows  SetThreadExecutionState(ES_SYSTEM_REQUIRED), renewed every 30 s from one thread; releasing it
+           restarts the idle timer, so Windows does not sleep the moment a job ends or the helper restarts to update
   Linux    systemd-inhibit --what=idle:sleep (when systemd is there)
 """
 import os
@@ -65,6 +66,12 @@ class Awake:
     def close(self):
         self._closing = True
         self.busy = False; self.mode = 'off'    # not saved: closing is not a new setting
+        if sys.platform == 'win32' and self._held:
+            # The holding thread is a daemon and may not run again before exit (an update restart).
+            try:
+                self._release(self._windows_call())
+            except Exception:
+                pass
         self._apply()
 
     def _apply(self):
@@ -105,6 +112,12 @@ class Awake:
         call.argtypes = [ctypes.c_uint]; call.restype = ctypes.c_uint
         return call
 
+    @staticmethod
+    def _release(call):
+        # Clearing the hold alone lets Windows sleep at once if it has been idle longer than its sleep setting;
+        # one plain ES_SYSTEM_REQUIRED restarts the idle timer, giving the full sleep delay from now.
+        call(0x80000000); call(0x00000001)
+
     def _windows(self):
         ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
         try:
@@ -116,12 +129,20 @@ class Awake:
             # A failed call must not end the thread, or sleep would never be held off again.
             try:
                 wanted = self.wanted
-                self._held = bool(call(ES_CONTINUOUS | ES_SYSTEM_REQUIRED if wanted else ES_CONTINUOUS)) and wanted
+                if wanted:
+                    self._held = bool(call(ES_CONTINUOUS | ES_SYSTEM_REQUIRED))
+                elif self._held:
+                    self._release(call); self._held = False
+                else:
+                    call(ES_CONTINUOUS)
             except Exception:
                 self._held = False
             self._wake.wait(30); self._wake.clear()
         try:
-            call(ES_CONTINUOUS)
+            if self._held:
+                self._release(call)
+            else:
+                call(ES_CONTINUOUS)
         except Exception:
             pass
         self._held = False

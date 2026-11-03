@@ -453,7 +453,7 @@ def _track_camera(video, facts, profile, backend, work, fps=6., width=960, read_
             for r in facts['bumpers'].get('reads', []):
                 if abs(r['t']-t) > .5/fps or r.get('kind') != 'exact' or not r.get('frame_box'):
                     continue
-                pos = read_position(r, band, profile['camera_top'], w/(right-left), h)
+                pos = read_position(r, band, profile['camera_top'], w/(right-left), h, profile.get('camera_bottom', 1.0))
                 if pos is not None:pos=(pos[0]-left*w/(right-left),pos[1])
                 if pos is not None and not 0<=pos[0]<=w:pos=None
                 if pos is None:

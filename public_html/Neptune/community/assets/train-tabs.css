@@ -99,7 +99,7 @@
 html[data-theme="light"] .tr-steps li[data-done="true"] b{color:var(--solid-text,#fff)}
 .tr-card h2{margin-top:2px}.tr-warn{color:var(--warn,#f0b429)}
 
-/* 3 · Actions: Watch & tag in the page, outside scouting in a dialog */
+/* 4 · Actions: Watch & tag in the page, outside scouting in a dialog */
 .tt-work{margin:18px 0}.tt-work .match-picker-v2{margin:12px 0}
 .tt-tag-frame{width:100%;min-height:600px;border:1px solid var(--line);border-radius:14px;background:transparent;display:block}
 .tt-tag-frame[hidden]{display:none}

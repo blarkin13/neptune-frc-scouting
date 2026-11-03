@@ -13,6 +13,7 @@ require_once dirname(__DIR__,3).'/neptune_secure/robot-label-frames.php';
 require_once dirname(__DIR__,3).'/neptune_secure/youtube-uploader.php';
 require_once dirname(__DIR__,3).'/neptune_secure/score-moments.php';
 require_once dirname(__DIR__,3).'/neptune_secure/match-video-cache.php';
+require_once dirname(__DIR__,3).'/neptune_secure/community-video-tags.php';
 header('Cache-Control: private, no-store');
 // Connected helpers: claim detector requests, report progress, upload pre-fill boxes or an adopted detector,
 // and download the current shared detector.
@@ -29,11 +30,11 @@ try {
    $control=new CommunityTrainingControl($pdo);$owner=(int)$computer['user_id'];
    $computers=autoscout_computers($pdo,$jobs,$control->computers($owner),$jobs->requests());
    $queue=[];foreach($jobs->requests() as $request)if(in_array($request['state']??'', ['queued','claimed'],true))
-    $queue[]=['request'=>$request['id'],'title'=>match($request['kind']??''){'train'=>'Train robot detector','train_field'=>'Train field detector','prepare'=>'Prepare frames','test_robot'=>'Test robot detection',default=>'Training'},'state'=>$request['state']==='claimed'?'running':'waiting','message'=>$request['message']??'','target'=>$request['target']??null,'computer_id'=>$request['computer_id']??null,
-     'label'=>match($request['kind']??''){'train_field'=>'2 · Field — field detector','prepare'=>'1 · Robots — prepare frames','test_robot'=>'1 · Robots — test match',default=>'1 · Robots — robot detector'},'started'=>$request['claimed_at']??null];
+    $queue[]=['request'=>$request['id'],'title'=>match($request['kind']??''){'train'=>'Train robot detector','train_field'=>'Train field detector','prepare'=>'Prepare frames','review_tracking'=>'Open tracking review','test_robot'=>'Test robot detection',default=>'Training'},'state'=>$request['state']==='claimed'?'running':'waiting','message'=>$request['message']??'','target'=>$request['target']??null,'computer_id'=>$request['computer_id']??null,
+     'label'=>match($request['kind']??''){'train_field'=>'3 · Field — field detector','prepare'=>'1 · Robots — prepare frames','test_robot'=>'2 · Tracking — test match','review_tracking'=>'2 · Tracking — review',default=>'1 · Robots — robot detector'},'started'=>$request['claimed_at']??null];
    $q=$pdo->prepare("SELECT id,state,message,control_json,created_at,started_at FROM community_learning_jobs WHERE season=? AND state IN ('remote_queued','remote_running','queued','running','test_queued','test_running','evaluation_queued','evaluation_running') ORDER BY created_at DESC LIMIT 20");$q->execute([(int)gmdate('Y')]);
    foreach($q as $row){$control=json_decode((string)($row['control_json']??''),true)?:[];$state=(string)$row['state'];$queue[]=['job'=>$row['id'],'title'=>str_starts_with($state,'test_')?'Test a match':(str_starts_with($state,'evaluation_')?'Independent evaluation':'Train action models & scoring'),'state'=>str_ends_with($state,'queued')?'waiting':'running','message'=>$row['message']??'','target'=>$control['computer_id']??null,
-     'label'=>str_starts_with($state,'test_')||str_starts_with($state,'evaluation_')?'Test & release':'3 · Actions — action & scoring models','started'=>(int)($row['started_at']??0)?:(isset($row['created_at'])?(int)$row['created_at']:null)];}
+     'label'=>str_starts_with($state,'test_')||str_starts_with($state,'evaluation_')?'Test & release':'4 · Actions — action & scoring models','started'=>(int)($row['started_at']??0)?:(isset($row['created_at'])?(int)$row['created_at']:null)];}
    foreach($computers as &$row){$row=array_intersect_key($row,array_flip(['id','name','device','online','status','last_seen','platform','stats','counters','log','reported_at','version','job','waiting','update','form']));$row['log']=array_slice($row['log']??[],-35);}unset($row);
    return ['game'=>RobotDetectorJobs::defaultGame(),'computers'=>$computers,'queue'=>$queue,'generated_at'=>time()];
   })(),
@@ -83,6 +84,14 @@ try {
   'video_cache_chunk'=>(new MatchVideoCache(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->chunk((string)($p['video_id']??''),(string)($p['sha256']??''),(int)($p['offset']??-1)),
   'video_cache_begin'=>(new MatchVideoCache(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->begin((string)($p['video_id']??''),(string)($p['sha256']??''),(int)($p['bytes']??0),(string)$computer['id']),
   'video_cache_put'=>(new MatchVideoCache(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put((string)($p['upload_id']??''),(int)($p['offset']??-1),(string)($p['data_b64']??''),(string)$computer['id']),
+  // Tracking review of any match by key (helper's Review tracking window): its YouTube video and roster.
+  'review_match'=>(function()use($pdo,$p){
+   $key=(string)($p['match_key']??'');if(!preg_match('/^\d{4}[A-Za-z0-9_-]{1,95}$/D',$key))throw new InvalidArgumentException('Enter a match key such as 2026txcmp1_qm8.');
+   $q=$pdo->prepare('SELECT match_key,title,roster_json,source_url FROM community_matches WHERE match_key=? ORDER BY id DESC LIMIT 1');$q->execute([$key]);$m=$q->fetch(PDO::FETCH_ASSOC);
+   if(!$m)throw new CommunityAnalysisError(404,'Neptune has no match '.$key.'.');
+   $vid=CommunityVideoTags::videoId((string)$m['source_url']);if(!$vid)throw new CommunityAnalysisError(404,$key.' has no linked YouTube video on Neptune.');
+   return ['match_key'=>$m['match_key'],'title'=>(string)($m['title']?:$m['match_key']),'video_id'=>$vid,'roster'=>json_decode((string)($m['roster_json']??''),true)];
+  })(),
   'claim'=>['request'=>$jobs->claim($computer)],
   'training_supplement_index'=>['packages'=>$jobs->matchVideoOnly($computer)?[]:(new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->index()],
   'training_supplements'=>(function()use($computer,$p){$store=new ExternalBumperTraining(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']);if(isset($p['id']))return ['datasets'=>[$store->get((string)$p['id'],(string)($p['sha256']??''))]];foreach($store->index() as $item)if($item['id']==='6962-workshop-v1')return ['datasets'=>[$store->get($item['id'],$item['sha256'])]];return ['datasets'=>[]];})(),

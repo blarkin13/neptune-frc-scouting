@@ -66,6 +66,8 @@ def classify(y, u, v):
 def wide_band(profile):
     """(top, bottom) of the wide field shot as fractions of the frame height."""
     top = profile['camera_top']
+    if 'camera_bottom' in profile and 'closeup_top' not in profile:
+        return top, profile['camera_bottom'] - 0.005   # one wide shot above a bottom scoreboard
     bottom = top + (1 - top) * profile.get('closeup_top', 0.56)
     return top, bottom - 0.015   # stay off the seam above the close-up cameras
 
@@ -418,10 +420,10 @@ def link(frames, fps, max_gap_s=1.5, min_len=3, speed=60.0, scene_cuts=()):
 
 # ---------------------------------------------------------------- identities
 
-def read_position(read, band, camera_top, width, height):
+def read_position(read, band, camera_top, width, height, camera_bottom=1.0):
     """Centre of an OCR read (frame_box in camera-area fractions) in wide-shot pixels, or None outside it."""
     x, y, w, h = read['frame_box']
-    fy = camera_top + (1 - camera_top) * (y + h / 2)
+    fy = camera_top + (camera_bottom - camera_top) * (y + h / 2)
     top, bottom = band
     if not top <= fy <= bottom:
         return None
@@ -437,7 +439,7 @@ def point_at(track, t, tolerance):
     return best
 
 
-def assign_identities(tracks, reads, roster, band, camera_top, width, height, tolerance=0.2, pad=3, own_reads=(), min_votes=2):
+def assign_identities(tracks, reads, roster, band, camera_top, width, height, tolerance=0.2, pad=3, own_reads=(), min_votes=2, camera_bottom=1.0):
     """Votes from wide-shot bumper reads onto tracks, then one track per team at any time.
 
     A read votes for a track when the track has a detection within `tolerance` s of the read whose box (padded by
@@ -465,7 +467,7 @@ def assign_identities(tracks, reads, roster, band, camera_top, width, height, to
             continue
         if r.get('background') == 'lit_display' or r.get('background') in ('red', 'blue') and r['background'] != alliance[team]:
             continue
-        pos = read_position(r, band, camera_top, width, height)
+        pos = read_position(r, band, camera_top, width, height, camera_bottom)
         if pos is None:
             continue
         hits = []
@@ -766,7 +768,7 @@ def legacy_track_match(video, facts, profile, backend, work, fps=3.0, width=640,
     tracks = link(found['frames'], fps, scene_cuts=found.get('scene_cuts',()))
     own = track_reads(video, found['band'], start, end, tracks, found['width'], Path(work) / 'track-crops', backend, roster, read_every)
     voted, _ = assign_identities(tracks, facts['bumpers']['reads'], roster, found['band'], profile['camera_top'],
-                                 found['width'], found['height'], own_reads=own)
+                                 found['width'], found['height'], own_reads=own, camera_bottom=profile.get('camera_bottom', 1.0))
     assigned = extend_identities(tracks, voted)
     points = team_points(tracks, assigned, roster)
     hubs = found['hubs'] if all(found['hubs'].values()) else None

@@ -113,22 +113,22 @@ def split_group(key):
 
 def sightings(facts):
     """One exact, alliance-colored robot read per team/frame. Wide-shot-only IDs stay excluded."""
-    bump=facts.get('bumpers',{});seen=set();out=[];top=(facts.get('layout') or {}).get('camera_top',.24)
+    bump=facts.get('bumpers',{});seen=set();out=[];top=(facts.get('layout') or {}).get('camera_top',.24);span=(facts.get('layout') or {}).get('camera_bottom',1.)-top
     for r in bump.get('reads',[]):
         identity=bump.get('identities',{}).get(str(r.get('team'))) or bump.get('identities',{}).get(r.get('team')) or {}
         key=(r.get('team'),r.get('t'))
         if key in seen or identity.get('status')!='confirmed' or r.get('kind')!='exact' or r.get('background')!=identity.get('alliance') or r.get('background') not in ('red','blue'):continue
         b=r.get('frame_box')
         if not b or len(b)!=4:continue
-        x,y,w,h=b;y=top+(1-top)*y;h=(1-top)*h
+        x,y,w,h=b;y=top+span*y;h=span*h
         width=min(.5,max(.10,w*5));height=min(.6,max(.16,h*10))
-        box=[max(0,min(1-width,x+w/2-width/2)),max(top,min(1-height,y-height*.75)),width,height]
+        box=[max(0,min(1-width,x+w/2-width/2)),max(top,min(top+span-height,y-height*.75)),width,height]
         # Refuse a crop containing another roster robot's readable number.
         ambiguous=False
         for other in bump.get('reads',[]):
             ob=other.get('frame_box')
             if other.get('team')==r['team'] or other.get('t')!=r['t'] or not ob:continue
-            cx=ob[0]+ob[2]/2;cy=top+(1-top)*(ob[1]+ob[3]/2)
+            cx=ob[0]+ob[2]/2;cy=top+span*(ob[1]+ob[3]/2)
             if box[0]<=cx<=box[0]+box[2] and box[1]<=cy<=box[1]+box[3]:ambiguous=True;break
         if not ambiguous:out.append({'team':r['team'],'t':r['t'],'box':box,'identity_evidence':r['frame']});seen.add(key)
     # Short, directly OCR-anchored track segments add identity continuity. Inherited
@@ -213,7 +213,8 @@ def ensure_tracking(video,facts,game,work,progress=lambda s:None):
         facts=dict(facts,tracking=with_constant_identity(with_roster_inferred(tracking),roster_of(facts)))
         from neptune_review_learning import apply_to_facts
         return apply_to_facts(facts)
-    profile=game.get('layout_profiles',{}).get(facts.get('layout',{}).get('profile'))
+    from neptune_facts import EXTRA_LAYOUTS   # engine-only layouts (not in the game pack) are tracked too
+    pid=facts.get('layout',{}).get('profile');profile=game.get('layout_profiles',{}).get(pid) or EXTRA_LAYOUTS.get(pid)
     if not profile or not any(facts.get('periods',{}).values()):
         from neptune_review_learning import apply_to_facts
         return apply_to_facts(facts)

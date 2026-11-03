@@ -75,7 +75,7 @@ if((int)($_GET['match_id']??0)>0){
 $fieldGames=array_filter(json_decode((string)@file_get_contents(dirname(__DIR__,3).'/neptune_secure/community-learning/season_rules.json'),true)['seasons']??[],fn($g)=>!empty($g['configured'])&&!empty($g['game_key']));krsort($fieldGames);
 $fieldGame=$fieldGames[substr((string)($selected['match_key']??''),0,4)]['game_key']??(reset($fieldGames)['game_key']??'');
 ?>
-<?php require_once dirname(__DIR__).'/community/layout.php';require_once dirname(__DIR__).'/community/pillar.php';community_page_start('2 · Field','Teach Auto Scout the field: mark scoring targets and corners, train the field detector, and see what it learned.','field','AUTO SCOUT · PILLAR 2');
+<?php require_once dirname(__DIR__).'/community/layout.php';require_once dirname(__DIR__).'/community/pillar.php';community_page_start('3 · Field','Teach Auto Scout the field: mark scoring targets and corners, train the field detector, and see what it learned.','field','AUTO SCOUT · PILLAR 3');
 pillar_open((int)substr($fieldGame,0,4)?:(int)gmdate('Y'));
 pillar_summary('field','Finds this game’s scoring targets and the four field corners, so every event gets scoring areas and the top-down map without marking. Each game has its own field detector; choose the game in the marking panel. Mark a few matches below, then press Train. Your helper checks the new and current detector on one held-out match it never trains on (the same match every run), and only switches if the new one places targets and corners better.','Train field detector');?>
 <link rel="stylesheet" href="../community/assets/match-picker/match-picker.css?v=1">

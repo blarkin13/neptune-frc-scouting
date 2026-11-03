@@ -204,9 +204,16 @@ def watch_jobs(config,hardware,execute,progress,closing,pause,busy=lambda value:
     # Check in for My computers and the Running now console every 5 s while working (15 s idle), from its own thread.
     import neptune_robot_jobs as robot_jobs
     form=telemetry.form_factor()
+    import neptune_wake as wake
+    network=wake.local_network()
+    def wake_others(reply):
+        # Neptune asks a helper on the same home network to wake a sleeping computer of this organization.
+        for target in (reply.get('wake') or [])[:6]:
+            try:wake.wake(target)
+            except (ValueError,OSError,AttributeError):pass
     if not getattr(telemetry,'reporter',None):telemetry.reporter=telemetry.Reporter(lambda payload:robot_jobs.api(config,'computer_poll',payload,timeout=20),
-                       lambda:{'busy':awake.busy,'awake':awake.active,'message':last_message[0][:600],'version':helper_version() or engine_version(),'platform':'%s · %s'%(platform.system().replace('Darwin','Mac'),hardware.get('name','CPU')),'form':form},
-                       lambda reply:(awake.set_mode((reply.get('settings') or {}).get('keep_awake') or awake.mode),telemetry.replied(reply),identity_tick()),closing).start()
+                       lambda:{'busy':awake.busy,'awake':awake.active,'message':last_message[0][:600],'version':helper_version() or engine_version(),'platform':'%s · %s'%(platform.system().replace('Darwin','Mac'),hardware.get('name','CPU')),'form':form,'network':network},
+                       lambda reply:(awake.set_mode((reply.get('settings') or {}).get('keep_awake') or awake.mode),telemetry.replied(reply),wake_others(reply),identity_tick()),closing).start()
     identity_due=[0.]
     def identity_tick():
         # Every helper uses the organization's shared robot-identity model, trained where tracking is reviewed:

@@ -39,7 +39,7 @@ def api(config, action, payload=None, timeout=120):
     url = public_https(config['site'].rstrip('/')+'/api/robot-detector.php')
     data = dict(payload or {}, action=action)
     if action == 'computer_poll':
-        data['capabilities'] = ['test_robot_v1']
+        data['capabilities'] = ['test_robot_v1', 'review_tracking_v1']
     body = json.dumps(data).encode()
     request = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer '+config['token']})
     with urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect()).open(request, timeout=timeout) as response:
@@ -82,8 +82,15 @@ def train_device():
 
 
 def loader_settings(device):
-    """Feed CUDA while keeping the larger Small model within 16 GB of VRAM."""
-    return {'workers': 2, 'batch': 4 if MODEL_SIZE == 's' else 8} if device != 'cpu' else {'workers': 0, 'batch': 4}
+    """Feed CUDA in batches of eight (Small used under 6 GB of a 16 GB card at four). Decoded frames are cached
+    on disk (in the run's work folder) so the loaders stop re-reading the JPEGs every pass."""
+    return {'workers': 2, 'batch': 8, 'cache': 'disk'} if device != 'cpu' else {'workers': 0, 'batch': 4}
+
+
+def fine_tune_settings(recipe):
+    """A warm start continues a detector that already works: SGD at a fifth of YOLO's default rate (0.01) with a
+    one-pass warm-up, so the first passes refine it instead of undoing it. A fresh COCO start keeps YOLO's defaults."""
+    return {'optimizer': 'SGD', 'lr0': .002, 'warmup_epochs': 1, 'cos_lr': True} if recipe == WARM_RECIPE else {}
 
 
 def all_cores():
@@ -435,7 +442,7 @@ def train(config, req, progress):
     loading = loader_settings(device)
     progress('Training input: %d images per batch, %d loader workers on %s' % (loading['batch'], loading['workers'], device))
     with all_cores():
-        result = model.train(data=str(config_yaml), epochs=epochs, imgsz=1280, device=device, **loading, patience=20, seed=2026,
+        result = model.train(data=str(config_yaml), epochs=epochs, imgsz=1280, device=device, **loading, **fine_tune_settings(recipe), patience=20, seed=2026,
                          deterministic=True, plots=False, project=str(work/'runs'), name='bumper', exist_ok=True, verbose=False,
                          translate=.2, scale=.5, fliplr=.5, mosaic=1.0, close_mosaic=10)
     best = Path(result.save_dir)/'weights'/'best.pt'
@@ -687,8 +694,12 @@ def test_robot(config, req, progress):
     import neptune_review_video as rv
     from neptune_facts import analyze_video
     from neptune_field_regions import sync as sync_regions, sync_events, event_key, match_key_of
+    # A test with a stale or missing detector is not worth an hour: say why instead of rendering an empty video.
     try:
         sync_detector(config)
+    except Exception as error:
+        progress('Could not download the detector in use (%s); testing with this computer\'s copy' % type(error).__name__)
+    try:
         sync_field_detector(config)
     except Exception:
         pass
@@ -728,6 +739,10 @@ def test_robot(config, req, progress):
         facts = training.refresh_cached_facts(facts_file, facts, match_rec, game, sha, video=video, progress=progress)
     progress('Tracking robots, reading bumpers, and resolving constant identity')
     facts = training.ensure_tracking(video, facts, game, cache_dir, progress)
+    tracking = facts.get('tracking') or {}
+    if not tracking.get('observations'):
+        raise ValueError('Robot tracking did not run on %s: %s' % (match_key, tracking.get('reason') or
+                         ('no robots were found' if tracking.get('status') == 'measured' else 'no scoreboard layout or match periods were found')))
     training.write(facts_file, facts)
     progress('Mapping top-down field homography')
     try:
@@ -735,9 +750,13 @@ def test_robot(config, req, progress):
         sync_events(config, [event_key(match_key_of(facts) or match_key)])
     except Exception:
         pass
+    # Unmarked events: the field model finds this video's field corners for the top-down map.
+    from neptune_field_regions import detect_if_unmarked
+    field = detect_if_unmarked(video, facts, game['game_key'], progress)
     progress('Rendering original view with boxes, bumper OCR, and top-down homography')
     out = HOME/'review-videos'/('robot-test-'+req['id']+'.mp4'); out.parent.mkdir(parents=True, exist_ok=True)
     _, summary = rv.robot_test_video(out, video, facts, game['game_key'], title)
+    summary['field_model'] = field.get('status')
     if out.stat().st_size > 512*1024*1024:
         raise ValueError('Rendered match test exceeds 512 MB; the local video has been kept.')
     yt_title, yt_desc = rv.describe_robot_test(title, match_key, summary, VERSION)
@@ -784,6 +803,14 @@ def run_pending(config, progress, busy=lambda value: None):
             if reply.get('cancelled'):
                 raise InterruptedError('Cancelled on Neptune')
     try:
+        if req.get('kind') == 'review_tracking':
+            # Opened from the Tracking page: prepare it here and open it in this computer's browser.
+            from neptune_identity_review import open_from_neptune
+            result = open_from_neptune(config, req, report, HOME/'jobs', HOME/'identity-reviews')
+            message = 'Tracking review of %s is open on this computer' % result['match_key']
+            api(config, 'finish', {'request_id': req['id'], 'lease': req['lease'], 'ok': True, 'message': message, 'report': result})
+            progress(message)
+            return True
         if req.get('kind') not in ('prepare', 'test_robot', 'train_field', 'train'):
             raise ValueError('Unsupported helper job: '+str(req.get('kind')))
         result = prepare(config, req, report) if req['kind'] == 'prepare' else \

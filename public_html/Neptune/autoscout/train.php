@@ -72,7 +72,7 @@ try {
   elseif(in_array($action,['computer_settings','rename_computer'],true)){
    if(!in_array($computer,array_column(array_filter($control->computers($uid),fn($c)=>!$c['revoked']),'id'),true))throw new CommunityAnalysisError(422,'Choose one of your connected computers.');
    if($action==='rename_computer'){$name=trim((string)($_POST['name']??''));if($name===''||mb_strlen($name)>100)throw new CommunityAnalysisError(422,'Enter a name up to 100 characters.');$q=$pdo->prepare('UPDATE community_training_computers SET name=? WHERE id=? AND user_id=?');$q->execute([$name,$computer,$uid]);$reply=['ok'=>true];}
-   else{try{$reply=(new RobotDetectorJobs(dirname(__DIR__,3).'/neptune_secure',(int)$u['organization_id']))->setSettings($computer,array_map(fn($v)=>$v==='true'?true:($v==='false'?false:$v),array_intersect_key($_POST,array_flip(['keep_awake','auto_update','update']))));}catch(InvalidArgumentException $e){throw new CommunityAnalysisError(422,$e->getMessage());}}
+   else{try{$reply=(new RobotDetectorJobs(dirname(__DIR__,3).'/neptune_secure',(int)$u['organization_id']))->setSettings($computer,array_map(fn($v)=>$v==='true'?true:($v==='false'?false:$v),array_intersect_key($_POST,array_flip(['keep_awake','auto_update','update','wake']))));}catch(InvalidArgumentException $e){throw new CommunityAnalysisError(422,$e->getMessage());}}
   }
   elseif($action==='cancel_detector'){try{$reply=(new RobotDetectorJobs(dirname(__DIR__,3).'/neptune_secure',(int)$u['organization_id']))->cancel((string)($_POST['request']??''));}catch(InvalidArgumentException $e){throw new CommunityAnalysisError(422,$e->getMessage());}}
   elseif($action==='rollback_detector'){try{$reply=(new RobotDetectorJobs(dirname(__DIR__,3).'/neptune_secure',(int)$u['organization_id']))->rollback((string)($_POST['which']??''),(string)($games[(string)$season]['game_key']??''));}catch(InvalidArgumentException $e){throw new CommunityAnalysisError(422,$e->getMessage());}}
@@ -111,15 +111,15 @@ try {
  }
 }catch(CommunityAnalysisError $e){json_response(['error'=>$e->getMessage()],$e->httpStatus);exit;}catch(JsonException $e){json_response(['error'=>'The reference JSON file could not be read.'],422);exit;}catch(Throwable $e){error_log('Training control page: '.$e->getMessage());if($_SERVER['REQUEST_METHOD']==='POST'||count($_GET)>1){json_response(['error'=>'Neptune could not complete this request. Your saved data is kept.'],503);exit;}throw $e;}
 $panel=$control->panel($season,$uid);
-// One page, three views: 3 · Actions (default), Test & release, Helpers & settings.
+// One page, three views: 4 · Actions (default), Test & release, Helpers & settings.
 $view=in_array($_GET['view']??'',['test','helpers'],true)?$_GET['view']:'actions';
 require_once dirname(__DIR__).'/community/layout.php';require_once dirname(__DIR__).'/community/pillar.php';
-[$title,$sub,$kick]=['actions'=>['3 · Actions','Teach Auto Scout what robots do: tag or import examples, train action and scoring models, and see what they learned.','AUTO SCOUT · PILLAR 3'],
+[$title,$sub,$kick]=['actions'=>['4 · Actions','Teach Auto Scout what robots do: tag or import examples, train action and scoring models, and see what they learned.','AUTO SCOUT · PILLAR 4'],
  'test'=>['Test & release','Try the current models on a match, evaluate them on reference matches, and release one.','AUTO SCOUT · TEST'],
  'helpers'=>['Helpers & settings','Install and connect the helper app that does the training, and manage machine data.','AUTO SCOUT · HELPERS']][$view];
 community_page_start($title,$sub,$view,$kick);
 ?>
-<link rel="stylesheet" href="../community/assets/training-control.css?v=helper-os-icons-2">
+<link rel="stylesheet" href="../community/assets/training-control.css?v=helper-cards-20261102">
 <div id="training-app" data-season="<?=$season?>" data-csrf="<?=e(csrf_token())?>">
  <div class="training-topbar"><form method="get"><?php if($view!=='actions'):?><input type="hidden" name="view" value="<?=e($view)?>"><?php endif?><label for="training-season">Game</label><select name="season" id="training-season"><?php foreach($games as $year=>$game):?><option value="<?=$year?>" <?=$season===(int)$year?'selected':''?>><?=$year?> <?=e($game['game'])?></option><?php endforeach ?></select><button>Show game</button></form><button type="button" class="button-secondary" id="show-human-data">See saved human data</button></div>
  <dialog id="reset-modal" aria-labelledby="reset-title"><h2 id="reset-title">Start with fresh machine data?</h2><p>This removes all Auto Scout training runs, model releases, predictions and outside imports across all games. It keeps human tags, scoring estimates, review history and match links.</p><label>Type RESET MACHINE DATA<input id="reset-confirmation" autocomplete="off" placeholder="RESET MACHINE DATA"></label><p id="reset-error" role="alert"></p><div class="training-actions"><button type="button" id="cancel-reset" class="button-secondary">Keep my data</button><button type="button" id="confirm-reset" disabled>Reset machine data</button></div></dialog>
@@ -157,7 +157,7 @@ community_page_start($title,$sub,$view,$kick);
  </div>
  <div data-view="test"<?=$view==='test'?'':' hidden'?>>
   <ol class="tr-steps" data-part="test" aria-label="Test and release steps"><li data-step="model"><b>1</b> Model</li><li data-step="preview"><b>2</b> Preview</li><li data-step="score"><b>3</b> Score</li><li data-step="release"><b>4</b> Release</li></ol>
-  <section class="tt-card tr-card" id="test-model"><span class="stage-label">1 · MODEL</span><h2>Choose the Actions model to test</h2><div class="training-field-grid"><label>Actions model <select id="trial-model"></select><small data-part="test" data-slot="no-model" hidden>No Actions model yet, so a match test can't run. A model is saved once an Actions training run gets at least one action past its checks (see <a href="/autoscout/train.php">3 · Actions</a>).</small></label></div><div data-part="test" data-slot="model-info"></div><p class="training-note" data-part="test"><span data-slot="detectors">Checking which detectors are in use…</span></p></section>
+  <section class="tt-card tr-card" id="test-model"><span class="stage-label">1 · MODEL</span><h2>Choose the Actions model to test</h2><div class="training-field-grid"><label>Actions model <select id="trial-model"></select><small data-part="test" data-slot="no-model" hidden>No Actions model yet, so a match test can't run. A model is saved once an Actions training run gets at least one action past its checks (see <a href="/autoscout/train.php">4 · Actions</a>).</small></label></div><div data-part="test" data-slot="model-info"></div><p class="training-note" data-part="test"><span data-slot="detectors">Checking which detectors are in use…</span></p></section>
   <section class="tt-card tr-card" id="scoring-trials"><span class="stage-label">2 · PREVIEW A MATCH</span><h2>See what it does on one match</h2><p>Runs the model on any match and makes a video of it: robots boxed with their numbers, scoring areas outlined, actions shown on each robot. No answer key, so this shows behaviour, not accuracy.</p><div class="training-field-grid"><label>Event <select id="trial-event"><option value="">Loading events…</option></select></label><label class="training-wide">Match <select id="trial-match"><option value="">Choose an event</option></select></label></div><p id="match-coverage" class="training-note"></p><button type="button" id="try-model" disabled>Run this match test</button><div id="prediction-results"></div><div data-part="test" data-slot="latest-video"></div></section>
   <section class="tt-card tr-card" id="testing-guide"><span class="stage-label">3 · SCORE AGAINST AN ANSWER KEY</span><h2>Measure accuracy</h2><p>Runs the model on matches where people tagged every action, from events it never trained on, and counts its mistakes. Passing every check below unlocks Release.</p><div data-part="test" data-slot="gates"><p class="training-note">Choose a model to see its checks.</p></div><div id="evaluation-status"></div><button type="button" id="open-evaluation">Score against an answer key…</button>
    <details class="training-more" id="answer-key-builder"><summary>Which tagged matches can be the answer key?</summary><div data-part="test" data-slot="answer-key"><p class="training-note">Choose a model first.</p></div></details>
@@ -166,7 +166,13 @@ community_page_start($title,$sub,$view,$kick);
   <details class="training-more tt-section" data-part="test"><summary>History · match test videos</summary><div data-slot="videos">Loading…</div></details>
  </div>
  <div data-view="helpers"<?=$view==='helpers'?'':' hidden'?>>
-  <section class="tt-card" data-part="helpers" id="my-computers"><span class="stage-label">MY COMPUTERS</span><p class="training-note">Every computer you have connected, from any device: what it is doing, and controls to start or stop work on it and keep it awake.</p><div data-slot="computers">Loading…</div></section>
+  <section data-part="helpers" id="my-computers" aria-labelledby="my-computers-title">
+   <div class="tt-computers-heading">
+    <div><span class="stage-label">MY COMPUTERS</span><h2 id="my-computers-title">Training helpers</h2><p class="training-note">One card per computer, with live resources, running work, training controls and helper settings.</p></div>
+    <div class="tt-computers-toolbar" data-slot="computers-actions"></div>
+   </div>
+   <div class="tt-computer-grid" data-slot="computers" aria-live="polite">Loading…</div>
+  </section>
   <section><span class="stage-label">REVIEW VIDEOS</span><h2>Watch what each detector run learned</h2><p>Each robot and field detector run makes a short video of the new model on its held-out match and uploads it to your YouTube channel.</p><a class="community-button" href="/autoscout/youtube.php">Set up YouTube uploads →</a></section>
  <details class="training-more" id="manage-helper-section" open><summary>Manage helper connections</summary><p>Disconnect a helper you no longer use. Its cached files stay on that computer; it can no longer receive or upload work.</p><div id="manage-computers"></div></details>
  <section id="reset-training" class="training-reset"><span class="stage-label">START OVER</span><h2>Reset Auto Scout</h2><p>Clear training runs, models, predictions and outside imports. Your human tags, scoring estimates and match links are always kept.</p><button type="button" id="open-reset" class="button-secondary">Reset machine data…</button><p id="reset-message" role="status"></p><p class="training-note">Stop any active run first. Reset disconnects helpers so old work cannot upload again. Download a fresh connection afterward. Video caches on other computers are not deleted by the website.</p><h3>Free server space</h3><p>Preview old helper downloads and completed update bundles before deleting them. The current download and previous rollback version stay available. Human labels, models, reports and helper-computer caches are untouched.</p><button type="button" id="open-cleanup" class="button-secondary">Review old files…</button><p id="cleanup-message" role="status"></p></section>
@@ -210,5 +216,5 @@ sudo apt update &amp;&amp; sudo apt install neptune-training-helper</pre><p>Late
 </div>
 <script type="application/json" id="training-initial"><?=json_encode($panel,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR)?></script>
 <script src="../community/assets/training-control.js?v=remove-computers-1" defer></script>
-<script src="/community/assets/pillar.js?v=27-helper-dashboard" defer></script>
+<script src="/community/assets/pillar.js?v=helper-cards-wake2-20261102" defer></script>
 <?php community_page_end(); ?>

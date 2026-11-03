@@ -3,7 +3,7 @@ declare(strict_types=1);
 function community_page_start(string $title,string $subtitle,string $active='public',string $eyebrow='AUTO SCOUT'):void {
  global $pdo,$config,$u,$pageTitle,$moduleName,$hideChrome,$isPublicHome,$navigationSection;
  $pageTitle=$title;$moduleName='AUTO SCOUT';
- // ?embed=1: the page alone, inside another Auto Scout page (3 · Actions shows Watch & tag this way). No header, hero or menus.
+ // ?embed=1: the page alone, inside another Auto Scout page (4 · Actions shows Watch & tag this way). No header, hero or menus.
  $embed=($_GET['embed']??'')==='1';$hideChrome=$embed;
  $viewer=function_exists('current_user')?current_user():null;
  // Auto Scout pages sit under the Auto Scout menu section for the platform owner who has it.
@@ -32,9 +32,9 @@ function community_page_start(string $title,string $subtitle,string $active='pub
     </div>
   </div>
 <?php
- // Three pillars in order, then testing. Watch & tag and saved tags belong to Actions.
+ // Four pillars in order, then testing. Watch & tag and saved tags belong to Actions.
  $pillarOf=['catalog'=>'actions','contribute'=>'actions','results'=>'actions','learning'=>'actions','scoring'=>'field'];$current=$pillarOf[$active]??$active;
- $links=['robots'=>['1 · Robots','/autoscout/robot-labels.php','robot'],'field'=>['2 · Field','/autoscout/scoring-areas.php','field'],'actions'=>['3 · Actions','/autoscout/train.php','actions'],'test'=>['Test & release','/autoscout/train.php?view=test',''],'helpers'=>['Helpers & settings','/autoscout/train.php?view=helpers','']];
+ $links=['robots'=>['1 · Robots','/autoscout/robot-labels.php','robot'],'tracking'=>['2 · Tracking','/autoscout/tracking.php','tracking'],'field'=>['3 · Field','/autoscout/scoring-areas.php','field'],'actions'=>['4 · Actions','/autoscout/train.php','actions'],'test'=>['Test & release','/autoscout/train.php?view=test',''],'helpers'=>['Helpers & settings','/autoscout/train.php?view=helpers','']];
 ?><nav class="community-nav" aria-label="Auto Scout"><?php foreach($links as $key=>[$label,$href,$pillar]):?><a href="<?=e($href)?>"<?=$pillar?' data-pillar="'.$pillar.'"':''?> <?=$current===$key?'aria-current="page"':''?>><?=e($label)?></a><?php endforeach ?><?php if($active!=='hub'):?><a href="/autoscout/index.php">← Auto Scout</a><?php endif?></nav>
 <?php }
 function community_page_end():void {

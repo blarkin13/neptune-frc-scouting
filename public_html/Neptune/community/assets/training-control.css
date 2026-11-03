@@ -55,3 +55,63 @@
 #training-app .training-platform small{color:var(--muted);font-size:.8em;line-height:1.4}
 #training-app #download-options code{overflow-wrap:anywhere}
 @media(max-width:650px){#training-app .training-platforms{grid-template-columns:1fr}}
+
+
+/* Helpers & settings: independent management cards, with all existing controls intact. */
+#training-app #my-computers{margin:22px 0 30px;min-width:0}
+#training-app .tt-computers-heading{display:flex;justify-content:space-between;align-items:end;gap:18px;margin:0 0 16px;flex-wrap:wrap}
+#training-app .tt-computers-heading h2{margin:4px 0 6px}
+#training-app .tt-computers-heading .training-note{margin:0;max-width:780px}
+#training-app .tt-computers-toolbar{margin-left:auto}
+#training-app .tt-computer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,390px),1fr));gap:16px;align-items:stretch;min-width:0}
+#training-app .tt-computer-grid>.tt-computer-empty{grid-column:1/-1;border:1px dashed var(--line);border-radius:16px;padding:26px;background:var(--panel)}
+#training-app .tt-computer{min-width:0;min-height:0;display:flex;flex-direction:column;gap:14px;margin:0;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--panel);box-shadow:0 4px 16px rgba(0,0,0,.035)}
+#training-app .tt-computer:first-of-type{padding:20px;border-top:1px solid var(--line)}
+#training-app .tt-computer--working{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+#training-app .tt-computer-head{display:flex;align-items:center;gap:12px;min-width:0}
+#training-app .tt-computer-device-icon{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--accent);font-size:1.1rem}
+#training-app .tt-computer-identity{flex:1;min-width:0}
+#training-app .tt-computer-identity .tt-name{max-width:100%;overflow-wrap:anywhere;text-align:left;line-height:1.35;font-size:1.05rem!important}
+#training-app .tt-computer-identity small{display:block;color:var(--muted);font-size:.82rem;overflow-wrap:anywhere;margin-top:3px}
+#training-app .tt-computer-status{display:inline-flex;align-items:center;gap:7px;flex:none;white-space:nowrap;font-size:.8rem;font-weight:700;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 10px}
+#training-app .tt-computer-status i{width:7px;height:7px;border-radius:50%;background:currentColor}
+#training-app .tt-computer-status--available{color:var(--c1-green,#3cbf7a)}
+#training-app .tt-computer-status--working{color:var(--accent)}
+#training-app .tt-computer-facts{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;font-size:.8rem;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
+#training-app .tt-computer-facts span+span::before{content:'·';margin-right:12px;color:var(--muted)}
+#training-app .tt-computer-subheading{display:block;font-size:.72rem;letter-spacing:.065em;text-transform:uppercase;font-weight:750;color:var(--muted);margin-bottom:5px}
+#training-app .tt-computer-job{display:flex;flex-direction:column;min-height:56px;padding:11px 13px;border-radius:10px;background:var(--panel2);font-size:.92rem}
+#training-app .tt-computer-job strong{color:var(--text)}
+#training-app .tt-computer-job--idle{color:var(--muted)}
+#training-app .tt-computer-meters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 18px;min-height:114px}
+#training-app .tt-computer-meter{min-width:0}
+#training-app .tt-computer-meter-label{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px;font-size:.8rem;color:var(--muted)}
+#training-app .tt-computer-meter-label b{font-weight:650;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+#training-app .tt-computer-meter-track{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden}
+#training-app .tt-computer-meter-track span{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .4s ease}
+#training-app .tt-computer-no-stats{color:var(--muted);font-size:.86rem;min-height:114px;margin:0}
+#training-app .tt-computer-operations{border-top:1px solid var(--line);padding-top:14px;margin-top:auto}
+#training-app .tt-computer .tt-model-actions{gap:8px;margin:8px 0 0}
+#training-app .tt-computer .tt-model-actions .tt-icon-action{flex:1 1 84px;min-width:78px;padding:10px 8px!important;border-radius:10px!important}
+#training-app .tt-computer .tt-model-actions .tt-icon-action:hover,#training-app .tt-computer .tt-model-actions .tt-icon-action:focus-visible{border-color:var(--accent)!important}
+#training-app .tt-computer .tt-model-actions .button-secondary{min-height:42px}
+#training-app .tt-computer-remove{margin-left:auto}
+#training-app .tt-computer-queue{font-size:.86rem;border:1px solid var(--line);padding:10px 12px;border-radius:10px}
+#training-app .tt-computer-queue>div{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
+#training-app .tt-computer-queue button{min-height:0!important;padding:5px 10px!important}
+#training-app .tt-computer-settings{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:12px}
+#training-app .tt-computer-settings .tt-selfcheck{border:0;padding:0;margin:0}
+#training-app .tt-computer-settings .tt-selfcheck summary{font-size:.85rem}
+#training-app .tt-computer-check-scroll{overflow-x:auto;max-width:100%}
+#training-app .tt-computer-settings .training-note,#training-app .tt-computer-no-check{font-size:.82rem;margin:0;color:var(--muted)}
+#training-app .tt-computer-update{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:.85rem}
+#training-app .tt-computer-update .tt-auto-update{margin-left:auto;font-size:.83rem}
+#training-app .tt-computer-update button{min-height:34px;padding:6px 11px}
+#training-app .tt-computer-awake{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.83rem}
+#training-app .tt-computer-awake .tt-awake{font-weight:600}
+#training-app .tt-computer-awake select{max-width:210px;min-height:35px;padding:6px 9px;color:var(--text);border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+#training-app .tt-computer-awake small{color:var(--muted)}
+#training-app .tt-computer .tt-name-form{flex-wrap:wrap}
+#training-app .tt-computer .tt-name-form input{min-width:0;width:min(100%,240px)}
+@media(max-width:620px){#training-app .tt-computer-grid{grid-template-columns:minmax(0,1fr)}#training-app .tt-computer{padding:16px}#training-app .tt-computer:first-of-type{padding:16px}#training-app .tt-computer-head{flex-wrap:wrap}#training-app .tt-computer-status{margin-left:auto}#training-app .tt-computer-meters{gap:12px}#training-app .tt-computers-toolbar{margin-left:0}}
+@media(prefers-reduced-motion:reduce){#training-app .tt-computer-meter-track span{transition:none}}

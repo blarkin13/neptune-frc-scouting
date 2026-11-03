@@ -173,12 +173,16 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:self.reply(500,{'error':'Could not save the correction; previous data is kept'})
 
 def prepare(video,labels_path,match_key,folder,progress=print):
-    from neptune_video_labels import sha256_file,probe_duration_ms
+    rows=[json.loads(line) for line in Path(labels_path).read_text().splitlines() if line.strip()];row=next((r for r in rows if r['match_key']==match_key),None)
+    if not row:raise ValueError('Match is not in the selected label snapshot')
+    return prepare_row(video,row,match_key,folder,progress)
+
+def prepare_row(video,row,match_key,folder,progress=print):
+    """Track one match for review from its roster (and YouTube ID): a tagged snapshot row or a match from Neptune."""
+    from neptune_video_labels import sha256_file
     from neptune_facts import analyze_video
     from neptune_training import ensure_tracking
     from neptune_games import select
-    rows=[json.loads(line) for line in Path(labels_path).read_text().splitlines() if line.strip()];row=next((r for r in rows if r['match_key']==match_key),None)
-    if not row:raise ValueError('Match is not in the selected label snapshot')
     from neptune_identity import roster_check
     roster_check(row['roster']);folder=Path(folder);folder.mkdir(parents=True,exist_ok=True,mode=0o700);source=sha256_file(video)
     class Stage(list):
@@ -236,6 +240,12 @@ def main():
 
 CATALOG_HTML='''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Neptune · Choose tracking video</title><style>body{background:#080c16;color:#eaf2ff;font:16px system-ui;max-width:820px;margin:50px auto;padding:24px}section{background:#101827;border:1px solid #23314a;border-radius:18px;padding:24px}h1{font-size:28px}p{color:#92a4bd;line-height:1.6}select,button{font:inherit;padding:12px;border:1px solid #344a68;border-radius:8px;background:#18263d;color:inherit;margin:8px 0}select{width:100%}button{background:#48d9ed;color:#07131a;font-weight:bold}button:disabled{opacity:.5}a{color:#48d9ed}#status{white-space:pre-wrap}</style><section><small>NEPTUNE / ROBOT IDENTITY</small><h1>Choose a tagged match</h1><p>The helper reads the verified roster from your saved label snapshot, downloads that match video, and tracks it forward and backward. Your labels stay unchanged. The review video is kept in your identity-review folder so you can return and correct gaps.</p><select id="match" aria-label="Tagged match"></select><button id="start">Prepare tracking review</button><p id="status" role="status">Reading saved matches…</p><a id="open" hidden>Open video with robot boxes →</a><p>Close the tracking review in the helper when finished. Imported scouting-only matches are excluded from this picker. No video or corrections are uploaded to Neptune.</p><h2>Bring corrections from another helper</h2><p>Choose its exported reviewed-tracking learning file. Video fingerprints keep corrections attached to the exact same footage.</p><input id="import-file" type="file" accept="application/json,.json" aria-label="Reviewed tracking learning file"><button id="import">Import reviewed tracking</button></section><script>const root=location.pathname.replace(/\\/$/,''),q=s=>document.getElementById(s);let revision='',polling=false;async function poll(){if(polling)return;polling=true;try{let r=await fetch(root+'/status',{signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error('Review connection lost');let d=await r.json();q('status').textContent=d.message;q('start').disabled=d.busy||!d.matches.length;if(!revision){for(const m of d.matches)q('match').add(new Option(m.key+' · '+m.labels+' saved labels',m.key));revision='loaded'}if(d.url){q('open').href=d.url;q('open').hidden=false}}finally{polling=false}}q('start').onclick=async()=>{q('start').disabled=true;try{let r=await fetch(root+'/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({match:q('match').value})});let d=await r.json();if(!r.ok)q('status').textContent=d.error;else q('open').hidden=true;await poll()}catch(e){disconnected()}};q('import').onclick=async()=>{try{const file=q('import-file').files[0];if(!file)throw Error('Choose a learning file first');if(file.size>12000000)throw Error('Learning file is too large');const response=await fetch(root+'/import',{method:'POST',headers:{'Content-Type':'application/json'},body:await file.text()}),data=await response.json();if(!response.ok)throw Error(data.error);q('status').textContent='Imported '+data.reviewed_samples+' reviewed samples. They will be used the next time you train on this video.'}catch(e){q('status').textContent=e.message}};function disconnected(){q('status').textContent='Tracking review connection lost. Keep Neptune Training Helper open. If you closed review or updated the helper, reopen Review robot tracking to get a new link. Saved corrections are kept.';q('start').disabled=true;}poll().catch(disconnected);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll().catch(disconnected)});setInterval(()=>{if(!document.hidden)poll().catch(disconnected)},3000);</script></html>'''
 
+CATALOG_HTML=CATALOG_HTML.replace('<h1>Choose a tagged match</h1><p>The helper reads the verified roster from your saved label snapshot,','<h1>Choose a match</h1><p>Pick a tagged match, or type any match on Neptune that has a video and a roster. The helper reads its verified roster,')
+CATALOG_HTML=CATALOG_HTML.replace('<button id="start">Prepare tracking review</button>','<label for="any" style="display:block;color:#92a4bd;margin-top:8px">Or any match on Neptune</label><input id="any" placeholder="2026txcmp1_qm8" autocomplete="off" spellcheck="false" style="font:inherit;padding:12px;border:1px solid #344a68;border-radius:8px;background:#18263d;color:inherit;width:100%;box-sizing:border-box"><button id="start">Prepare tracking review</button>')
+CATALOG_HTML=CATALOG_HTML.replace("q('start').disabled=d.busy||!d.matches.length;","busy=d.busy;q('start').disabled=d.busy||!(d.matches.length||q('any').value.trim());")
+CATALOG_HTML=CATALOG_HTML.replace("let revision='',polling=false;","let revision='',polling=false,busy=false;")
+CATALOG_HTML=CATALOG_HTML.replace("body:JSON.stringify({match:q('match').value})","body:JSON.stringify({match:q('any').value.trim()||q('match').value})")
+CATALOG_HTML=CATALOG_HTML.replace("poll().catch(disconnected);document","q('any').oninput=()=>{q('start').disabled=busy||!(q('match').options.length||q('any').value.trim())};poll().catch(disconnected);document")
 CATALOG_HTML=CATALOG_HTML.replace('No video or corrections are uploaded to Neptune.','Videos stay on this computer. Saved tracking reviews back up to Neptune when the helper is connected.')
 CATALOG_HTML=CATALOG_HTML.replace("if(!revision){for(const m of d.matches)q('match').add(new Option(m.key+' · '+m.labels+' saved labels',m.key));revision='loaded'}", "const selected=q('match').value;q('match').replaceChildren();for(const m of d.matches)q('match').add(new Option(m.key+' · '+(m.cloud_only?'saved on Neptune':m.labels+' saved labels'),m.key));if(selected&&d.matches.some(m=>m.key===selected))q('match').value=selected;")
 
@@ -258,7 +268,7 @@ def local_matches(jobs):
 
 class CatalogServer(ThreadingHTTPServer):
     def __init__(self,jobs,output,closing=None,cloud=None):
-        self.matches=local_matches(jobs);self.output=Path(output);self.closing=closing or threading.Event();self.cloud=cloud;self.lock=threading.Lock();self.busy=False;self.message='Choose one of your saved tagged matches.' if self.matches else 'No saved human-tagged job snapshots were found. Run a tagged training selection first.';self.review_url=None;self.children=[];self.worker=None;self.token=secrets.token_urlsafe(24);super().__init__(('127.0.0.1',0),CatalogHandler)
+        self.matches=local_matches(jobs);self.output=Path(output);self.closing=closing or threading.Event();self.cloud=cloud;self.lock=threading.Lock();self.busy=False;self.message='Choose one of your saved tagged matches.' if self.matches else 'No saved human-tagged job snapshots were found. Run a tagged training selection first.';self.review_url=None;self.children=[];self.worker=None;self.on_ready=None;self.token=secrets.token_urlsafe(24);super().__init__(('127.0.0.1',0),CatalogHandler)
         if cloud:threading.Thread(target=self.load_cloud_reviews,daemon=True).start()
     def load_cloud_reviews(self):
         result=self.cloud.backfill(self.output,{key:r['video_id'] for key,r in self.matches.items()})
@@ -272,8 +282,25 @@ class CatalogServer(ThreadingHTTPServer):
             elif not self.busy and (result['backed_up'] or rows):self.message=str(result['backed_up'])+' saved reviews backed up; '+str(len(rows))+' available on Neptune. Choose a match.'
     @property
     def url(self):return 'http://127.0.0.1:%d/%s/'%(self.server_port,self.token)
+    def lookup(self,key):
+        """Any match on Neptune with a YouTube video and a roster, by match key."""
+        if not self.cloud:raise ValueError('Connect this helper to Neptune to review a match that is not tagged here')
+        from neptune_robot_jobs import api
+        found=api(self.cloud.connection,'review_match',{'match_key':key},timeout=30)
+        return self.add_match(found['match_key'],found['video_id'],found.get('roster'))
+    def add_match(self,key,video_id,roster):
+        from neptune_identity import roster_check
+        roster={c:[int(n) for n in (roster or {}).get(c,[])] for c in ('red','blue')};roster_check(roster)
+        if not re.fullmatch(r'[A-Za-z0-9_-]{11}',str(video_id)):raise ValueError('Match video is missing')
+        with self.lock:
+            if key not in self.matches or self.matches[key].get('cloud_only'):
+                self.matches[key]=dict(self.matches.get(key,{}),key=key,snapshot=None,video_id=video_id,roster=roster,labels=0,cloud_only=False)
+        return key
     def start(self,key):
-        if key not in self.matches:raise ValueError('Choose a saved tagged match')
+        key=str(key).strip()
+        if key not in self.matches:
+            if not re.fullmatch(r'20\d{2}[A-Za-z0-9_-]{1,100}',key):raise ValueError('Enter a match key such as 2026txcmp1_qm8')
+            self.lookup(key)
         with self.lock:
             if self.busy:raise ValueError('A tracking review is already being prepared')
             self.busy=True;self.message='Checking video tools and available disk space…';self.review_url=None
@@ -305,9 +332,11 @@ class CatalogServer(ThreadingHTTPServer):
                 if row.get('cloud_only'):
                     review_path=folder/'identity-review.json'
                     if not review_path.is_file():raise ValueError('Saved cloud review could not be restored')
-                else:review_path=prepare(video,row['snapshot'],key,folder,progress)
+                elif row.get('snapshot'):review_path=prepare(video,row['snapshot'],key,folder,progress)
+                else:review_path=prepare_row(video,{'match_key':key,'roster':row['roster'],'video_id':row['video_id']},key,folder,progress)
                 review=json.loads(review_path.read_text());child=ReviewServer(video,review,review_path,self.cloud,cloud_revision,cloud_conflict);self.children.append(child);threading.Thread(target=child.serve_forever,daemon=True).start()
                 with self.lock:self.review_url=child.url;self.message='Tracking review ready. Open the video to inspect boxes and correct identities.'
+                if self.on_ready:self.on_ready(child.url)
             except Exception as e:
                 with self.lock:self.message='Review needs attention: '+str(e)[:500]
             finally:
@@ -333,9 +362,26 @@ class CatalogHandler(Handler):
             if route=='import':
                 from neptune_review_learning import import_document,train_association
                 result=import_document(data);result['association']=train_association();self.reply(200,result);return
-            if set(data)!={'match'}:raise ValueError('Unexpected request fields')
+            if set(data)!={'match'} or not isinstance(data['match'],str):raise ValueError('Unexpected request fields')
             self.server.start(data['match']);self.reply(202,{'state':'preparing'})
-        except (ValueError,KeyError,TypeError) as e:self.reply(400,{'error':str(e)[:200]})
+        except Exception as e:self.reply(400,{'error':str(e)[:200]})
+
+def open_from_neptune(config,req,progress,jobs,output,opened=None):
+    """Website job: prepare this match's review here and open it in this computer's browser.
+    The review keeps running after the job finishes; corrections back up to Neptune as usual."""
+    from neptune_review_cloud import ReviewCloud
+    opened=opened or webbrowser.open
+    server=CatalogServer(jobs,output,None,ReviewCloud(config))
+    key=server.add_match(req['match_key'],req['video_id'],req.get('roster'))
+    server.start(key)
+    while server.worker.is_alive():
+        server.worker.join(timeout=5)
+        with server.lock:message=server.message
+        progress(message)
+    server.server_close()
+    if not server.review_url:raise ValueError(server.message)
+    opened(server.review_url)
+    return {'match_key':key,'opened':True}
 
 def choose(jobs,output,closing,opened,connection=None):
     from neptune_review_cloud import ReviewCloud
