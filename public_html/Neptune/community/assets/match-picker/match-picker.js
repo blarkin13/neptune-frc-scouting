@@ -12,7 +12,7 @@
   box.querySelector('.mp-event').append(search,event);
   let events=[];
   const now=new Date().getFullYear(),pick=current.match(/^(\d{4})([a-z0-9]+)_/);
-  for(let y=now+1;y>=2025;y--)year.add(new Option(String(y),String(y)));
+  for(let y=now+1;y>=2000;y--)year.add(new Option(String(y),String(y)));
   year.value=pick?pick[1]:String(now);
   const fmt=d=>d?new Date(d+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
   async function json(q){const r=await fetch(endpoint+q,{headers:{Accept:'application/json'}});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not load');return d}

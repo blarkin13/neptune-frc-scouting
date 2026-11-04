@@ -15,7 +15,7 @@ final class CommunityCatalog {
   $known=json_decode((string)file_get_contents(__DIR__.'/community-broadcast-videos.json'),true,64,JSON_THROW_ON_ERROR)[$key]??null;
   return $known&&$url==='https://www.youtube.com/watch?v='.$known['video_id']?(string)($known['coverage_note']??''):'';
  }
- public static function season(int $year):void {if($year<2025||$year>(int)gmdate('Y')+1)throw new CommunityAnalysisError(422,'Choose a season from 2025 onward, up to next year.');}
+ public static function season(int $year):void {if($year<2000||$year>(int)gmdate('Y')+1)throw new CommunityAnalysisError(422,'Choose a season from 2000 onward, up to next year.');}
  public function events(int $year):array {
   self::season($year);$events=($this->fetch)('events/'.$year.'/simple',3600);$seen=array_column($events,'key');foreach(self::sourceEvents() as $known)if(str_starts_with($known['key'],(string)$year)&&!in_array($known['key'],$seen,true))$events[]=$known;$out=[];
   foreach($events as $e){if(!is_array($e)||!preg_match('/^'.$year.'[a-z0-9]+$/D',(string)($e['key']??'')))continue;$out[]=['key'=>$e['key'],'name'=>(string)($e['name']??$e['key']),'start_date'=>$e['start_date']??null,'end_date'=>$e['end_date']??null,'location'=>implode(', ',array_filter([$e['city']??'',$e['state_prov']??'',$e['country']??'']))];}

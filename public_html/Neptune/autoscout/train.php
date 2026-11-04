@@ -138,7 +138,7 @@ community_page_start($title,$sub,$view,$kick);
    <?php $tagMatch=(int)($_GET['tag']??0); ?>
    <p class="training-note" id="tag-empty"<?=$tagMatch?' hidden':''?>>Choose a match above to start tagging it here.</p>
    <iframe id="tag-frame" class="tt-tag-frame" title="Watch and tag a match" data-src="/community/tag-video.php?embed=1&amp;match_id={id}"<?=$tagMatch?' src="/community/tag-video.php?embed=1&amp;match_id='.$tagMatch.'"':' hidden'?>></iframe>
-   <script src="../community/assets/match-picker/match-picker.js?v=2" defer></script>
+   <script src="../community/assets/match-picker/match-picker.js?v=3-older-seasons" defer></script>
    <script>document.addEventListener('click',e=>{if(e.target.id==='open-import')document.getElementById('import-modal').showModal()})</script>
    <script>
    // Grow the tagging frame to its content (same site), so the page scrolls as one.
