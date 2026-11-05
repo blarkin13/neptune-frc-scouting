@@ -678,8 +678,17 @@ def send_review(config, req, report, render):
         if out.stat().st_size > 45*1024*1024:
             return {'status': 'too_large'}
         title, description = rv.describe(req['kind'], report, VERSION)
+        # 1 MiB pieces: one request with the whole video is over Neptune's request size limit.
+        offset = 0
+        with out.open('rb') as stream:
+            while chunk := stream.read(1024*1024):
+                ack = api(config, 'review_chunk', {'request_id': req['id'], 'lease': req['lease'],
+                                                   'offset': offset, 'data_b64': base64.b64encode(chunk).decode()}, timeout=120)
+                offset += len(chunk)
+                if ack.get('next_offset') != offset:
+                    raise ValueError('Neptune did not confirm the review video transfer')
         reply = api(config, 'review_put', {'request_id': req['id'], 'lease': req['lease'], 'title': title, 'description': description,
-                                           'video_b64': base64.b64encode(out.read_bytes()).decode()}, timeout=900)
+                                           'chunked': True, 'size': offset, 'sha256': hashlib.sha256(out.read_bytes()).hexdigest()}, timeout=900)
         out.unlink()
         return reply.get('review') or {'status': 'sent'}
     except Exception as error:

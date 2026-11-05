@@ -198,8 +198,10 @@ final class RobotDetectorJobs {
  /** A run's review video: kept on Neptune (last 10), uploaded to YouTube when connected; the result goes on the request. */
  public function putReview(array $computer,array $p,?YouTubeUploader $youtube):array{
   $r=$this->owned($computer,$p);if($r['state']==='cancelled')throw new InvalidArgumentException('This run was cancelled');if(!in_array($r['kind'],['train','train_field'],true))throw new InvalidArgumentException('Only training runs have review videos');
-  $raw=base64_decode((string)($p['video_b64']??''),true);if($raw===false||strlen($raw)<1000||strlen($raw)>48*1024*1024)throw new InvalidArgumentException('Invalid review video');
-  $dir=$this->dir('review');$file=$dir.'/'.$r['id'].'.mp4';file_put_contents($file,$raw,LOCK_EX);chmod($file,0600);
+  $dir=$this->dir('review');$file=$dir.'/'.$r['id'].'.mp4';
+  if(!empty($p['chunked'])){$this->commitChunks($dir.'/'.$r['id'].'.upload',$p,$file,'Review video transfer verification failed');}
+  else{$raw=base64_decode((string)($p['video_b64']??''),true);if($raw===false||strlen($raw)<1000||strlen($raw)>48*1024*1024)throw new InvalidArgumentException('Invalid review video');file_put_contents($file,$raw,LOCK_EX);}
+  chmod($file,0600);
   $old=glob($dir.'/*.mp4')?:[];usort($old,fn($a,$b)=>filemtime($b)<=>filemtime($a));foreach(array_slice($old,10) as $f)unlink($f);
   $title=mb_substr(trim((string)($p['title']??'Auto Scout review')),0,100);$desc=mb_substr((string)($p['description']??''),0,4900);
   $review=['status'=>'saved','title'=>$title,'saved_at'=>time()];
@@ -216,9 +218,23 @@ final class RobotDetectorJobs {
  public function putRobotTestChunk(array $computer,array $p):array{
   $r=$this->owned($computer,$p);
   if(($r['kind']??'')!=='test_robot'||$r['state']==='cancelled')throw new InvalidArgumentException('This test cannot receive video');
+  return $this->putChunk($this->dir('robot-tests').'/'.$r['id'].'.upload',$p);
+ }
+ /** One 1 MiB piece of a training run's review video; review_put with chunked=true commits it. */
+ public function putReviewChunk(array $computer,array $p):array{
+  $r=$this->owned($computer,$p);
+  if(!in_array($r['kind']??'',['train','train_field'],true)||$r['state']==='cancelled')throw new InvalidArgumentException('This run cannot receive a review video');
+  return $this->putChunk($this->dir('review').'/'.$r['id'].'.upload',$p);
+ }
+ private function commitChunks(string $staged,array $p,string $file,string $error):void{
+  $sha=(string)($p['sha256']??'');$size=$p['size']??null;
+  if(!preg_match('/^[a-f0-9]{64}$/D',$sha)||!is_int($size)||$size<1000||$size>512*1024*1024||!is_file($staged)||filesize($staged)!==$size||hash_file('sha256',$staged)!==$sha)throw new InvalidArgumentException($error);
+  if(!rename($staged,$file))throw new RuntimeException('Could not commit video');
+ }
+ private function putChunk(string $file,array $p):array{
   $offset=$p['offset']??null;$raw=base64_decode((string)($p['data_b64']??''),true);
   if(!is_int($offset)||$offset<0||$raw===false||strlen($raw)<1||strlen($raw)>1048576||$offset+strlen($raw)>512*1024*1024)throw new InvalidArgumentException('Invalid video chunk');
-  $file=$this->dir('robot-tests').'/'.$r['id'].'.upload';$fh=fopen($file,'c+b');if(!$fh)throw new RuntimeException('Video storage unavailable');
+  $fh=fopen($file,'c+b');if(!$fh)throw new RuntimeException('Video storage unavailable');
   try{flock($fh,LOCK_EX);$size=fstat($fh)['size'];
    if($offset<$size){fseek($fh,$offset);if(fread($fh,strlen($raw))!==$raw)throw new InvalidArgumentException('Video chunk differs from saved bytes');}
    elseif($offset===$size){fseek($fh,$offset);if(fwrite($fh,$raw)!==strlen($raw))throw new RuntimeException('Could not save video chunk');fflush($fh);}
@@ -232,9 +248,7 @@ final class RobotDetectorJobs {
   if(($r['kind']??'')!=='test_robot')throw new InvalidArgumentException('Only a robot match test can save a robot test video');
   $dir=$this->dir('robot-tests');$file=$dir.'/'.$r['id'].'.mp4';
   if(!empty($p['chunked'])){
-   $staged=$dir.'/'.$r['id'].'.upload';$sha=(string)($p['sha256']??'');$size=$p['size']??null;
-   if(!preg_match('/^[a-f0-9]{64}$/D',$sha)||!is_int($size)||$size<1000||$size>512*1024*1024||!is_file($staged)||filesize($staged)!==$size||hash_file('sha256',$staged)!==$sha)throw new InvalidArgumentException('Test video transfer verification failed');
-   if(!rename($staged,$file))throw new RuntimeException('Could not commit test video');
+   $this->commitChunks($dir.'/'.$r['id'].'.upload',$p,$file,'Test video transfer verification failed');
   }else{
    $raw=base64_decode((string)($p['video_b64']??''),true);if($raw===false||strlen($raw)<1000||strlen($raw)>48*1024*1024)throw new InvalidArgumentException('Invalid robot test video');
    if(file_put_contents($file,$raw,LOCK_EX)!==strlen($raw))throw new RuntimeException('Could not save test video');

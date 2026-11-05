@@ -17,6 +17,7 @@ from pathlib import Path
 
 MODES = ('jobs', 'always', 'off')
 SAVED = Path.home()/'.neptune-trainer'/'keep-awake.txt'
+HELD = Path.home()/'.neptune-trainer'/'awake-held'   # touched when Windows sleep is first held (neptune_update_apply.hand_over)
 
 
 class Awake:
@@ -115,8 +116,8 @@ class Awake:
     @staticmethod
     def _release(call):
         # Clearing the hold alone lets Windows sleep at once if it has been idle longer than its sleep setting;
-        # one plain ES_SYSTEM_REQUIRED restarts the idle timer, giving the full sleep delay from now.
-        call(0x80000000); call(0x00000001)
+        # one plain ES_SYSTEM_REQUIRED first restarts the idle timer (still held), giving the full sleep delay from now.
+        call(0x00000001); call(0x80000000)
 
     def _windows(self):
         ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
@@ -130,7 +131,10 @@ class Awake:
             try:
                 wanted = self.wanted
                 if wanted:
-                    self._held = bool(call(ES_CONTINUOUS | ES_SYSTEM_REQUIRED))
+                    held = bool(call(ES_CONTINUOUS | ES_SYSTEM_REQUIRED))
+                    if held and not self._held:
+                        HELD.parent.mkdir(parents=True, exist_ok=True); HELD.touch()   # an updater waiting to let go can now
+                    self._held = held
                 elif self._held:
                     self._release(call); self._held = False
                 else:

@@ -107,6 +107,7 @@ try {
   'selfcheck_put'=>$jobs->putSelfcheck($computer,$p),
   'score_put'=>(new ScoreMoments(dirname(__DIR__,3).'/neptune_secure',(int)$computer['organization_id']))->put($p),
   'review_put'=>$jobs->putReview($computer,$p,new YouTubeUploader(dirname(__DIR__,3).'/neptune_secure')),
+  'review_chunk'=>$jobs->putReviewChunk($computer,$p),
   'robot_test_chunk'=>$jobs->putRobotTestChunk($computer,$p),
   'robot_test_put'=>$jobs->putRobotTest($computer,$p),
   'current_field'=>$jobs->currentField(isset($p['have'])?(string)$p['have']:null,isset($p['game_key'])?(string)$p['game_key']:null),
