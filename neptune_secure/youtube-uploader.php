@@ -66,8 +66,11 @@ final class YouTubeUploader {
    return is_array($json)?$json:[];
   }finally{curl_close($h);fclose($file);}
  }
+ /** YouTube rejects titles and descriptions containing angle brackets ("invalid video description"). */
+ public static function safeText(string $s):string{return str_replace(['<=','>=','<','>'],['≤','≥','‹','›'],$s);}
  /** Resumable upload. Returns {youtube_id, privacy}. */
  public function upload(string $path,string $title,string $description):array{
+  $title=self::safeText($title);$description=self::safeText($description);
   $token=$this->accessToken();$size=filesize($path);
   $meta=json_encode(['snippet'=>['title'=>$title,'description'=>$description,'categoryId'=>'28','tags'=>['FRC','Neptune','Auto Scout']],'status'=>['privacyStatus'=>'unlisted','selfDeclaredMadeForKids'=>false]],JSON_THROW_ON_ERROR);
   $start=self::http('POST','https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',

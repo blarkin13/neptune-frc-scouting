@@ -1,7 +1,7 @@
 """Review videos for detector training runs: what the new model does on the held-out match, uploaded with the run.
 
 Robot detector: each held-out frame with the people's boxes and the new detector's boxes, colour-coded:
-green = bumper found, red = bumper missed, yellow = box where nobody marked a bumper. Thin blue = the detector
+white = reference label, green = matched new prediction, red = bumper missed, yellow = unmatched new prediction. Thin blue = the detector
 in use, for comparison. Field detector: detected scoring targets and corners against the marked ones.
 """
 from pathlib import Path
@@ -70,39 +70,75 @@ def match(truth, pred, iou, threshold=.3):
     return found, used
 
 
+def robot_review_summary(report):
+    """Display the actual evaluation set and adoption margin without rounding away the decision."""
+    held = list(dict.fromkeys(report.get('holdout_matches') or [report.get('holdout_match', '?')]))
+    new, old = report.get('new') or {}, report.get('current')
+    lines = ['Held out: %s' % ', '.join(held),
+             'New: F1 %.3f; recall %.1f%%; precision %.1f%%' %
+             (new.get('f1', 0), 100*new.get('recall', 0), 100*new.get('precision', 0)),
+             ('In use: F1 %.3f' % old['f1']) if old else 'In use: the built-in detector']
+    if old:
+        lines.append('F1 gain: %+.3f; required gain: %.3f' %
+                     (new.get('f1', 0)-old['f1'], report.get('margin', .02)))
+    lines += ['Result: %s' % ('switched to the new detector' if report.get('adopted') else 'kept the detector in use'),
+              'Training: %s frames; evaluation: %s frames.' %
+              (report.get('train_frames', '?'), report.get('check_frames', '?')),
+              'Evaluation matches were excluded from this training run.']
+    return held, lines
+
+
+def robot_frame_overlay(image, truth, pred, old_pred=(), label=''):
+    """Show reference extents and every new prediction, including those counted as matches."""
+    from neptune_robot_jobs import iou
+    found, used = match(truth, pred, iou)
+    img = fit(image)
+    for b in old_pred:
+        box(img, b, BLUE, 1)
+    for i, t in enumerate(truth):
+        box(img, t, WHITE if i in found else RED, 1 if i in found else 3)
+    for j, p in enumerate(pred):
+        box(img, p, GREEN if j in used else YELLOW, 2)
+    text = (label+' | ' if label else '')+'%d/%d matched' % (len(found), len(truth))
+    return banner(img, text,
+                  [('label', WHITE), ('missed', RED), ('new', GREEN), ('extra', YELLOW)] +
+                  ([('old', BLUE)] if old_pred else [])), found
+
+
+def robot_frame_names(frames):
+    """Recover match identity from the evaluation images' dataset manifest, when available."""
+    import json
+    if not frames:
+        return {}
+    manifest = Path(frames[0][0]).parent.parent/'manifest.json'
+    try:
+        rows = json.loads(manifest.read_text()).get('frames', [])
+    except (OSError, ValueError):
+        return {}
+    return {Path(row['image']).name: row['match_key'] for row in rows
+            if row.get('image') and row.get('match_key')}
+
+
 def robot_video(out, frames, new_weights, old_weights, report):
     """frames: [(image path, truth xyxy boxes normalized)]. Returns the video path."""
     import cv2
     from ultralytics import YOLO
-    from neptune_robot_jobs import detect, iou
+    from neptune_robot_jobs import detect
     new = YOLO(str(new_weights)); old = YOLO(str(old_weights)) if old_weights else None
     xyxy = lambda bs: [[b['x'], b['y'], b['x']+b['w'], b['y']+b['h']] for b in bs]
-    n, c = report.get('new') or {}, report.get('current')
     w = writer(out)
-    pct = lambda v: '%d%%' % round(100*v) if v is not None else '-'
-    intro = card(['Robot detector training run', 'Held-out match: %s' % report.get('holdout_match', '?')],
-                 ['New: found %s of bumpers, %s of its boxes real (F1 %.2f)' % (pct(n.get('recall')), pct(n.get('precision')), n.get('f1', 0)),
-                  ('In use: F1 %.2f' % c['f1']) if c else 'In use: the built-in detector',
-                  'Result: %s' % ('switched to the new detector' if report.get('adopted') else 'kept the detector in use'),
-                  'Learned from %s frames; this match was never trained on.' % report.get('train_frames', '?')])
+    _, summary = robot_review_summary(report)
+    intro = card(['Robot detector training run'], summary)
+    frame_names = robot_frame_names(frames)
     for _ in range(FPS*4):
         w.write(intro)
     for k, (path, truth) in enumerate(frames):
         image = cv2.imread(str(path))
         if image is None:
             continue
-        pred = xyxy(detect(new, image)); found, used = match(truth, pred, iou)
-        img = fit(image)
-        if old:
-            for b in xyxy(detect(old, image)):
-                box(img, b, BLUE, 1)
-        for i, t in enumerate(truth):
-            box(img, t, GREEN if i in found else RED)
-        for j, p in enumerate(pred):
-            if j not in used:
-                box(img, p, YELLOW, 2)
-        banner(img, 'Frame %d of %d · found %d of %d bumpers' % (k+1, len(frames), len(found), len(truth)),
-               [('found', GREEN), ('missed', RED), ('extra box', YELLOW)] + ([('in use', BLUE)] if old else []))
+        pred = xyxy(detect(new, image))
+        label = 'Frame %d/%d %s' % (k+1, len(frames), frame_names.get(Path(path).name, ''))
+        img, _ = robot_frame_overlay(image, truth, pred, xyxy(detect(old, image)) if old else (), label.rstrip())
         for _ in range(HOLD):
             w.write(img)
     w.release()
@@ -151,18 +187,27 @@ def field_video(out, frames, new_weights, doc, report):
 
 def describe(kind, report, engine):
     """YouTube title and description for a run."""
-    pct = lambda v: '%d%%' % round(100*v) if v is not None else '-'
+    pct = lambda v: '%.1f%%' % (100*v) if v is not None else '-'
     held = report.get('holdout_match', '?')
     if kind == 'train':
         n, c = report.get('new') or {}, report.get('current')
-        title = 'Robot detector run · %s · F1 %.2f%s' % (held, n.get('f1', 0), ' vs %.2f' % c['f1'] if c else '')
+        held_keys, _ = robot_review_summary(report)
+        held = ', '.join(held_keys)
+        title = ('Robot detector run · %s · F1 %.3f%s' %
+                 (held_keys[0] if len(held_keys) == 1 else '%d held-out matches' % len(held_keys),
+                  n.get('f1', 0), ' vs %.3f' % c['f1'] if c else ''))
         body = ['Neptune Auto Scout · Robots pillar · robot (bumper) detector training run.', '',
-                'Held-out match (never trained on, the same every run): %s' % held,
-                'New detector: found %s of the bumpers people boxed; %s of its boxes were real bumpers (F1 %.2f).' % (pct(n.get('recall')), pct(n.get('precision')), n.get('f1', 0)),
-                'Detector in use: %s' % ('F1 %.2f' % c['f1'] if c else 'the built-in one'),
+                'Held-out evaluation matches (excluded from this training run): %s' % held,
+                'New detector: found %s of the bumpers people boxed; %s of its boxes matched reference labels (F1 %.3f).' % (pct(n.get('recall')), pct(n.get('precision')), n.get('f1', 0)),
+                'Detector in use: %s' % ('F1 %.3f' % c['f1'] if c else 'the built-in one'),
                 'Result: %s.' % ('switched to the new detector' if report.get('adopted') else 'kept the detector in use'),
                 'Learned from %s frames in %d matches.' % (report.get('train_frames', '?'), len(report.get('matches') or [])), '',
-                'Colours: green = bumper found, red = bumper missed, yellow = a box where nobody marked a bumper, thin blue = detector in use.']
+                'Colours: thin white = reference label; green = matched new-model prediction; red = unmatched reference label; yellow = unmatched new-model prediction; thin blue = detector in use.',
+                'An unmatched prediction can be a false alarm, a missing reference label, or a box-placement disagreement.',
+                'Matching uses IoU >= 0.30; a match does not establish tight bumper-only localization.']
+        if c:
+            body += ['Exact F1 gain: %+.3f; required adoption gain: %.3f.' %
+                     (n.get('f1', 0)-c['f1'], report.get('margin', .02))]
     else:
         title = 'Field detector run · %s · %s' % (report.get('game_key', ''), held)
         body = ['Neptune Auto Scout · Field pillar · field detector (scoring targets and field corners) training run.', '',
