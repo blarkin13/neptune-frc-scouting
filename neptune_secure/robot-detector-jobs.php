@@ -375,11 +375,28 @@ final class RobotDetectorJobs {
  }
  public function prefill(string $video):?array{$f=$this->root.'/prefill/'.self::video($video).'.json';return is_file($f)?json_decode((string)file_get_contents($f),true):null;}
  /** The adopted detector: manifest always; weights only when the helper's copy differs. */
- public function current(?string $have=null):array{
+ /** The adopted detector. A helper that asks for chunks gets the weights' size and fingerprint and fetches them with
+  *  currentChunk: a Medium model as one base64 reply would exceed PHP's 128 MB memory limit. Older helpers get weights_b64. */
+ public function current(?string $have=null,bool $chunked=false):array{
   $m=$this->root.'/current/manifest.json';if(!is_file($m))return ['detector'=>null];
   $manifest=json_decode((string)file_get_contents($m),true);$out=['detector'=>$manifest];
-  if($have!==($manifest['by_camera']['wide']['sha256']??null)){$w=$this->root.'/current/'.($manifest['by_camera']['wide']['file']??'');if(is_file($w))$out['weights_b64']=base64_encode((string)file_get_contents($w));}
+  if($have!==($manifest['by_camera']['wide']['sha256']??null)){$w=$this->root.'/current/'.($manifest['by_camera']['wide']['file']??'');
+   if(is_file($w)){if($chunked)$out['weights']=['size'=>filesize($w),'sha256'=>$manifest['by_camera']['wide']['sha256']];else $out['weights_b64']=base64_encode((string)file_get_contents($w));}}
   return $out;
+ }
+ /** One 1 MiB piece of the adopted detector's weights, for the fingerprint the helper was told about. */
+ public function currentChunk(array $p):array{
+  $m=$this->root.'/current/manifest.json';$manifest=is_file($m)?json_decode((string)file_get_contents($m),true):null;
+  $row=$manifest['by_camera']['wide']??null;if(!$row||($p['sha256']??null)!==$row['sha256'])throw new InvalidArgumentException('The adopted detector changed; start the download again');
+  $w=$this->root.'/current/'.$row['file'];$offset=$p['offset']??null;if(!is_int($offset)||$offset<0||$offset>=filesize($w))throw new InvalidArgumentException('Invalid detector chunk');
+  $fh=fopen($w,'rb');fseek($fh,$offset);$raw=(string)fread($fh,1048576);fclose($fh);
+  return ['offset'=>$offset,'data_b64'=>base64_encode($raw)];
+ }
+ /** One 1 MiB piece of a newly trained detector; adopt with chunked=true commits it. */
+ public function putAdoptChunk(array $computer,array $p):array{
+  $r=$this->owned($computer,$p);
+  if(($r['kind']??'')!=='train'||$r['state']==='cancelled')throw new InvalidArgumentException('This run cannot send a detector');
+  return $this->putChunk($this->dir('adopt-upload').'/'.$r['id'].'.upload',$p);
  }
  /** A game's adopted field detector and reference marks; weights only when the helper's copy differs. */
  public function currentField(?string $have=null,?string $game=null):array{
@@ -420,7 +437,10 @@ final class RobotDetectorJobs {
  /** Adopt a detector the helper trained and showed better on a held-out match. Previous one is kept. */
  public function adopt(array $computer,array $p):array{
   $r=$this->owned($computer,$p);if($r['state']==='cancelled')throw new InvalidArgumentException('This run was cancelled');if($r['kind']!=='train')throw new InvalidArgumentException('Only a training request can adopt a detector');
-  $raw=base64_decode((string)($p['weights_b64']??''),true);if($raw===false||strlen($raw)<1000||strlen($raw)>60*1024*1024)throw new InvalidArgumentException('Invalid detector weights');
+  if(!empty($p['chunked'])){$staged=$this->dir('adopt-upload').'/'.$r['id'].'.upload';$tmp=$staged.'.verified';
+   if(($p['size']??0)>200*1024*1024)throw new InvalidArgumentException('Invalid detector weights');
+   $this->commitChunks($staged,$p,$tmp,'Detector transfer verification failed');$raw=(string)file_get_contents($tmp);unlink($tmp);}
+  else{$raw=base64_decode((string)($p['weights_b64']??''),true);if($raw===false||strlen($raw)<1000||strlen($raw)>60*1024*1024)throw new InvalidArgumentException('Invalid detector weights');}
   $sha=hash('sha256',$raw);$report=is_array($p['report']??null)?$p['report']:[];
   $cur=$this->dir('current');$old=$cur.'/manifest.json';
   if(is_file($old)){$hist=$this->dir('history/'.date('Ymd-His'));foreach(glob($cur.'/*')?:[] as $f)copy($f,$hist.'/'.basename($f));}

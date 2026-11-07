@@ -26,11 +26,12 @@ WIDE_BAND = (.24, .6506)          # 2026 broadcast wide-camera band (normalized 
 ADOPT_MARGIN = .02                # new detector must beat the current one's held-out F1 by this much
 MIN_FRAMES_PER_MATCH = 8
 EXTRA_HOLDOUTS = ('2026mnwi_qm5', '2026brba_qm5')   # other events, also never trained on; checked together with Neptune's pick
-MODEL_SIZE = 's'                  # YOLO11 Small; start from COCO when the detector in use is Nano
-SMALL_BASE = {'file': 'yolo11s.pt', 'sha256': '85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5',
-              'url': 'https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.pt'}
+MODEL_SIZE = 'm'                  # YOLO11 Medium; start from COCO when the detector in use is another size
+IMGSZ = 1920                      # full broadcast width: distant bumpers keep every pixel (97 of 127 misses were small)
+BASE_MODEL = {'file': 'yolo11m.pt', 'sha256': 'd5ffc1a674953a08e11a8d21e022781b1b23a19b730afc309290bd9fb5305b95',
+              'url': 'https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11m.pt'}
 WARM_RECIPE = 'adopted-bumper-warm-start-v2-train-validation'
-SMALL_RECIPE = 'coco-yolo11s-first-small-v1'
+BASE_RECIPE = 'coco-yolo11m-1920-v1'
 
 
 def api(config, action, payload=None, timeout=120):
@@ -54,12 +55,22 @@ def sync_detector(config):
     have = None
     if manifest.is_file():
         have = (json.loads(manifest.read_text()).get('by_camera', {}).get('wide') or {}).get('sha256')
-    reply = api(config, 'current', {'have': have})
+    reply = api(config, 'current', {'have': have, 'chunked': True})
     current = reply.get('detector')
-    if not current or not reply.get('weights_b64'):
+    if not current or not (reply.get('weights') or reply.get('weights_b64')):
         return {'status': 'unchanged' if current else 'none_adopted'}
-    raw = base64.b64decode(reply['weights_b64'])
     row = current['by_camera']['wide']
+    if reply.get('weights_b64'):
+        raw = base64.b64decode(reply['weights_b64'])
+    else:   # 1 MiB pieces: a Medium model in one reply exceeds Neptune's memory limit
+        parts, size = [], reply['weights']['size']
+        while sum(map(len, parts)) < size:
+            got = api(config, 'current_chunk', {'sha256': row['sha256'], 'offset': sum(map(len, parts))}, timeout=120)
+            piece = base64.b64decode(got['data_b64'])
+            if not piece:
+                raise ValueError('Shared detector download stopped early')
+            parts.append(piece)
+        raw = b''.join(parts)
     if hashlib.sha256(raw).hexdigest() != row['sha256']:
         raise ValueError('Shared detector failed verification')
     SHARED.mkdir(parents=True, exist_ok=True)
@@ -82,9 +93,9 @@ def train_device():
 
 
 def loader_settings(device):
-    """Feed CUDA in batches of eight (Small used under 6 GB of a 16 GB card at four). Decoded frames are cached
-    on disk (in the run's work folder) so the loaders stop re-reading the JPEGs every pass."""
-    return {'workers': 2, 'batch': 8, 'cache': 'disk'} if device != 'cpu' else {'workers': 0, 'batch': 4}
+    """Medium at 1920 needs about 2.25x the pixels and 2.5x the model of Small at 1280 (which used under 6 GB at
+    batch 4), so CUDA batches of two fit an 8 GB card. Decoded frames are cached on disk (in the run's work folder)."""
+    return {'workers': 2, 'batch': 2, 'cache': 'disk'} if device != 'cpu' else {'workers': 0, 'batch': 1}
 
 
 def fine_tune_settings(recipe):
@@ -170,26 +181,26 @@ def model_scale(weights):
     return (getattr(YOLO(str(weights)).model, 'yaml', None) or {}).get('scale')
 
 
-def small_base():
-    """COCO-pretrained YOLO11 Small, downloaded once and checked against its pinned fingerprint."""
+def base_model():
+    """COCO-pretrained YOLO11 (MODEL_SIZE), downloaded once and checked against its pinned fingerprint."""
     import urllib.request
-    path = HOME/'base-models'/SMALL_BASE['file']
-    if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == SMALL_BASE['sha256']:
+    path = HOME/'base-models'/BASE_MODEL['file']
+    if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == BASE_MODEL['sha256']:
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix('.part')
-    with urllib.request.urlopen(SMALL_BASE['url'], timeout=300) as r, open(tmp, 'wb') as f:
+    with urllib.request.urlopen(BASE_MODEL['url'], timeout=300) as r, open(tmp, 'wb') as f:
         shutil.copyfileobj(r, f, 1 << 20)
-    if hashlib.sha256(tmp.read_bytes()).hexdigest() != SMALL_BASE['sha256']:
+    if hashlib.sha256(tmp.read_bytes()).hexdigest() != BASE_MODEL['sha256']:
         tmp.unlink(missing_ok=True)
-        raise ValueError('The YOLO11 Small starting model failed its fingerprint check.')
+        raise ValueError('The YOLO11 starting model failed its fingerprint check.')
     tmp.replace(path)
     return path
 
 
 def training_base(held):
     """(starting weights, recipe). Continue the proven bumper detector when it is MODEL_SIZE;
-    otherwise (MODEL_SIZE 's' with Nano in use) start a fresh Small run from COCO, which never saw any match.
+    otherwise (the detector in use is another size) start a fresh MODEL_SIZE run from COCO, which never saw any match.
 
     Refuse an inherited model that learned the evaluation match: excluding it
     from this run alone would not remove its influence from the weights.
@@ -199,7 +210,7 @@ def training_base(held):
     if not (current and current.is_file()):
         raise ValueError('Install the current wide bumper detector before fine-tuning; its training provenance is required.')
     if model_scale(current) != MODEL_SIZE:
-        return small_base(), SMALL_RECIPE
+        return base_model(), BASE_RECIPE
     held = {held} if isinstance(held, str) else set(held)
     if held & set(adopted_trained_on(manifest)):
         raise ValueError('The starting detector trained on the evaluation match; choose an independent holdout.')
@@ -251,7 +262,7 @@ def detect(model, image, conf=.25):
     """Bumper boxes {alliance,x,y,w,h} normalized to the full frame."""
     h, w = image.shape[:2]
     from neptune_yolo import unique_bumpers
-    r = model.predict(image, imgsz=1280, conf=conf, verbose=False, device=train_device())[0]
+    r = model.predict(image, imgsz=IMGSZ, conf=conf, verbose=False, device=train_device())[0]
     found = []
     for box, cls, score in zip(r.boxes.xyxy.tolist(), r.boxes.cls.tolist(), r.boxes.conf.tolist()):
         name = str(r.names[int(cls)]).lower()
@@ -442,7 +453,7 @@ def train(config, req, progress):
     loading = loader_settings(device)
     progress('Training input: %d images per batch, %d loader workers on %s' % (loading['batch'], loading['workers'], device))
     with all_cores():
-        result = model.train(data=str(config_yaml), epochs=epochs, imgsz=1280, device=device, **loading, **fine_tune_settings(recipe), patience=20, seed=2026,
+        result = model.train(data=str(config_yaml), epochs=epochs, imgsz=IMGSZ, device=device, **loading, **fine_tune_settings(recipe), patience=20, seed=2026,
                          deterministic=True, plots=False, project=str(work/'runs'), name='bumper', exist_ok=True, verbose=False,
                          translate=.2, scale=.5, fliplr=.5, mosaic=1.0, close_mosaic=10)
     best = Path(result.save_dir)/'weights'/'best.pt'
@@ -462,7 +473,7 @@ def train(config, req, progress):
     report['review'] = send_review(config, req, report, lambda out: __import__('neptune_review_video').robot_video(out, check, best, current, report))
     if adopt:
         progress('Sharing the new detector with Neptune')
-        api(config, 'adopt', {'request_id': req['id'], 'lease': req['lease'], 'weights_b64': base64.b64encode(best.read_bytes()).decode(), 'report': report}, timeout=600)
+        send_weights(config, req, best, report)
         sync_detector(config)
     return report
 
@@ -668,6 +679,20 @@ def train_field(config, req, progress):
 
 
 # ---------- review videos ----------
+
+def send_weights(config, req, weights, report):
+    """Adopt a detector on Neptune in 1 MiB pieces (a Medium model in one request is over Neptune's limits)."""
+    raw = Path(weights).read_bytes(); offset = 0
+    while offset < len(raw):
+        piece = raw[offset:offset+1024*1024]
+        ack = api(config, 'adopt_chunk', {'request_id': req['id'], 'lease': req['lease'], 'offset': offset,
+                                          'data_b64': base64.b64encode(piece).decode()}, timeout=120)
+        offset += len(piece)
+        if ack.get('next_offset') != offset:
+            raise ValueError('Neptune did not confirm the detector transfer')
+    return api(config, 'adopt', {'request_id': req['id'], 'lease': req['lease'], 'report': report, 'chunked': True,
+                                 'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}, timeout=600)
+
 
 def send_review(config, req, report, render):
     """Render this run's review video and send it to Neptune, which uploads it to YouTube. Never fails the run."""
