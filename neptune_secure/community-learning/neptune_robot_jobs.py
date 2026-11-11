@@ -26,12 +26,12 @@ WIDE_BAND = (.24, .6506)          # 2026 broadcast wide-camera band (normalized 
 ADOPT_MARGIN = .02                # new detector must beat the current one's held-out F1 by this much
 MIN_FRAMES_PER_MATCH = 8
 EXTRA_HOLDOUTS = ('2026mnwi_qm5', '2026brba_qm5')   # other events, also never trained on; checked together with Neptune's pick
-MODEL_SIZE = 'm'                  # YOLO11 Medium; start from COCO when the detector in use is another size
+MODEL_SIZE = 's'                  # YOLO11 Small (Medium at 1920 scored no better and took ~18 h); COCO start only if the detector in use is another size
 IMGSZ = 1920                      # full broadcast width: distant bumpers keep every pixel (97 of 127 misses were small)
-BASE_MODEL = {'file': 'yolo11m.pt', 'sha256': 'd5ffc1a674953a08e11a8d21e022781b1b23a19b730afc309290bd9fb5305b95',
-              'url': 'https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11m.pt'}
+BASE_MODEL = {'file': 'yolo11s.pt', 'sha256': '85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5',
+              'url': 'https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.pt'}
 WARM_RECIPE = 'adopted-bumper-warm-start-v2-train-validation'
-BASE_RECIPE = 'coco-yolo11m-1920-v1'
+BASE_RECIPE = 'coco-yolo11s-1920-v1'
 
 
 def api(config, action, payload=None, timeout=120):
@@ -93,9 +93,9 @@ def train_device():
 
 
 def loader_settings(device):
-    """Medium at 1920 needs about 2.25x the pixels and 2.5x the model of Small at 1280 (which used under 6 GB at
-    batch 4), so CUDA batches of two fit an 8 GB card. Decoded frames are cached on disk (in the run's work folder)."""
-    return {'workers': 2, 'batch': 2, 'cache': 'disk'} if device != 'cpu' else {'workers': 0, 'batch': 1}
+    """Small at 1920 has 2.25x the pixels of Small at 1280 (under 6 GB at batch 4), so CUDA batches of four
+    (Medium at 1920 used 11 GB at batch two). Decoded frames are cached on disk (in the run's work folder)."""
+    return {'workers': 2, 'batch': 4, 'cache': 'disk'} if device != 'cpu' else {'workers': 0, 'batch': 1}
 
 
 def fine_tune_settings(recipe):
